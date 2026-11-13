@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { useVirtualizer } from "@tanstack/react-virtual";
 
-type MediaRow = {
+export type MediaRow = {
   id: number;
   title: string | null;
   artist: string | null;
@@ -14,7 +14,7 @@ type MediaRow = {
 const PAGINA = 500;
 const ALTURA_LINHA = 36;
 
-function formatarDuracao(ms: number | null) {
+export function formatarDuracao(ms: number | null) {
   if (!ms) return "";
   const s = Math.round(ms / 1000);
   const h = Math.floor(s / 3600);
@@ -27,9 +27,11 @@ type Props = {
   total: number;
   /** Muda quando a biblioteca é alterada (ex.: após importar), descartando o cache. */
   versao: number;
+  tocandoId: number | null;
+  onTocar: (id: number) => void;
 };
 
-export default function Biblioteca({ total, versao }: Props) {
+export default function Biblioteca({ total, versao, tocandoId, onTocar }: Props) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const paginas = useRef(new Map<number, MediaRow[]>());
   const pedidas = useRef(new Set<number>());
@@ -90,7 +92,8 @@ export default function Biblioteca({ total, versao }: Props) {
               <div
                 key={item.key}
                 role="row"
-                className={"linha" + (m?.missing ? " ausente" : "")}
+                className={"linha" + (m?.missing ? " ausente" : "") + (m && m.id === tocandoId ? " atual" : "")}
+                onDoubleClick={() => m && onTocar(m.id)}
                 title={m?.missing ? "Arquivo não encontrado" : undefined}
                 style={{ height: ALTURA_LINHA, transform: `translateY(${item.start}px)` }}
               >

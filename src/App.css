@@ -100,6 +100,78 @@ body {
   font-style: italic;
 }
 
+.linha.atual {
+  color: #4f8ef7;
+  font-weight: 600;
+}
+
+.lista .linha {
+  cursor: default;
+  user-select: none;
+}
+
+.player {
+  display: grid;
+  grid-template-columns: auto minmax(10rem, 1fr) minmax(12rem, 2fr) auto;
+  gap: 1rem;
+  align-items: center;
+  padding: 0.75rem 0;
+  border-top: 1px solid rgba(128, 128, 128, 0.3);
+  margin-top: auto;
+}
+
+.player .play {
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: 50%;
+}
+
+.faixa {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.faixa strong,
+.faixa span {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.faixa span,
+.dica {
+  opacity: 0.7;
+  font-size: 0.9rem;
+}
+
+.progresso {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.progresso input {
+  flex: 1;
+}
+
+.tempo {
+  font-variant-numeric: tabular-nums;
+  font-size: 0.85rem;
+  min-width: 3rem;
+  text-align: center;
+}
+
+.volume {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.volume input {
+  width: 6rem;
+}
+
 .duracao {
   text-align: right;
   font-variant-numeric: tabular-nums;

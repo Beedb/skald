@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
-import Biblioteca from "./Biblioteca";
+import { listen } from "@tauri-apps/api/event";
+import Biblioteca, { type MediaRow } from "./Biblioteca";
+import PlayerBar, { type EstadoPlayer } from "./PlayerBar";
 import "./App.css";
 
 type DbStatus = {
@@ -30,9 +32,30 @@ function App() {
       .then(setStatus)
       .catch((e) => setErro(String(e)));
 
+  const [musica, setMusica] = useState<MediaRow | null>(null);
+  const [estado, setEstado] = useState<EstadoPlayer | null>(null);
+
   useEffect(() => {
     carregarStatus();
+    const parar = listen<EstadoPlayer>("player-estado", (e) => {
+      setEstado(e.payload);
+      if (e.payload.erro) setErro(e.payload.erro);
+    });
+    return () => {
+      parar.then((f) => f());
+    };
   }, []);
+
+  async function tocar(id: number) {
+    setErro(null);
+    try {
+      setMusica(await invoke<MediaRow>("play_media", { id }));
+    } catch (e) {
+      setErro(String(e));
+      // O arquivo pode ter sido marcado como não encontrado: redesenha a lista.
+      setVersao((v) => v + 1);
+    }
+  }
 
   async function importarPasta() {
     const pasta = await open({ directory: true, title: "Escolha a pasta de músicas" });
@@ -84,7 +107,15 @@ function App() {
           )}
         </div>
       )}
-      {status && <Biblioteca total={status.media_count} versao={versao} />}
+      {status && (
+        <Biblioteca
+          total={status.media_count}
+          versao={versao}
+          tocandoId={estado && estado.estado !== "parado" ? estado.id : null}
+          onTocar={tocar}
+        />
+      )}
+      <PlayerBar musica={musica} estado={estado} />
     </main>
   );
 }

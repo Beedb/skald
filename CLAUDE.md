@@ -54,7 +54,7 @@ Marcar `[x]` ao concluir.
 - [x] Projeto base: Tauri 2 + React + TS rodando, SQLite conectado
 - [x] Importar pasta e ler metadados (`lofty`)
 - [x] Listar músicas na biblioteca
-- [ ] Tocar uma música (GStreamer): play, pausa, volume, progresso
+- [x] Tocar uma música (GStreamer): play, pausa, volume, progresso
 - [ ] Fila de reprodução
 - [ ] Mini-player e player completo
 - [ ] Busca por metadados
@@ -65,4 +65,4 @@ Depois do MVP: monitoramento de pastas, shuffle, repetir, estatísticas, MPRIS, 
 
 ## Estado atual
 
-Etapa 3 concluída: `list_media(offset, limit)` (`src-tauri/src/library.rs`) devolve páginas ordenadas por artista/álbum/disco/faixa; `src/Biblioteca.tsx` mostra a lista virtualizada (`@tanstack/react-virtual`), buscando páginas de 500 sob demanda e recarregando após importar. Próximo: tocar uma música com GStreamer.
+Etapa 4 concluída: `src-tauri/src/player.rs` (playbin só áudio; comandos `play_media`, `toggle_pause`, `set_volume`, `seek`; evento `player-estado` a cada 250 ms). Ao tocar, arquivo ausente é marcado `missing` sem apagar o registro. Front: duplo clique toca, `src/PlayerBar.tsx` no rodapé. Testes do player: `SKALD_TEST_DIR=/pasta cargo test -- --test-threads=1` (pasta com `a.mp3` e `sub/quebrado.ogg`). Próximo: fila de reprodução.

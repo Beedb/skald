@@ -24,17 +24,36 @@ pub fn list_media(conn: &Connection, offset: u32, limit: u32) -> rusqlite::Resul
                   title COLLATE NOCASE, id
          LIMIT ?1 OFFSET ?2",
     )?;
-    let rows = stmt.query_map(params![limit, offset], |r| {
-        Ok(MediaRow {
-            id: r.get(0)?,
-            title: r.get(1)?,
-            artist: r.get(2)?,
-            album: r.get(3)?,
-            duration_ms: r.get(4)?,
-            missing: r.get(5)?,
-        })
-    })?;
+    let rows = stmt.query_map(params![limit, offset], linha)?;
     rows.collect()
+}
+
+fn linha(r: &rusqlite::Row) -> rusqlite::Result<MediaRow> {
+    Ok(MediaRow {
+        id: r.get(0)?,
+        title: r.get(1)?,
+        artist: r.get(2)?,
+        album: r.get(3)?,
+        duration_ms: r.get(4)?,
+        missing: r.get(5)?,
+    })
+}
+
+/// Música e caminho no disco, ou `None` se o id não existe.
+pub fn obter(conn: &Connection, id: i64) -> rusqlite::Result<Option<(MediaRow, String)>> {
+    use rusqlite::OptionalExtension;
+    conn.query_row(
+        "SELECT id, title, artist, album, duration_ms, missing, path FROM media WHERE id = ?1",
+        [id],
+        |r| Ok((linha(r)?, r.get::<_, String>(6)?)),
+    )
+    .optional()
+}
+
+/// Marca (ou desmarca) o arquivo como não encontrado. O registro nunca é apagado.
+pub fn marcar_ausente(conn: &Connection, id: i64, ausente: bool) -> rusqlite::Result<()> {
+    conn.execute("UPDATE media SET missing = ?2 WHERE id = ?1", params![id, ausente])?;
+    Ok(())
 }
 
 #[cfg(test)]
