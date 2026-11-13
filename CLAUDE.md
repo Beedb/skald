@@ -55,7 +55,7 @@ Marcar `[x]` ao concluir.
 - [x] Importar pasta e ler metadados (`lofty`)
 - [x] Listar músicas na biblioteca
 - [x] Tocar uma música (GStreamer): play, pausa, volume, progresso
-- [ ] Fila de reprodução
+- [x] Fila de reprodução
 - [ ] Mini-player e player completo
 - [ ] Busca por metadados
 - [ ] Playlists
@@ -65,4 +65,4 @@ Depois do MVP: monitoramento de pastas, shuffle, repetir, estatísticas, MPRIS, 
 
 ## Estado atual
 
-Etapa 4 concluída: `src-tauri/src/player.rs` usa um `playbin` só de áudio; comandos `play_media`, `toggle_pause`, `set_volume` (escala cúbica) e `seek`; uma thread lê o barramento e emite o evento `player-estado` (posição a cada 250 ms, fim de faixa, erros). Tocar arquivo inexistente marca `missing = 1`. Front: duplo clique na lista toca; `src/PlayerBar.tsx` tem play/pausa, progresso e volume. Teste: `SKALD_TEST_DIR=/pasta cargo test -- --test-threads=1` (pasta com `a.mp3` e `sub/quebrado.ogg`). Próximo: fila de reprodução.
+Etapa 5 concluída: `src-tauri/src/queue.rs` (lógica pura, testada) guarda a fila manual (toca antes) e o contexto (biblioteca a partir da música escolhida). Comandos `next_track`, `previous_track` (após 3 s reinicia a faixa), `queue_add` (`a_seguir`), `queue_remove`, `get_queue`; evento `fila-mudou`. No fim da faixa (`EstadoPlayer.fim`) o backend avança sozinho, pulando arquivos ausentes. Front: clique direito na lista (`Tocar agora` / `Tocar a seguir` / `Adicionar à fila`), ⏮ ⏭ e painel `src/Fila.tsx`. Testes: `SKALD_TEST_DIR=/pasta cargo test -- --test-threads=1`. Próximo: mini-player e player completo.

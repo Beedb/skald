@@ -29,14 +29,36 @@ type Props = {
   versao: number;
   tocandoId: number | null;
   onTocar: (id: number) => void;
+  onEnfileirar: (id: number, aSeguir: boolean) => void;
 };
 
-export default function Biblioteca({ total, versao, tocandoId, onTocar }: Props) {
+type Menu = { x: number; y: number; id: number };
+
+export default function Biblioteca({ total, versao, tocandoId, onTocar, onEnfileirar }: Props) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const paginas = useRef(new Map<number, MediaRow[]>());
   const pedidas = useRef(new Set<number>());
   const versaoAtual = useRef(versao);
   const [, setTick] = useState(0);
+  const [menu, setMenu] = useState<Menu | null>(null);
+
+  // Fecha o menu de contexto ao clicar fora, rolar ou apertar Esc.
+  useEffect(() => {
+    if (!menu) return;
+    const fechar = () => setMenu(null);
+    const tecla = (e: KeyboardEvent) => e.key === "Escape" && fechar();
+    window.addEventListener("click", fechar);
+    window.addEventListener("blur", fechar);
+    window.addEventListener("keydown", tecla);
+    scrollRef.current?.addEventListener("scroll", fechar);
+    const lista = scrollRef.current;
+    return () => {
+      window.removeEventListener("click", fechar);
+      window.removeEventListener("blur", fechar);
+      window.removeEventListener("keydown", tecla);
+      lista?.removeEventListener("scroll", fechar);
+    };
+  }, [menu]);
 
   const virtualizer = useVirtualizer({
     count: total,
@@ -94,6 +116,15 @@ export default function Biblioteca({ total, versao, tocandoId, onTocar }: Props)
                 role="row"
                 className={"linha" + (m?.missing ? " ausente" : "") + (m && m.id === tocandoId ? " atual" : "")}
                 onDoubleClick={() => m && onTocar(m.id)}
+                onContextMenu={(e) => {
+                  e.preventDefault();
+                  if (m)
+                    setMenu({
+                      x: Math.min(e.clientX, window.innerWidth - 200),
+                      y: Math.min(e.clientY, window.innerHeight - 120),
+                      id: m.id,
+                    });
+                }}
                 title={m?.missing ? "Arquivo não encontrado" : undefined}
                 style={{ height: ALTURA_LINHA, transform: `translateY(${item.start}px)` }}
               >
@@ -112,6 +143,19 @@ export default function Biblioteca({ total, versao, tocandoId, onTocar }: Props)
           })}
         </div>
       </div>
+      {menu && (
+        <ul className="menu-contexto" role="menu" style={{ left: menu.x, top: menu.y }}>
+          <li role="menuitem" onClick={() => onTocar(menu.id)}>
+            Tocar agora
+          </li>
+          <li role="menuitem" onClick={() => onEnfileirar(menu.id, true)}>
+            Tocar a seguir
+          </li>
+          <li role="menuitem" onClick={() => onEnfileirar(menu.id, false)}>
+            Adicionar à fila
+          </li>
+        </ul>
+      )}
     </div>
   );
 }

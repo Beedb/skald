@@ -14,9 +14,12 @@ export type EstadoPlayer = {
 type Props = {
   musica: MediaRow | null;
   estado: EstadoPlayer | null;
+  filaAberta: boolean;
+  onAlternarFila: () => void;
+  onErro: (mensagem: string) => void;
 };
 
-export default function PlayerBar({ musica, estado }: Props) {
+export default function PlayerBar({ musica, estado, filaAberta, onAlternarFila, onErro }: Props) {
   const [volume, setVolume] = useState(1);
   const [arrastando, setArrastando] = useState<number | null>(null);
 
@@ -34,17 +37,27 @@ export default function PlayerBar({ musica, estado }: Props) {
     setArrastando(null);
   }
 
+  const comando = (nome: string) => invoke(nome).catch((e) => onErro(String(e)));
+
   return (
     <footer className="player">
-      <button
-        className="play"
-        onClick={() => invoke("toggle_pause")}
-        disabled={!ativo}
-        aria-label={estado?.estado === "tocando" ? "Pausar" : "Tocar"}
-        title={estado?.estado === "tocando" ? "Pausar" : "Tocar"}
-      >
-        {estado?.estado === "tocando" ? "❚❚" : "▶"}
-      </button>
+      <div className="controles">
+        <button onClick={() => comando("previous_track")} disabled={!musica} aria-label="Anterior" title="Anterior">
+          ⏮
+        </button>
+        <button
+          className="play"
+          onClick={() => invoke("toggle_pause")}
+          disabled={!ativo}
+          aria-label={estado?.estado === "tocando" ? "Pausar" : "Tocar"}
+          title={estado?.estado === "tocando" ? "Pausar" : "Tocar"}
+        >
+          {estado?.estado === "tocando" ? "❚❚" : "▶"}
+        </button>
+        <button onClick={() => comando("next_track")} disabled={!musica} aria-label="Próxima" title="Próxima">
+          ⏭
+        </button>
+      </div>
 
       <div className="faixa">
         {ativo ? (
@@ -86,6 +99,15 @@ export default function PlayerBar({ musica, estado }: Props) {
           onChange={(e) => mudarVolume(Number(e.target.value))}
         />
       </label>
+
+      <button
+        className={"botao-fila" + (filaAberta ? " ativo" : "")}
+        onClick={onAlternarFila}
+        aria-pressed={filaAberta}
+        title="Mostrar ou esconder a fila"
+      >
+        Fila
+      </button>
     </footer>
   );
 }

@@ -20,6 +20,8 @@ pub struct EstadoPlayer {
     pub posicao_ms: u64,
     pub duracao_ms: u64,
     pub erro: Option<String>,
+    /// Verdadeiro só no aviso de fim de faixa (para avançar a fila).
+    pub fim: bool,
 }
 
 pub struct Player {
@@ -73,6 +75,10 @@ impl Player {
         self.playbin.set_property("volume", v * v * v);
     }
 
+    pub fn posicao_ms(&self) -> u64 {
+        self.playbin.query_position::<gst::ClockTime>().map_or(0, |t| t.mseconds())
+    }
+
     pub fn buscar(&self, ms: u64) -> Result<(), String> {
         self.playbin
             .seek_simple(gst::SeekFlags::FLUSH | gst::SeekFlags::KEY_UNIT, gst::ClockTime::from_mseconds(ms))
@@ -93,6 +99,7 @@ fn estado_de(playbin: &gst::Element, atual: Option<i64>) -> EstadoPlayer {
         posicao_ms: playbin.query_position::<gst::ClockTime>().map_or(0, |t| t.mseconds()),
         duracao_ms: playbin.query_duration::<gst::ClockTime>().map_or(0, |t| t.mseconds()),
         erro: None,
+        fim: false,
     }
 }
 
@@ -104,12 +111,14 @@ fn vigiar(avisar: impl Fn(EstadoPlayer) + Send + 'static, playbin: gst::Element,
         loop {
             let mut envio_imediato = false;
             let mut erro = None;
+            let mut fim = false;
             if let Some(msg) = bus.timed_pop(gst::ClockTime::from_mseconds(100)) {
                 match msg.view() {
                     gst::MessageView::Eos(..) => {
                         let _ = playbin.set_state(gst::State::Null);
                         *atual.lock().unwrap() = None;
                         envio_imediato = true;
+                        fim = true;
                     }
                     gst::MessageView::Error(e) => {
                         let _ = playbin.set_state(gst::State::Null);
@@ -129,6 +138,7 @@ fn vigiar(avisar: impl Fn(EstadoPlayer) + Send + 'static, playbin: gst::Element,
             if envio_imediato || (tocando && ultimo_envio.elapsed() >= Duration::from_millis(250)) {
                 let mut est = estado_de(&playbin, *atual.lock().unwrap());
                 est.erro = erro;
+                est.fim = fim;
                 avisar(est);
                 ultimo_envio = Instant::now();
             }
@@ -164,6 +174,7 @@ mod testes {
                 assert!(e.duracao_ms > 2900, "duração {}", e.duracao_ms);
             }
             if viu_tocando && e.estado == Estado::Parado {
+                assert!(e.fim, "o aviso de parada deve marcar fim de faixa");
                 break e;
             }
         };

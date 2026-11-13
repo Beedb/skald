@@ -2,8 +2,9 @@ import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 import { listen } from "@tauri-apps/api/event";
-import Biblioteca, { type MediaRow } from "./Biblioteca";
+import Biblioteca from "./Biblioteca";
 import PlayerBar, { type EstadoPlayer } from "./PlayerBar";
+import Fila, { type VisaoFila } from "./Fila";
 import "./App.css";
 
 type DbStatus = {
@@ -32,29 +33,47 @@ function App() {
       .then(setStatus)
       .catch((e) => setErro(String(e)));
 
-  const [musica, setMusica] = useState<MediaRow | null>(null);
   const [estado, setEstado] = useState<EstadoPlayer | null>(null);
+  const [fila, setFila] = useState<VisaoFila | null>(null);
+  const [filaAberta, setFilaAberta] = useState(false);
+
+  const mostrarErro = (mensagem: string) => {
+    setErro(mensagem);
+    // O arquivo pode ter sido marcado como não encontrado: redesenha a lista.
+    setVersao((v) => v + 1);
+  };
 
   useEffect(() => {
     carregarStatus();
-    const parar = listen<EstadoPlayer>("player-estado", (e) => {
-      setEstado(e.payload);
-      if (e.payload.erro) setErro(e.payload.erro);
-    });
+    const carregarFila = () =>
+      invoke<VisaoFila>("get_queue")
+        .then(setFila)
+        .catch((e) => setErro(String(e)));
+    carregarFila();
+    const ouvintes = [
+      listen<EstadoPlayer>("player-estado", (e) => {
+        setEstado(e.payload);
+        if (e.payload.erro) setErro(e.payload.erro);
+      }),
+      listen("fila-mudou", carregarFila),
+      listen<string>("player-erro", (e) => mostrarErro(e.payload)),
+    ];
     return () => {
-      parar.then((f) => f());
+      ouvintes.forEach((o) => o.then((parar) => parar()));
     };
   }, []);
 
   async function tocar(id: number) {
     setErro(null);
     try {
-      setMusica(await invoke<MediaRow>("play_media", { id }));
+      await invoke("play_media", { id });
     } catch (e) {
-      setErro(String(e));
-      // O arquivo pode ter sido marcado como não encontrado: redesenha a lista.
-      setVersao((v) => v + 1);
+      mostrarErro(String(e));
     }
+  }
+
+  function enfileirar(id: number, aSeguir: boolean) {
+    invoke("queue_add", { id, aSeguir }).catch((e) => setErro(String(e)));
   }
 
   async function importarPasta() {
@@ -107,15 +126,25 @@ function App() {
           )}
         </div>
       )}
-      {status && (
-        <Biblioteca
-          total={status.media_count}
-          versao={versao}
-          tocandoId={estado && estado.estado !== "parado" ? estado.id : null}
-          onTocar={tocar}
-        />
-      )}
-      <PlayerBar musica={musica} estado={estado} />
+      <div className="conteudo">
+        {status && (
+          <Biblioteca
+            total={status.media_count}
+            versao={versao}
+            tocandoId={estado && estado.estado !== "parado" ? estado.id : null}
+            onTocar={tocar}
+            onEnfileirar={enfileirar}
+          />
+        )}
+        {filaAberta && <Fila fila={fila} />}
+      </div>
+      <PlayerBar
+        musica={fila?.atual ?? null}
+        estado={estado}
+        filaAberta={filaAberta}
+        onAlternarFila={() => setFilaAberta((a) => !a)}
+        onErro={mostrarErro}
+      />
     </main>
   );
 }

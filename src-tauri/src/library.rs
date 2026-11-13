@@ -1,7 +1,7 @@
-use rusqlite::{Connection, params};
+use rusqlite::{Connection, OptionalExtension, params};
 use serde::Serialize;
 
-#[derive(Serialize, Debug)]
+#[derive(Serialize, Debug, Clone)]
 pub struct MediaRow {
     pub id: i64,
     pub title: Option<String>,
@@ -11,19 +11,36 @@ pub struct MediaRow {
     pub missing: bool,
 }
 
+/// Ordem da biblioteca: artista do álbum, álbum, disco, faixa, título; campos vazios no fim.
+const ORDEM: &str = "ORDER BY COALESCE(album_artist, artist) IS NULL, COALESCE(album_artist, artist) COLLATE NOCASE,
+                  album IS NULL, album COLLATE NOCASE, disc_number, track_number, title COLLATE NOCASE, id";
+
+/// Todos os ids de músicas na ordem da biblioteca (contexto da fila).
+pub fn ids_em_ordem(conn: &Connection) -> rusqlite::Result<Vec<i64>> {
+    let mut stmt = conn.prepare_cached(&format!("SELECT id FROM media WHERE category = 'music' {ORDEM}"))?;
+    let ids = stmt.query_map([], |r| r.get(0))?;
+    ids.collect()
+}
+
+/// Várias músicas por id, na ordem pedida (ids inexistentes são ignorados).
+pub fn obter_varios(conn: &Connection, ids: &[i64]) -> rusqlite::Result<Vec<MediaRow>> {
+    let mut stmt = conn.prepare_cached("SELECT id, title, artist, album, duration_ms, missing FROM media WHERE id = ?1")?;
+    let mut linhas = Vec::with_capacity(ids.len());
+    for &id in ids {
+        if let Some(m) = stmt.query_row([id], linha).optional()? {
+            linhas.push(m);
+        }
+    }
+    Ok(linhas)
+}
+
 /// Uma página da biblioteca (só músicas), em ordem estável para a lista virtualizada.
 /// Campos vazios vão para o fim de cada grupo.
 pub fn list_media(conn: &Connection, offset: u32, limit: u32) -> rusqlite::Result<Vec<MediaRow>> {
-    let mut stmt = conn.prepare_cached(
+    let mut stmt = conn.prepare_cached(&format!(
         "SELECT id, title, artist, album, duration_ms, missing
-         FROM media
-         WHERE category = 'music'
-         ORDER BY COALESCE(album_artist, artist) IS NULL, COALESCE(album_artist, artist) COLLATE NOCASE,
-                  album IS NULL, album COLLATE NOCASE,
-                  disc_number, track_number,
-                  title COLLATE NOCASE, id
-         LIMIT ?1 OFFSET ?2",
-    )?;
+         FROM media WHERE category = 'music' {ORDEM} LIMIT ?1 OFFSET ?2"
+    ))?;
     let rows = stmt.query_map(params![limit, offset], linha)?;
     rows.collect()
 }
@@ -41,7 +58,6 @@ fn linha(r: &rusqlite::Row) -> rusqlite::Result<MediaRow> {
 
 /// Música e caminho no disco, ou `None` se o id não existe.
 pub fn obter(conn: &Connection, id: i64) -> rusqlite::Result<Option<(MediaRow, String)>> {
-    use rusqlite::OptionalExtension;
     conn.query_row(
         "SELECT id, title, artist, album, duration_ms, missing, path FROM media WHERE id = ?1",
         [id],
@@ -75,5 +91,8 @@ mod testes {
         assert_eq!(todas, ["Faixa 1", "Faixa 2", "Outra", "Sem artista"]);
         let pag: Vec<_> = list_media(&conn, 1, 2).unwrap().into_iter().map(|m| m.title.unwrap()).collect();
         assert_eq!(pag, ["Faixa 2", "Outra"]);
+        let ids = ids_em_ordem(&conn).unwrap();
+        let titulos: Vec<_> = obter_varios(&conn, &ids).unwrap().into_iter().map(|m| m.title.unwrap()).collect();
+        assert_eq!(titulos, todas);
     }
 }
