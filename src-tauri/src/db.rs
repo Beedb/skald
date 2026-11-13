@@ -32,6 +32,8 @@ const MIGRATIONS: &[&str] = &[
         added_at        INTEGER NOT NULL DEFAULT (unixepoch())
     );
     CREATE INDEX idx_media_hash ON media(file_hash);",
+    // v2: texto normalizado (minúsculas, sem acentos) para a busca; preenchido em Rust.
+    "ALTER TABLE media ADD COLUMN search_text TEXT;",
 ];
 
 pub fn open(path: &Path) -> rusqlite::Result<Connection> {
@@ -39,6 +41,7 @@ pub fn open(path: &Path) -> rusqlite::Result<Connection> {
     conn.pragma_update(None, "journal_mode", "WAL")?;
     conn.pragma_update(None, "foreign_keys", true)?;
     migrate(&mut conn)?;
+    crate::search::preencher_pendentes(&mut conn)?;
     Ok(conn)
 }
 
@@ -59,4 +62,29 @@ pub fn schema_version(conn: &Connection) -> rusqlite::Result<i64> {
 
 pub fn media_count(conn: &Connection) -> rusqlite::Result<i64> {
     conn.query_row("SELECT COUNT(*) FROM media", [], |r| r.get(0))
+}
+
+#[cfg(test)]
+mod testes {
+    use super::*;
+
+    #[test]
+    fn migra_v1_para_v2_e_preenche_busca() {
+        let dir = std::env::temp_dir().join(format!("skald-teste-migracao-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let caminho = dir.join("v1.db");
+        let _ = std::fs::remove_file(&caminho);
+        {
+            let conn = Connection::open(&caminho).unwrap();
+            conn.execute_batch(MIGRATIONS[0]).unwrap();
+            conn.pragma_update(None, "user_version", 1).unwrap();
+            conn.execute("INSERT INTO media (path, title, artist) VALUES ('/x.mp3', 'Canção', 'Ánirap')", []).unwrap();
+        }
+        let conn = open(&caminho).unwrap();
+        assert_eq!(schema_version(&conn).unwrap(), MIGRATIONS.len() as i64);
+        let texto: String = conn.query_row("SELECT search_text FROM media", [], |r| r.get(0)).unwrap();
+        assert_eq!(texto, "cancao anirap");
+        drop(conn);
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
 }

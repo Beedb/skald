@@ -1,4 +1,6 @@
-use rusqlite::{Connection, OptionalExtension, params};
+use rusqlite::{Connection, OptionalExtension, params_from_iter};
+
+use crate::search;
 use serde::Serialize;
 
 #[derive(Serialize, Debug, Clone)]
@@ -15,11 +17,19 @@ pub struct MediaRow {
 const ORDEM: &str = "ORDER BY COALESCE(album_artist, artist) IS NULL, COALESCE(album_artist, artist) COLLATE NOCASE,
                   album IS NULL, album COLLATE NOCASE, disc_number, track_number, title COLLATE NOCASE, id";
 
-/// Todos os ids de músicas na ordem da biblioteca (contexto da fila).
-pub fn ids_em_ordem(conn: &Connection) -> rusqlite::Result<Vec<i64>> {
-    let mut stmt = conn.prepare_cached(&format!("SELECT id FROM media WHERE category = 'music' {ORDEM}"))?;
-    let ids = stmt.query_map([], |r| r.get(0))?;
+/// Todos os ids de músicas (filtrados pela busca) na ordem da biblioteca: contexto da fila.
+pub fn ids_em_ordem(conn: &Connection, busca: &str) -> rusqlite::Result<Vec<i64>> {
+    let (cond, termos) = search::filtro(busca);
+    let mut stmt = conn.prepare_cached(&format!("SELECT id FROM media WHERE category = 'music' AND {cond} {ORDEM}"))?;
+    let ids = stmt.query_map(params_from_iter(termos), |r| r.get(0))?;
     ids.collect()
+}
+
+/// Quantas músicas a busca encontra (busca vazia: a biblioteca toda).
+pub fn contar(conn: &Connection, busca: &str) -> rusqlite::Result<i64> {
+    let (cond, termos) = search::filtro(busca);
+    conn.prepare_cached(&format!("SELECT COUNT(*) FROM media WHERE category = 'music' AND {cond}"))?
+        .query_row(params_from_iter(termos), |r| r.get(0))
 }
 
 /// Várias músicas por id, na ordem pedida (ids inexistentes são ignorados).
@@ -36,12 +46,18 @@ pub fn obter_varios(conn: &Connection, ids: &[i64]) -> rusqlite::Result<Vec<Medi
 
 /// Uma página da biblioteca (só músicas), em ordem estável para a lista virtualizada.
 /// Campos vazios vão para o fim de cada grupo.
-pub fn list_media(conn: &Connection, offset: u32, limit: u32) -> rusqlite::Result<Vec<MediaRow>> {
+pub fn list_media(conn: &Connection, offset: u32, limit: u32, busca: &str) -> rusqlite::Result<Vec<MediaRow>> {
+    let (cond, termos) = search::filtro(busca);
     let mut stmt = conn.prepare_cached(&format!(
         "SELECT id, title, artist, album, duration_ms, missing
-         FROM media WHERE category = 'music' {ORDEM} LIMIT ?1 OFFSET ?2"
+         FROM media WHERE category = 'music' AND {cond} {ORDEM} LIMIT ? OFFSET ?"
     ))?;
-    let rows = stmt.query_map(params![limit, offset], linha)?;
+    use rusqlite::types::Value;
+    let valores = termos
+        .into_iter()
+        .map(Value::Text)
+        .chain([Value::Integer(limit.into()), Value::Integer(offset.into())]);
+    let rows = stmt.query_map(params_from_iter(valores), linha)?;
     rows.collect()
 }
 
@@ -68,7 +84,7 @@ pub fn obter(conn: &Connection, id: i64) -> rusqlite::Result<Option<(MediaRow, S
 
 /// Marca (ou desmarca) o arquivo como não encontrado. O registro nunca é apagado.
 pub fn marcar_ausente(conn: &Connection, id: i64, ausente: bool) -> rusqlite::Result<()> {
-    conn.execute("UPDATE media SET missing = ?2 WHERE id = ?1", params![id, ausente])?;
+    conn.execute("UPDATE media SET missing = ?2 WHERE id = ?1", rusqlite::params![id, ausente])?;
     Ok(())
 }
 
@@ -87,12 +103,27 @@ mod testes {
              ('/d', 'Outra', 'Banda', 'Y', 1);",
         )
         .unwrap();
-        let todas: Vec<_> = list_media(&conn, 0, 10).unwrap().into_iter().map(|m| m.title.unwrap()).collect();
+        let mut conn = conn;
+        crate::search::preencher_pendentes(&mut conn).unwrap();
+        let achar = |busca: &str| -> Vec<String> {
+            list_media(&conn, 0, 10, busca).unwrap().into_iter().map(|m| m.title.unwrap()).collect()
+        };
+        let todas: Vec<_> = list_media(&conn, 0, 10, "").unwrap().into_iter().map(|m| m.title.unwrap()).collect();
         assert_eq!(todas, ["Faixa 1", "Faixa 2", "Outra", "Sem artista"]);
-        let pag: Vec<_> = list_media(&conn, 1, 2).unwrap().into_iter().map(|m| m.title.unwrap()).collect();
+        let pag: Vec<_> = list_media(&conn, 1, 2, "").unwrap().into_iter().map(|m| m.title.unwrap()).collect();
         assert_eq!(pag, ["Faixa 2", "Outra"]);
-        let ids = ids_em_ordem(&conn).unwrap();
+        let ids = ids_em_ordem(&conn, "").unwrap();
         let titulos: Vec<_> = obter_varios(&conn, &ids).unwrap().into_iter().map(|m| m.title.unwrap()).collect();
         assert_eq!(titulos, todas);
+
+        // Busca: trecho, sem acento/caixa, várias palavras em campos diferentes.
+        assert_eq!(achar("ani"), ["Faixa 1", "Faixa 2"]);
+        assert_eq!(achar("BANDA"), ["Outra"]);
+        assert_eq!(achar("anirap 2"), ["Faixa 2"]);
+        assert_eq!(achar("sem artista"), ["Sem artista"]);
+        assert!(achar("inexistente").is_empty());
+        assert_eq!(contar(&conn, "ani").unwrap(), 2);
+        assert_eq!(contar(&conn, "").unwrap(), 4);
+        assert_eq!(ids_em_ordem(&conn, "banda").unwrap().len(), 1);
     }
 }

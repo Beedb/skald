@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 import { listen } from "@tauri-apps/api/event";
@@ -40,6 +40,43 @@ function App() {
   const [tela, setTela] = useState<"biblioteca" | "player">("biblioteca");
   const [volume, setVolume] = useState(1);
   const [detalhes, setDetalhes] = useState<Detalhes | null>(null);
+
+  // Busca: `busca` é o texto digitado; `buscaAtiva` é aplicada 200 ms depois da última tecla.
+  const [busca, setBusca] = useState("");
+  const [buscaAtiva, setBuscaAtiva] = useState("");
+  const [total, setTotal] = useState(0);
+  const campoBusca = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    const t = setTimeout(() => setBuscaAtiva(busca.trim()), 200);
+    return () => clearTimeout(t);
+  }, [busca]);
+
+  const mediaCount = status?.media_count;
+  useEffect(() => {
+    if (mediaCount === undefined) return;
+    let valido = true;
+    invoke<number>("count_media", { busca: buscaAtiva })
+      .then((n) => valido && setTotal(n))
+      .catch((e) => setErro(String(e)));
+    return () => {
+      valido = false;
+    };
+  }, [buscaAtiva, versao, mediaCount]);
+
+  // Ctrl+F leva ao campo de busca.
+  useEffect(() => {
+    const tecla = (e: KeyboardEvent) => {
+      if (e.ctrlKey && e.key.toLowerCase() === "f") {
+        e.preventDefault();
+        setTela("biblioteca");
+        campoBusca.current?.focus();
+        campoBusca.current?.select();
+      }
+    };
+    window.addEventListener("keydown", tecla);
+    return () => window.removeEventListener("keydown", tecla);
+  }, []);
 
   const mostrarErro = (mensagem: string) => {
     setErro(mensagem);
@@ -103,7 +140,7 @@ function App() {
   async function tocar(id: number) {
     setErro(null);
     try {
-      await invoke("play_media", { id });
+      await invoke("play_media", { id, busca: buscaAtiva });
     } catch (e) {
       mostrarErro(String(e));
     }
@@ -136,9 +173,28 @@ function App() {
         <h1>Skáld</h1>
         {status && (
           <span className="contagem" title={`Banco: ${status.path} (esquema v${status.schema_version})`}>
+            {buscaAtiva ? `${total} de ` : ""}
             {status.media_count} {status.media_count === 1 ? "música" : "músicas"}
           </span>
         )}
+        <input
+          ref={campoBusca}
+          className="busca"
+          type="search"
+          placeholder="Buscar por título, artista, álbum ou gênero (Ctrl+F)"
+          aria-label="Buscar"
+          value={busca}
+          onChange={(e) => {
+            setBusca(e.target.value);
+            setTela("biblioteca");
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Escape") {
+              e.stopPropagation();
+              setBusca("");
+            }
+          }}
+        />
         <button onClick={importarPasta} disabled={importando}>
           {importando ? "Importando…" : "Importar pasta"}
         </button>
@@ -166,8 +222,9 @@ function App() {
       <div className="conteudo" hidden={tela === "player"}>
         {status && (
           <Biblioteca
-            total={status.media_count}
+            total={total}
             versao={versao}
+            busca={buscaAtiva}
             tocandoId={estado && estado.estado !== "parado" ? estado.id : null}
             onTocar={tocar}
             onEnfileirar={enfileirar}

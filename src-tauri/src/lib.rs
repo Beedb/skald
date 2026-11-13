@@ -4,6 +4,7 @@ mod import;
 mod library;
 mod player;
 mod queue;
+mod search;
 
 use std::sync::Mutex;
 
@@ -43,9 +44,21 @@ async fn import_folder(app: tauri::AppHandle, path: String) -> Result<import::Im
 }
 
 #[tauri::command]
-fn list_media(db: State<db::Db>, offset: u32, limit: u32) -> Result<Vec<library::MediaRow>, String> {
-    let conn = db.0.lock().map_err(|_| "Banco de dados indisponível.".to_string())?;
-    library::list_media(&conn, offset, limit.min(2000)).map_err(|e| e.to_string())
+fn list_media(
+    db: State<db::Db>,
+    offset: u32,
+    limit: u32,
+    busca: Option<String>,
+) -> Result<Vec<library::MediaRow>, String> {
+    let conn = db.0.lock().map_err(erro_db)?;
+    library::list_media(&conn, offset, limit.min(2000), busca.as_deref().unwrap_or("")).map_err(|e| e.to_string())
+}
+
+/// Total de músicas que a busca encontra (sem busca: a biblioteca toda).
+#[tauri::command]
+fn count_media(db: State<db::Db>, busca: Option<String>) -> Result<i64, String> {
+    let conn = db.0.lock().map_err(erro_db)?;
+    library::contar(&conn, busca.as_deref().unwrap_or("")).map_err(|e| e.to_string())
 }
 
 struct FilaState(Mutex<queue::Fila>);
@@ -91,12 +104,13 @@ fn avancar(app: &AppHandle) -> Result<(), String> {
     resultado
 }
 
+/// Toca `id` e usa como contexto da fila a lista que estava na tela (a busca, se houver).
 #[tauri::command]
-fn play_media(app: AppHandle, fila: State<FilaState>, id: i64) -> Result<(), String> {
+fn play_media(app: AppHandle, fila: State<FilaState>, id: i64, busca: Option<String>) -> Result<(), String> {
     let ids = {
         let db = app.state::<db::Db>();
         let conn = db.0.lock().map_err(erro_db)?;
-        library::ids_em_ordem(&conn).map_err(|e| e.to_string())?
+        library::ids_em_ordem(&conn, busca.as_deref().unwrap_or("")).map_err(|e| e.to_string())?
     };
     fila.0.lock().map_err(erro_db)?.tocar_do_contexto(ids, id);
     let _ = app.emit(EVENTO_FILA, ());
@@ -219,6 +233,7 @@ pub fn run() {
             db_status,
             import_folder,
             list_media,
+            count_media,
             play_media,
             next_track,
             previous_track,

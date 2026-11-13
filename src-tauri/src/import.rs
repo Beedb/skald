@@ -99,13 +99,17 @@ fn gravar(conn: &mut Connection, faixas: &[Faixa], resumo: &mut ImportResumo) ->
         let mut stmt = tx.prepare(
             "INSERT OR IGNORE INTO media
              (path, title, artist, album, album_artist, genre, year,
-              track_number, disc_number, duration_ms, file_size, file_mtime)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+              track_number, disc_number, duration_ms, file_size, file_mtime, search_text)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
         )?;
         for f in faixas {
             let n = stmt.execute(params![
                 f.path, f.title, f.artist, f.album, f.album_artist, f.genre, f.year,
-                f.track_number, f.disc_number, f.duration_ms, f.file_size, f.file_mtime
+                f.track_number, f.disc_number, f.duration_ms, f.file_size, f.file_mtime,
+                crate::search::texto_busca(&[
+                    f.title.as_deref(), f.artist.as_deref(), f.album.as_deref(),
+                    f.album_artist.as_deref(), f.genre.as_deref(),
+                ])
             ])?;
             if n == 1 {
                 resumo.adicionados += 1;

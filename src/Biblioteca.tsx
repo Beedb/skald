@@ -27,6 +27,8 @@ type Props = {
   total: number;
   /** Muda quando a biblioteca é alterada (ex.: após importar), descartando o cache. */
   versao: number;
+  /** Texto da busca (vazio: biblioteca toda). Mudar a busca recarrega a lista e volta ao topo. */
+  busca: string;
   tocandoId: number | null;
   onTocar: (id: number) => void;
   onEnfileirar: (id: number, aSeguir: boolean) => void;
@@ -36,7 +38,7 @@ type Props = {
 
 type Menu = { x: number; y: number; id: number };
 
-export default function Biblioteca({ total, versao, tocandoId, onTocar, onEnfileirar, visivel }: Props) {
+export default function Biblioteca({ total, versao, busca, tocandoId, onTocar, onEnfileirar, visivel }: Props) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const rolagem = useRef(0);
 
@@ -46,7 +48,9 @@ export default function Biblioteca({ total, versao, tocandoId, onTocar, onEnfile
   }, [visivel]);
   const paginas = useRef(new Map<number, MediaRow[]>());
   const pedidas = useRef(new Set<number>());
-  const versaoAtual = useRef(versao);
+  const chave = `${versao}\u0000${busca}`;
+  const versaoAtual = useRef(chave);
+  const buscaAnterior = useRef(busca);
   const [, setTick] = useState(0);
   const [menu, setMenu] = useState<Menu | null>(null);
 
@@ -76,11 +80,16 @@ export default function Biblioteca({ total, versao, tocandoId, onTocar, onEnfile
   });
 
   useEffect(() => {
-    versaoAtual.current = versao;
+    versaoAtual.current = chave;
+    if (buscaAnterior.current !== busca) {
+      buscaAnterior.current = busca;
+      rolagem.current = 0;
+      if (scrollRef.current) scrollRef.current.scrollTop = 0;
+    }
     paginas.current.clear();
     pedidas.current.clear();
     setTick((t) => t + 1);
-  }, [versao]);
+  }, [chave]);
 
   const itens = virtualizer.getVirtualItems();
   const primeira = itens.length ? Math.floor(itens[0].index / PAGINA) : 0;
@@ -91,8 +100,8 @@ export default function Biblioteca({ total, versao, tocandoId, onTocar, onEnfile
     for (let p = primeira; p <= ultima; p++) {
       if (pedidas.current.has(p)) continue;
       pedidas.current.add(p);
-      const versaoPedida = versao;
-      invoke<MediaRow[]>("list_media", { offset: p * PAGINA, limit: PAGINA })
+      const versaoPedida = chave;
+      invoke<MediaRow[]>("list_media", { offset: p * PAGINA, limit: PAGINA, busca })
         .then((linhas) => {
           if (versaoPedida !== versaoAtual.current) return;
           paginas.current.set(p, linhas);
@@ -100,10 +109,16 @@ export default function Biblioteca({ total, versao, tocandoId, onTocar, onEnfile
         })
         .catch(() => pedidas.current.delete(p));
     }
-  }, [primeira, ultima, versao]);
+  }, [primeira, ultima, chave]);
 
   if (total === 0) {
-    return <p className="vazio">Nenhuma música na biblioteca. Use "Importar pasta" para começar.</p>;
+    return (
+      <p className="vazio">
+        {busca
+          ? `Nenhuma música encontrada para “${busca}”.`
+          : 'Nenhuma música na biblioteca. Use "Importar pasta" para começar.'}
+      </p>
+    );
   }
 
   return (

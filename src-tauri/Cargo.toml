@@ -27,6 +27,7 @@ walkdir = "2.5.0"
 tauri-plugin-dialog = "2"
 gstreamer = "0.25.4"
 base64 = "0.23.1"
+unicode-normalization = "0.1.26"
 
 
 # Read the optimization guideline for more details: https://tauri.app/concept/size/#cargo-configuration

@@ -57,7 +57,7 @@ Marcar `[x]` ao concluir.
 - [x] Tocar uma música (GStreamer): play, pausa, volume, progresso
 - [x] Fila de reprodução
 - [x] Mini-player e player completo
-- [ ] Busca por metadados
+- [x] Busca por metadados
 - [ ] Playlists
 - [ ] Histórico de reprodução
 
@@ -65,4 +65,4 @@ Depois do MVP: monitoramento de pastas, shuffle, repetir, estatísticas, MPRIS, 
 
 ## Estado atual
 
-Etapa 6 concluída: `get_track_details` (`src-tauri/src/details.rs`) devolve campos do banco + capa (embutida, senão `cover`/`folder`/`front`/`album`/`albumart` da pasta, como data URL) e qualidade (kbps, kHz, bits, canais), lidos fora da thread principal. `src/PlayerBar.tsx` exporta `Capa`, `Controles`, `Progresso`, `Volume` (estado `Reproducao` no `App.tsx`); o mini-player abre `src/PlayerCompleto.tsx` (capa fixa 22 rem, fila, informações; Esc/botão volta). A biblioteca fica montada e restaura a rolagem. Capas ainda sem cache. Próximo: busca por metadados.
+Etapa 7 concluída: migração v2 cria `media.search_text` (título, artista, álbum, artista do álbum e gênero em minúsculas e sem acentos; `src-tauri/src/search.rs`), gravado na importação e preenchido em `db::open` para registros antigos. **Qualquer edição futura de metadados deve recalcular `search_text`.** `list_media`, `count_media` e `play_media` recebem `busca` (cada palavra precisa aparecer em algum campo); tocar um resultado usa os resultados como contexto da fila. Front: campo de busca no cabeçalho (Ctrl+F, Esc limpa, 200 ms de espera). Próximo: playlists.
