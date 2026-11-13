@@ -65,4 +65,4 @@ Depois do MVP: monitoramento de pastas, shuffle, repetir, estatísticas, MPRIS, 
 
 ## Estado atual
 
-Etapa 4 concluída: `src-tauri/src/player.rs` (playbin só áudio; comandos `play_media`, `toggle_pause`, `set_volume`, `seek`; evento `player-estado` a cada 250 ms). Ao tocar, arquivo ausente é marcado `missing` sem apagar o registro. Front: duplo clique toca, `src/PlayerBar.tsx` no rodapé. Testes do player: `SKALD_TEST_DIR=/pasta cargo test -- --test-threads=1` (pasta com `a.mp3` e `sub/quebrado.ogg`). Próximo: fila de reprodução.
+Etapa 4 concluída: `src-tauri/src/player.rs` usa um `playbin` só de áudio; comandos `play_media`, `toggle_pause`, `set_volume` (escala cúbica) e `seek`; uma thread lê o barramento e emite o evento `player-estado` (posição a cada 250 ms, fim de faixa, erros). Tocar arquivo inexistente marca `missing = 1`. Front: duplo clique na lista toca; `src/PlayerBar.tsx` tem play/pausa, progresso e volume. Teste: `SKALD_TEST_DIR=/pasta cargo test -- --test-threads=1` (pasta com `a.mp3` e `sub/quebrado.ogg`). Próximo: fila de reprodução.
