@@ -1,4 +1,5 @@
 mod db;
+mod import;
 
 use std::sync::Mutex;
 
@@ -27,9 +28,20 @@ fn db_status(app: tauri::AppHandle, db: State<db::Db>) -> Result<DbStatus, Strin
     })
 }
 
+#[tauri::command]
+async fn import_folder(app: tauri::AppHandle, path: String) -> Result<import::ImportResumo, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let db = app.state::<db::Db>();
+        import::importar(&db.0, std::path::Path::new(&path))
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             let dir = app.path().app_data_dir()?;
             std::fs::create_dir_all(&dir)?;
@@ -37,7 +49,7 @@ pub fn run() {
             app.manage(db::Db(Mutex::new(conn)));
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![db_status])
+        .invoke_handler(tauri::generate_handler![db_status, import_folder])
         .run(tauri::generate_context!())
         .expect("falha ao iniciar o Skáld");
 }

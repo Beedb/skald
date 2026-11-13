@@ -52,7 +52,7 @@ Reprodutor de áudio desktop para Linux, focado em arquivos locais e offline. Pl
 Marcar `[x]` ao concluir.
 
 - [x] Projeto base: Tauri 2 + React + TS rodando, SQLite conectado
-- [ ] Importar pasta e ler metadados (`lofty`)
+- [x] Importar pasta e ler metadados (`lofty`)
 - [ ] Listar músicas na biblioteca
 - [ ] Tocar uma música (GStreamer): play, pausa, volume, progresso
 - [ ] Fila de reprodução
@@ -65,4 +65,4 @@ Depois do MVP: monitoramento de pastas, shuffle, repetir, estatísticas, MPRIS, 
 
 ## Estado atual
 
-Etapa 1 concluída: app Tauri abre, cria o banco e mostra o status (comando `db_status`). Próximo: importar pasta com `lofty`.
+Etapa 2 concluída: botão "Importar pasta" (`tauri-plugin-dialog`) chama `import_folder`, que percorre a pasta, lê tags com `lofty` e grava com `INSERT OR IGNORE` por caminho (não sobrescreve registros existentes). `file_hash` ainda não é calculado. Teste: `SKALD_TEST_DIR=/pasta cargo test -- --nocapture`. Próximo: listar músicas na biblioteca.
