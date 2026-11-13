@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
+import Biblioteca from "./Biblioteca";
 import "./App.css";
 
 type DbStatus = {
@@ -22,6 +23,7 @@ function App() {
 
   const [importando, setImportando] = useState(false);
   const [resumo, setResumo] = useState<ImportResumo | null>(null);
+  const [versao, setVersao] = useState(0);
 
   const carregarStatus = () =>
     invoke<DbStatus>("db_status")
@@ -41,6 +43,7 @@ function App() {
     try {
       setResumo(await invoke<ImportResumo>("import_folder", { path: pasta }));
       await carregarStatus();
+      setVersao((v) => v + 1);
     } catch (e) {
       setErro(String(e));
     } finally {
@@ -49,23 +52,20 @@ function App() {
   }
 
   return (
-    <main className="container">
-      <h1>Skáld</h1>
+    <main className="app">
+      <header className="topo">
+        <h1>Skáld</h1>
+        {status && (
+          <span className="contagem" title={`Banco: ${status.path} (esquema v${status.schema_version})`}>
+            {status.media_count} {status.media_count === 1 ? "música" : "músicas"}
+          </span>
+        )}
+        <button onClick={importarPasta} disabled={importando}>
+          {importando ? "Importando…" : "Importar pasta"}
+        </button>
+      </header>
       {erro && <p className="erro">Erro: {erro}</p>}
       {!erro && !status && <p>Conectando ao banco de dados…</p>}
-      {status && (
-        <dl className="status">
-          <dt>Banco de dados</dt>
-          <dd>{status.path}</dd>
-          <dt>Versão do esquema</dt>
-          <dd>{status.schema_version}</dd>
-          <dt>Músicas na biblioteca</dt>
-          <dd>{status.media_count}</dd>
-        </dl>
-      )}
-      <button onClick={importarPasta} disabled={importando}>
-        {importando ? "Importando…" : "Importar pasta"}
-      </button>
       {resumo && (
         <div className="resumo">
           <p>
@@ -84,6 +84,7 @@ function App() {
           )}
         </div>
       )}
+      {status && <Biblioteca total={status.media_count} versao={versao} />}
     </main>
   );
 }

@@ -1,5 +1,6 @@
 mod db;
 mod import;
+mod library;
 
 use std::sync::Mutex;
 
@@ -38,6 +39,12 @@ async fn import_folder(app: tauri::AppHandle, path: String) -> Result<import::Im
     .map_err(|e| e.to_string())?
 }
 
+#[tauri::command]
+fn list_media(db: State<db::Db>, offset: u32, limit: u32) -> Result<Vec<library::MediaRow>, String> {
+    let conn = db.0.lock().map_err(|_| "Banco de dados indisponível.".to_string())?;
+    library::list_media(&conn, offset, limit.min(2000)).map_err(|e| e.to_string())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -49,7 +56,7 @@ pub fn run() {
             app.manage(db::Db(Mutex::new(conn)));
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![db_status, import_folder])
+        .invoke_handler(tauri::generate_handler![db_status, import_folder, list_media])
         .run(tauri::generate_context!())
         .expect("falha ao iniciar o Skáld");
 }

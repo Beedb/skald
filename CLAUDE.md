@@ -53,7 +53,7 @@ Marcar `[x]` ao concluir.
 
 - [x] Projeto base: Tauri 2 + React + TS rodando, SQLite conectado
 - [x] Importar pasta e ler metadados (`lofty`)
-- [ ] Listar músicas na biblioteca
+- [x] Listar músicas na biblioteca
 - [ ] Tocar uma música (GStreamer): play, pausa, volume, progresso
 - [ ] Fila de reprodução
 - [ ] Mini-player e player completo
@@ -65,4 +65,4 @@ Depois do MVP: monitoramento de pastas, shuffle, repetir, estatísticas, MPRIS, 
 
 ## Estado atual
 
-Etapa 2 concluída: botão "Importar pasta" (`tauri-plugin-dialog`) chama `import_folder`, que percorre a pasta, lê tags com `lofty` e grava com `INSERT OR IGNORE` por caminho (não sobrescreve registros existentes). `file_hash` ainda não é calculado. Teste: `SKALD_TEST_DIR=/pasta cargo test -- --nocapture`. Próximo: listar músicas na biblioteca.
+Etapa 3 concluída: `list_media(offset, limit)` (`src-tauri/src/library.rs`) devolve páginas ordenadas por artista/álbum/disco/faixa; `src/Biblioteca.tsx` mostra a lista virtualizada (`@tanstack/react-virtual`), buscando páginas de 500 sob demanda e recarregando após importar. Próximo: tocar uma música com GStreamer.
