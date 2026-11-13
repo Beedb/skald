@@ -34,12 +34,33 @@ const MIGRATIONS: &[&str] = &[
     CREATE INDEX idx_media_hash ON media(file_hash);",
     // v2: texto normalizado (minúsculas, sem acentos) para a busca; preenchido em Rust.
     "ALTER TABLE media ADD COLUMN search_text TEXT;",
+    // v3: playlists guardam só referências a `media` (seção 7); a mesma música pode estar em várias.
+    "CREATE TABLE playlist (
+        id          INTEGER PRIMARY KEY,
+        name        TEXT    NOT NULL,
+        cover_path  TEXT,
+        created_at  INTEGER NOT NULL DEFAULT (unixepoch()),
+        updated_at  INTEGER NOT NULL DEFAULT (unixepoch())
+    );
+    CREATE TABLE playlist_item (
+        id          INTEGER PRIMARY KEY,
+        playlist_id INTEGER NOT NULL REFERENCES playlist(id) ON DELETE CASCADE,
+        media_id    INTEGER NOT NULL REFERENCES media(id) ON DELETE CASCADE,
+        position    INTEGER NOT NULL,
+        added_at    INTEGER NOT NULL DEFAULT (unixepoch())
+    );
+    CREATE INDEX idx_playlist_item_ordem ON playlist_item(playlist_id, position);
+    CREATE INDEX idx_playlist_item_media ON playlist_item(media_id);",
 ];
 
 pub fn open(path: &Path) -> rusqlite::Result<Connection> {
     let mut conn = Connection::open(path)?;
     conn.pragma_update(None, "journal_mode", "WAL")?;
     conn.pragma_update(None, "foreign_keys", true)?;
+    // Ordem alfabética sem diferenciar acentos nem maiúsculas: "Ágape" fica junto do "A".
+    conn.create_collation("SEMACENTO", |a, b| {
+        crate::search::normalizar(a).cmp(&crate::search::normalizar(b))
+    })?;
     migrate(&mut conn)?;
     crate::search::preencher_pendentes(&mut conn)?;
     Ok(conn)

@@ -26,6 +26,15 @@ impl Fila {
         id
     }
 
+    /// Como `tocar_do_contexto`, mas pela posição (útil quando a mesma música aparece duas vezes).
+    pub fn tocar_do_contexto_em(&mut self, contexto: Vec<i64>, indice: usize) -> Option<i64> {
+        let id = *contexto.get(indice)?;
+        self.contexto = contexto;
+        self.indice = Some(indice);
+        self.atual = Some(id);
+        Some(id)
+    }
+
     /// Avança: primeiro a fila manual, depois o contexto. `None` no fim.
     pub fn proxima(&mut self) -> Option<i64> {
         let id = if let Some(id) = self.manual.pop_front() {

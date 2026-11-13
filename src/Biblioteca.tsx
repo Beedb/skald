@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import type { PlaylistResumo } from "./Lateral";
 import { useVirtualizer } from "@tanstack/react-virtual";
 
 export type MediaRow = {
@@ -32,13 +33,27 @@ type Props = {
   tocandoId: number | null;
   onTocar: (id: number) => void;
   onEnfileirar: (id: number, aSeguir: boolean) => void;
+  playlists: PlaylistResumo[];
+  onAdicionarPlaylist: (playlistId: number, mediaId: number) => void;
+  onNovaPlaylistCom: (mediaId: number) => void;
   /** Falso enquanto o player completo ocupa a tela; a lista fica montada e guarda a rolagem. */
   visivel: boolean;
 };
 
 type Menu = { x: number; y: number; id: number };
 
-export default function Biblioteca({ total, versao, busca, tocandoId, onTocar, onEnfileirar, visivel }: Props) {
+export default function Biblioteca({
+  total,
+  versao,
+  busca,
+  tocandoId,
+  onTocar,
+  onEnfileirar,
+  playlists,
+  onAdicionarPlaylist,
+  onNovaPlaylistCom,
+  visivel,
+}: Props) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const rolagem = useRef(0);
 
@@ -151,7 +166,7 @@ export default function Biblioteca({ total, versao, busca, tocandoId, onTocar, o
                   if (m)
                     setMenu({
                       x: Math.min(e.clientX, window.innerWidth - 200),
-                      y: Math.min(e.clientY, window.innerHeight - 120),
+                      y: Math.min(e.clientY, window.innerHeight - 330),
                       id: m.id,
                     });
                 }}
@@ -183,6 +198,18 @@ export default function Biblioteca({ total, versao, busca, tocandoId, onTocar, o
           </li>
           <li role="menuitem" onClick={() => onEnfileirar(menu.id, false)}>
             Adicionar à fila
+          </li>
+          <li role="separator" className="separador" />
+          <li role="presentation" className="titulo-menu">
+            Adicionar à playlist
+          </li>
+          {playlists.map((p) => (
+            <li key={p.id} role="menuitem" className="recuado" onClick={() => onAdicionarPlaylist(p.id, menu.id)}>
+              {p.name}
+            </li>
+          ))}
+          <li role="menuitem" className="recuado" onClick={() => onNovaPlaylistCom(menu.id)}>
+            + Nova playlist com esta música
           </li>
         </ul>
       )}

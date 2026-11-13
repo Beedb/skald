@@ -6,6 +6,8 @@ import Biblioteca from "./Biblioteca";
 import PlayerBar, { type EstadoPlayer, type Reproducao } from "./PlayerBar";
 import PlayerCompleto, { type Detalhes } from "./PlayerCompleto";
 import Fila, { type VisaoFila } from "./Fila";
+import Lateral, { type PlaylistResumo, type Vista } from "./Lateral";
+import PlaylistView from "./PlaylistView";
 import "./App.css";
 
 type DbStatus = {
@@ -40,6 +42,9 @@ function App() {
   const [tela, setTela] = useState<"biblioteca" | "player">("biblioteca");
   const [volume, setVolume] = useState(1);
   const [detalhes, setDetalhes] = useState<Detalhes | null>(null);
+  const [vista, setVista] = useState<Vista>({ tipo: "biblioteca" });
+  const [playlists, setPlaylists] = useState<PlaylistResumo[]>([]);
+  const [versaoPlaylists, setVersaoPlaylists] = useState(0);
 
   // Busca: `busca` é o texto digitado; `buscaAtiva` é aplicada 200 ms depois da última tecla.
   const [busca, setBusca] = useState("");
@@ -70,6 +75,7 @@ function App() {
       if (e.ctrlKey && e.key.toLowerCase() === "f") {
         e.preventDefault();
         setTela("biblioteca");
+        setVista({ tipo: "biblioteca" });
         campoBusca.current?.focus();
         campoBusca.current?.select();
       }
@@ -91,12 +97,21 @@ function App() {
         .then(setFila)
         .catch((e) => setErro(String(e)));
     carregarFila();
+    const carregarPlaylists = () =>
+      invoke<PlaylistResumo[]>("playlists_list")
+        .then(setPlaylists)
+        .catch((e) => setErro(String(e)));
+    carregarPlaylists();
     const ouvintes = [
       listen<EstadoPlayer>("player-estado", (e) => {
         setEstado(e.payload);
         if (e.payload.erro) setErro(e.payload.erro);
       }),
       listen("fila-mudou", carregarFila),
+      listen("playlists-mudou", () => {
+        carregarPlaylists();
+        setVersaoPlaylists((v) => v + 1);
+      }),
       listen<string>("player-erro", (e) => mostrarErro(e.payload)),
     ];
     return () => {
@@ -146,6 +161,23 @@ function App() {
     }
   }
 
+  // Logo após criar, a playlist pode ainda não ter chegado na lista: a área fica vazia por um instante.
+  // Excluir só acontece pela própria tela da playlist, que volta para a biblioteca.
+  const playlistAtual = vista.tipo === "playlist" ? playlists.find((p) => p.id === vista.id) : undefined;
+
+  function adicionarPlaylist(playlistId: number, mediaId: number) {
+    invoke("playlist_add", { id: playlistId, mediaIds: [mediaId] }).catch((e) => setErro(String(e)));
+  }
+
+  async function novaPlaylistCom(mediaId: number) {
+    try {
+      const id = await invoke<number>("playlist_create", { name: "Nova playlist", mediaIds: [mediaId] });
+      setVista({ tipo: "playlist", id });
+    } catch (e) {
+      setErro(String(e));
+    }
+  }
+
   function enfileirar(id: number, aSeguir: boolean) {
     invoke("queue_add", { id, aSeguir }).catch((e) => setErro(String(e)));
   }
@@ -187,6 +219,7 @@ function App() {
           onChange={(e) => {
             setBusca(e.target.value);
             setTela("biblioteca");
+            setVista({ tipo: "biblioteca" });
           }}
           onKeyDown={(e) => {
             if (e.key === "Escape") {
@@ -220,16 +253,41 @@ function App() {
         </div>
       )}
       <div className="conteudo" hidden={tela === "player"}>
-        {status && (
-          <Biblioteca
-            total={total}
-            versao={versao}
-            busca={buscaAtiva}
-            tocandoId={estado && estado.estado !== "parado" ? estado.id : null}
-            onTocar={tocar}
-            onEnfileirar={enfileirar}
-            visivel={tela === "biblioteca"}
-          />
+        <Lateral
+          vista={vista}
+          playlists={playlists}
+          onVista={(v) => {
+            setVista(v);
+            setTela("biblioteca");
+          }}
+          onErro={setErro}
+        />
+        <div className="area" hidden={vista.tipo !== "biblioteca"}>
+          {status && (
+            <Biblioteca
+              total={total}
+              versao={versao}
+              busca={buscaAtiva}
+              tocandoId={estado && estado.estado !== "parado" ? estado.id : null}
+              onTocar={tocar}
+              onEnfileirar={enfileirar}
+              playlists={playlists}
+              onAdicionarPlaylist={adicionarPlaylist}
+              onNovaPlaylistCom={novaPlaylistCom}
+              visivel={tela === "biblioteca" && vista.tipo === "biblioteca"}
+            />
+          )}
+        </div>
+        {playlistAtual && (
+          <div className="area">
+            <PlaylistView
+              playlist={playlistAtual}
+              versao={versaoPlaylists}
+              tocandoId={estado && estado.estado !== "parado" ? estado.id : null}
+              onExcluida={() => setVista({ tipo: "biblioteca" })}
+              onErro={setErro}
+            />
+          </div>
         )}
         {filaAberta && <Fila fila={fila} />}
       </div>

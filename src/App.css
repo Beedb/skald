@@ -69,8 +69,20 @@ body {
   margin-top: 1rem;
 }
 
+.area {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.area[hidden] {
+  display: none;
+}
+
 .biblioteca {
   flex: 1;
+  min-height: 0;
   min-width: 0;
   display: flex;
   flex-direction: column;
@@ -88,6 +100,193 @@ body {
   border: 1px solid rgba(128, 128, 128, 0.4);
   border-radius: 6px;
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+}
+
+.menu-contexto {
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+.menu-contexto .separador {
+  height: 1px;
+  padding: 0;
+  margin: 0.25rem 0;
+  background: rgba(128, 128, 128, 0.3);
+}
+
+.menu-contexto .titulo-menu {
+  font-size: 0.8rem;
+  opacity: 0.6;
+}
+
+.menu-contexto .titulo-menu:hover,
+.menu-contexto .separador:hover {
+  background: none;
+}
+
+.menu-contexto .recuado {
+  padding-left: 1.5rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.lateral {
+  width: 13rem;
+  flex-shrink: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  border-right: 1px solid rgba(128, 128, 128, 0.3);
+  padding-right: 0.75rem;
+}
+
+.lateral h2 {
+  margin: 1rem 0 0.25rem;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  opacity: 0.6;
+}
+
+.lateral ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.item-lateral {
+  width: 100%;
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  padding: 0.35rem 0.5rem;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.item-lateral:hover {
+  background: rgba(128, 128, 128, 0.15);
+}
+
+.item-lateral.ativo {
+  background: rgba(79, 142, 247, 0.2);
+  font-weight: 600;
+}
+
+.item-lateral .nome {
+  flex: 1;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.item-lateral .qtd {
+  font-size: 0.8rem;
+  opacity: 0.6;
+}
+
+.item-lateral.criar {
+  opacity: 0.8;
+}
+
+.nova-playlist,
+.pl-renomear {
+  font: inherit;
+  padding: 0.3rem 0.5rem;
+  border-radius: 6px;
+  border: 1px solid rgba(79, 142, 247, 0.6);
+  background: transparent;
+  color: inherit;
+}
+
+.playlist-view {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.pl-cabecalho {
+  display: flex;
+  gap: 1.25rem;
+  align-items: flex-end;
+  margin-bottom: 1rem;
+}
+
+.capa-playlist {
+  width: 9rem;
+  height: 9rem;
+  font-size: 3rem;
+}
+
+.pl-titulos {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  min-width: 0;
+}
+
+.pl-tipo {
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  opacity: 0.6;
+}
+
+.pl-titulos h2 {
+  margin: 0;
+  font-size: 1.8rem;
+  overflow-wrap: anywhere;
+}
+
+.pl-renomear {
+  font-size: 1.5rem;
+}
+
+.pl-meta {
+  opacity: 0.7;
+}
+
+.pl-acoes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+  margin-top: 0.4rem;
+}
+
+.linha.linha-pl {
+  grid-template-columns: 2.5rem 3fr 2fr 2fr 4.5rem 6rem;
+}
+
+.linha-pl .num {
+  text-align: right;
+  opacity: 0.6;
+  font-variant-numeric: tabular-nums;
+}
+
+.pl-item-acoes {
+  display: flex;
+  gap: 0.2rem;
+  justify-content: flex-end;
+  visibility: hidden;
+}
+
+.linha-pl:hover .pl-item-acoes,
+.linha-pl:focus-within .pl-item-acoes {
+  visibility: visible;
+}
+
+.pl-item-acoes button {
+  padding: 0 0.45rem;
+  line-height: 1.5;
 }
 
 .menu-contexto li {

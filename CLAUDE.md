@@ -63,6 +63,19 @@ Marcar `[x]` ao concluir.
 
 Depois do MVP: monitoramento de pastas, shuffle, repetir, estatísticas, MPRIS, gapless/crossfade, ReplayGain, equalizador, letras, retrospectivas.
 
+## Fase 2
+
+- [ ] 10. Monitoramento de pastas (`notify`)
+- [ ] 11. Shuffle Bag e modo repetir
+- [ ] 12. MPRIS e teclas de mídia
+- [ ] 13. Estatísticas (painel e critério de 60%)
+- [ ] 14. Gapless
+- [ ] 15. Crossfade
+- [ ] 16. ReplayGain
+- [ ] 17. Equalizador (presets)
+- [ ] 18. Letras (.lrc e tag)
+- [ ] 19. Máquina do Tempo e retrospectivas
+
 ## Estado atual
 
-Etapa 7 concluída: migração v2 cria `media.search_text` (título, artista, álbum, artista do álbum e gênero em minúsculas e sem acentos; `src-tauri/src/search.rs`), gravado na importação e preenchido em `db::open` para registros antigos. **Qualquer edição futura de metadados deve recalcular `search_text`.** `list_media`, `count_media` e `play_media` recebem `busca` (cada palavra precisa aparecer em algum campo); tocar um resultado usa os resultados como contexto da fila. Front: campo de busca no cabeçalho (Ctrl+F, Esc limpa, 200 ms de espera). Próximo: playlists.
+Etapa 8 (Playlists), parte 1 concluída: migração v3 (`playlist`, `playlist_item` com referência a `media.id` e `position`); collation `SEMACENTO` registrada em `db::open` para ordem alfabética sem acentos. `src-tauri/src/playlists.rs` + comandos `playlists_list`, `playlist_create`, `playlist_rename`, `playlist_delete`, `playlist_add`, `playlist_items` (ordem personalizada/título/artista), `playlist_remove_item`, `playlist_move_item`, `play_playlist`; evento `playlists-mudou`. Front: `src/Lateral.tsx` (barra lateral), `src/PlaylistView.tsx` (capa automática da 1ª música, renomear, excluir com `ask`, ↑↓×), menu da biblioteca com "Adicionar à playlist". Falta (parte 2): capa escolhida (`playlist.cover_path` já existe), Curtidas, exportar M3U. Item do MVP só é marcado `[x]` depois da parte 2.

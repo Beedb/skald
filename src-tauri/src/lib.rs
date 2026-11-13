@@ -3,6 +3,7 @@ mod details;
 mod import;
 mod library;
 mod player;
+mod playlists;
 mod queue;
 mod search;
 
@@ -115,6 +116,86 @@ fn play_media(app: AppHandle, fila: State<FilaState>, id: i64, busca: Option<Str
     fila.0.lock().map_err(erro_db)?.tocar_do_contexto(ids, id);
     let _ = app.emit(EVENTO_FILA, ());
     tocar_id(&app, id)
+}
+
+const EVENTO_PLAYLISTS: &str = "playlists-mudou";
+
+/// Roda `f` com o banco travado e avisa a interface que as playlists mudaram.
+fn alterar_playlists<T>(app: &AppHandle, f: impl FnOnce(&mut rusqlite::Connection) -> Result<T, String>) -> Result<T, String> {
+    let resultado = {
+        let db = app.state::<db::Db>();
+        let mut conn = db.0.lock().map_err(erro_db)?;
+        f(&mut conn)?
+    };
+    let _ = app.emit(EVENTO_PLAYLISTS, ());
+    Ok(resultado)
+}
+
+#[tauri::command]
+fn playlists_list(db: State<db::Db>) -> Result<Vec<playlists::Resumo>, String> {
+    let conn = db.0.lock().map_err(erro_db)?;
+    playlists::listar(&conn)
+}
+
+/// Cria a playlist, opcionalmente já com músicas. Devolve o id.
+#[tauri::command]
+fn playlist_create(app: AppHandle, name: String, media_ids: Option<Vec<i64>>) -> Result<i64, String> {
+    alterar_playlists(&app, |conn| {
+        let id = playlists::criar(conn, &name)?;
+        if let Some(ids) = media_ids {
+            playlists::adicionar(conn, id, &ids)?;
+        }
+        Ok(id)
+    })
+}
+
+#[tauri::command]
+fn playlist_rename(app: AppHandle, id: i64, name: String) -> Result<(), String> {
+    alterar_playlists(&app, |conn| playlists::renomear(conn, id, &name))
+}
+
+#[tauri::command]
+fn playlist_delete(app: AppHandle, id: i64) -> Result<(), String> {
+    alterar_playlists(&app, |conn| playlists::excluir(conn, id))
+}
+
+#[tauri::command]
+fn playlist_add(app: AppHandle, id: i64, media_ids: Vec<i64>) -> Result<(), String> {
+    alterar_playlists(&app, |conn| playlists::adicionar(conn, id, &media_ids))
+}
+
+#[tauri::command]
+fn playlist_items(db: State<db::Db>, id: i64, ordem: playlists::Ordem) -> Result<Vec<playlists::Item>, String> {
+    let conn = db.0.lock().map_err(erro_db)?;
+    playlists::itens(&conn, id, ordem)
+}
+
+#[tauri::command]
+fn playlist_remove_item(app: AppHandle, item_id: i64) -> Result<(), String> {
+    alterar_playlists(&app, |conn| playlists::remover_item(conn, item_id))
+}
+
+#[tauri::command]
+fn playlist_move_item(app: AppHandle, item_id: i64, posicao: usize) -> Result<(), String> {
+    alterar_playlists(&app, |conn| playlists::mover_item(conn, item_id, posicao))
+}
+
+/// Toca a música na posição `indice` da playlist (na ordem mostrada); a playlist vira o contexto da fila.
+#[tauri::command]
+fn play_playlist(app: AppHandle, fila: State<FilaState>, id: i64, ordem: playlists::Ordem, indice: usize) -> Result<(), String> {
+    let ids: Vec<i64> = {
+        let db = app.state::<db::Db>();
+        let conn = db.0.lock().map_err(erro_db)?;
+        playlists::itens(&conn, id, ordem)?.into_iter().map(|i| i.media.id).collect()
+    };
+    let musica = fila
+        .0
+        .lock()
+        .map_err(erro_db)?
+        .tocar_do_contexto_em(ids, indice)
+        .ok_or("A playlist está vazia.")?;
+    let _ = app.emit(EVENTO_FILA, ());
+    tocar_id(&app, musica)
 }
 
 #[tauri::command]
@@ -241,6 +322,15 @@ pub fn run() {
             queue_remove,
             get_queue,
             get_track_details,
+            playlists_list,
+            playlist_create,
+            playlist_rename,
+            playlist_delete,
+            playlist_add,
+            playlist_items,
+            playlist_remove_item,
+            playlist_move_item,
+            play_playlist,
             toggle_pause,
             set_volume,
             seek

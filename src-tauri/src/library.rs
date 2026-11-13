@@ -61,7 +61,7 @@ pub fn list_media(conn: &Connection, offset: u32, limit: u32, busca: &str) -> ru
     rows.collect()
 }
 
-fn linha(r: &rusqlite::Row) -> rusqlite::Result<MediaRow> {
+pub(crate) fn linha(r: &rusqlite::Row) -> rusqlite::Result<MediaRow> {
     Ok(MediaRow {
         id: r.get(0)?,
         title: r.get(1)?,
