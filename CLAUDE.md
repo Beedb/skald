@@ -59,7 +59,7 @@ Marcar `[x]` ao concluir.
 - [x] Mini-player e player completo
 - [x] Busca por metadados
 - [x] Playlists
-- [ ] Histórico de reprodução
+- [x] Histórico de reprodução
 
 Depois do MVP: monitoramento de pastas, shuffle, repetir, estatísticas, MPRIS, gapless/crossfade, ReplayGain, equalizador, letras, retrospectivas.
 
@@ -78,4 +78,4 @@ Depois do MVP: monitoramento de pastas, shuffle, repetir, estatísticas, MPRIS, 
 
 ## Estado atual
 
-Etapa 8 (Playlists) concluída. Migrações v3 (`playlist`, `playlist_item` com referência a `media.id` e `position`) e v4 (`playlist.kind`: `user`/`curtidas`; "Curtidas" fixa, sem renomear/excluir). Collation `SEMACENTO` em `db::open` para ordem alfabética sem acentos. `src-tauri/src/playlists.rs`: criar, renomear, excluir, adicionar, itens (personalizada/título/artista), remover, mover, curtir (`toggle_like`, `liked_ids`), capa escolhida (copiada para `app_data/capas/`; o app só apaga arquivos dessa pasta) e M3U (`playlist_export_m3u`). Evento `playlists-mudou`. Front: `src/Lateral.tsx`, `src/PlaylistView.tsx`, `BotaoCurtir` em `src/Biblioteca.tsx`. Próximo: histórico de reprodução.
+**MVP concluído.** Etapa 9 (histórico): migração v5 cria `play_history` (cópia de título/artista/álbum/gênero/duração, `category`, `started_at`, `listened_ms`, `completed`, `counted`; `media_id` vira nulo se a música sair da biblioteca). `src-tauri/src/history.rs`: `Sessao` soma só o tempo tocando; escutada = mais de 60% e no mínimo 20 s, uma vez por reprodução. Em `lib.rs`, `tocar_id` encerra/inicia a sessão e `acompanhar_sessao` recebe os avisos do player; grava ao pausar/terminar, a cada 10 s e no `RunEvent::Exit`. Comandos `history_list`/`history_count`, evento `historico-mudou`; tela `src/Historico.tsx`. Próximo: itens de "Depois do MVP" (painel de estatísticas 11.2 é um bom começo, os dados já existem).

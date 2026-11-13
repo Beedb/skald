@@ -1,5 +1,6 @@
 mod db;
 mod details;
+mod history;
 mod import;
 mod library;
 mod player;
@@ -70,6 +71,74 @@ fn erro_db<T>(_: T) -> String {
     "Banco de dados indisponível.".to_string()
 }
 
+/// Sessão da faixa em reprodução, para o histórico (seção 11).
+struct HistoricoState(Mutex<Option<history::Sessao>>);
+
+const EVENTO_HISTORICO: &str = "historico-mudou";
+
+/// Relógio monotônico em ms (não sofre com mudanças de horário do sistema).
+fn agora_ms() -> u64 {
+    static INICIO: std::sync::OnceLock<std::time::Instant> = std::sync::OnceLock::new();
+    INICIO.get_or_init(std::time::Instant::now).elapsed().as_millis() as u64
+}
+
+fn unix_agora() -> i64 {
+    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs() as i64)
+}
+
+fn gravar_sessao(app: &AppHandle, s: &history::Sessao) {
+    let db = app.state::<db::Db>();
+    if let Ok(conn) = db.0.lock() {
+        let _ = history::gravar(&conn, s);
+    }
+}
+
+/// Fecha a sessão atual (se houver) e grava o tempo ouvido. Falhas aqui nunca impedem a reprodução.
+fn encerrar_sessao(app: &AppHandle, concluida: bool) {
+    let estado_hist = app.state::<HistoricoState>();
+    let Ok(mut hist) = estado_hist.0.lock() else { return };
+    if let Some(mut s) = hist.take() {
+        s.aviso(false, agora_ms(), 0);
+        s.concluida |= concluida;
+        gravar_sessao(app, &s);
+        let _ = app.emit(EVENTO_HISTORICO, ());
+    }
+}
+
+fn iniciar_sessao(app: &AppHandle, media_id: i64) {
+    let estado_hist = app.state::<HistoricoState>();
+    let Ok(mut hist) = estado_hist.0.lock() else { return };
+    let registro = {
+        let db = app.state::<db::Db>();
+        let Ok(conn) = db.0.lock() else { return };
+        let duracao: Option<i64> = conn
+            .query_row("SELECT duration_ms FROM media WHERE id = ?1", [media_id], |r| r.get(0))
+            .unwrap_or(None);
+        history::iniciar(&conn, media_id, unix_agora()).ok().map(|r| (r, duracao.unwrap_or(0).max(0) as u64))
+    };
+    if let Some((registro, duracao)) = registro {
+        *hist = Some(history::Sessao::nova(registro, media_id, duracao, agora_ms()));
+        let _ = app.emit(EVENTO_HISTORICO, ());
+    }
+}
+
+/// Atualiza a sessão com cada aviso do player.
+fn acompanhar_sessao(app: &AppHandle, estado: &player::EstadoPlayer) {
+    if estado.fim || estado.erro.is_some() {
+        return encerrar_sessao(app, estado.fim);
+    }
+    let estado_hist = app.state::<HistoricoState>();
+    let Ok(mut hist) = estado_hist.0.lock() else { return };
+    let Some(s) = hist.as_mut() else { return };
+    // Avisos atrasados da faixa anterior não contam para a atual.
+    if estado.id != Some(s.media_id) {
+        return;
+    }
+    if s.aviso(estado.estado == player::Estado::Tocando, agora_ms(), estado.duracao_ms) {
+        gravar_sessao(app, s);
+    }
+}
+
 /// Toca `id` no player. Arquivo ausente é marcado como não encontrado (registro mantido).
 fn tocar_id(app: &AppHandle, id: i64) -> Result<(), String> {
     let path = {
@@ -87,7 +156,10 @@ fn tocar_id(app: &AppHandle, id: i64) -> Result<(), String> {
         }
         path
     };
-    app.state::<player::Player>().tocar(id, &path)
+    encerrar_sessao(app, false);
+    app.state::<player::Player>().tocar(id, &path)?;
+    iniciar_sessao(app, id);
+    Ok(())
 }
 
 /// Toca a próxima da fila, pulando arquivos ausentes. Sem próxima, para.
@@ -290,6 +362,18 @@ fn play_playlist(app: AppHandle, fila: State<FilaState>, id: i64, ordem: playlis
 }
 
 #[tauri::command]
+fn history_list(db: State<db::Db>, offset: u32, limit: u32) -> Result<Vec<history::Entrada>, String> {
+    let conn = db.0.lock().map_err(erro_db)?;
+    history::listar(&conn, offset, limit.min(2000)).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn history_count(db: State<db::Db>) -> Result<i64, String> {
+    let conn = db.0.lock().map_err(erro_db)?;
+    history::contar(&conn).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 fn next_track(app: AppHandle) -> Result<(), String> {
     avancar(&app)
 }
@@ -385,9 +469,11 @@ pub fn run() {
             let conn = db::open(&dir.join("skald.db"))?;
             app.manage(db::Db(Mutex::new(conn)));
             app.manage(FilaState(Mutex::new(queue::Fila::default())));
+            app.manage(HistoricoState(Mutex::new(None)));
             let handle = app.handle().clone();
             app.manage(player::Player::new(move |estado| {
                 let fim = estado.fim;
+                acompanhar_sessao(&handle, &estado);
                 let _ = handle.emit("player-estado", estado);
                 if fim {
                     // Fora da thread do barramento, para não bloqueá-la.
@@ -428,10 +514,18 @@ pub fn run() {
             playlist_clear_cover,
             playlist_cover,
             playlist_export_m3u,
+            history_list,
+            history_count,
             toggle_pause,
             set_volume,
             seek
         ])
-        .run(tauri::generate_context!())
-        .expect("falha ao iniciar o Skáld");
+        .build(tauri::generate_context!())
+        .expect("falha ao iniciar o Skáld")
+        .run(|app, evento| {
+            // Ao fechar, grava o tempo ouvido da faixa em andamento.
+            if let tauri::RunEvent::Exit = evento {
+                encerrar_sessao(app, false);
+            }
+        });
 }

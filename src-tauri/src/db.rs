@@ -55,6 +55,24 @@ const MIGRATIONS: &[&str] = &[
     "ALTER TABLE playlist ADD COLUMN kind TEXT NOT NULL DEFAULT 'user' CHECK (kind IN ('user', 'curtidas'));
     CREATE UNIQUE INDEX idx_playlist_curtidas ON playlist(kind) WHERE kind = 'curtidas';
     INSERT INTO playlist (name, kind) VALUES ('Curtidas', 'curtidas');",
+    // v5: histórico de reprodução (seção 11). Guarda cópia dos dados da música para sobreviver
+    // à remoção da biblioteca (aí `media_id` vira nulo) e registra a categoria (seção 10).
+    "CREATE TABLE play_history (
+        id          INTEGER PRIMARY KEY,
+        media_id    INTEGER REFERENCES media(id) ON DELETE SET NULL,
+        category    TEXT    NOT NULL DEFAULT 'music',
+        title       TEXT,
+        artist      TEXT,
+        album       TEXT,
+        genre       TEXT,
+        duration_ms INTEGER,
+        started_at  INTEGER NOT NULL,
+        listened_ms INTEGER NOT NULL DEFAULT 0,
+        completed   INTEGER NOT NULL DEFAULT 0,
+        counted     INTEGER NOT NULL DEFAULT 0
+    );
+    CREATE INDEX idx_history_inicio ON play_history(started_at);
+    CREATE INDEX idx_history_media ON play_history(media_id);",
 ];
 
 pub fn open(path: &Path) -> rusqlite::Result<Connection> {

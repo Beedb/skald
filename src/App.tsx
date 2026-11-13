@@ -8,6 +8,7 @@ import PlayerCompleto, { type Detalhes } from "./PlayerCompleto";
 import Fila, { type VisaoFila } from "./Fila";
 import Lateral, { type PlaylistResumo, type Vista } from "./Lateral";
 import PlaylistView from "./PlaylistView";
+import Historico from "./Historico";
 import "./App.css";
 
 type DbStatus = {
@@ -46,6 +47,7 @@ function App() {
   const [playlists, setPlaylists] = useState<PlaylistResumo[]>([]);
   const [versaoPlaylists, setVersaoPlaylists] = useState(0);
   const [curtidas, setCurtidas] = useState<Set<number>>(new Set());
+  const [versaoHistorico, setVersaoHistorico] = useState(0);
 
   // Busca: `busca` é o texto digitado; `buscaAtiva` é aplicada 200 ms depois da última tecla.
   const [busca, setBusca] = useState("");
@@ -120,6 +122,7 @@ function App() {
         setVersaoPlaylists((v) => v + 1);
       }),
       listen<string>("player-erro", (e) => mostrarErro(e.payload)),
+      listen("historico-mudou", () => setVersaoHistorico((v) => v + 1)),
     ];
     return () => {
       ouvintes.forEach((o) => o.then((parar) => parar()));
@@ -293,6 +296,15 @@ function App() {
             />
           )}
         </div>
+        {vista.tipo === "historico" && (
+          <div className="area">
+            <Historico
+              versao={versaoHistorico}
+              visivel={tela === "biblioteca"}
+              onTocar={(id) => invoke("play_media", { id, busca: "" }).catch((e) => mostrarErro(String(e)))}
+            />
+          </div>
+        )}
         {playlistAtual && (
           <div className="area">
             <PlaylistView

@@ -11,7 +11,7 @@ export type PlaylistResumo = {
   capa_escolhida: boolean;
 };
 
-export type Vista = { tipo: "biblioteca" } | { tipo: "playlist"; id: number };
+export type Vista = { tipo: "biblioteca" } | { tipo: "historico" } | { tipo: "playlist"; id: number };
 
 type Props = {
   vista: Vista;
@@ -60,6 +60,12 @@ export default function Lateral({ vista, playlists, onVista, onErro }: Props) {
         onClick={() => onVista({ tipo: "biblioteca" })}
       >
         ♫ Músicas
+      </button>
+      <button
+        className={"item-lateral" + (vista.tipo === "historico" ? " ativo" : "")}
+        onClick={() => onVista({ tipo: "historico" })}
+      >
+        ⟲ Histórico
       </button>
 
       {playlists

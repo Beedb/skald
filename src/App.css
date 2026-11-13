@@ -668,3 +668,28 @@ body {
   opacity: 0.75;
   overflow-wrap: anywhere;
 }
+
+.historico {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.historico-cabecalho {
+  align-items: flex-start;
+}
+
+.linha.linha-hist {
+  grid-template-columns: 9rem 3fr 2fr 4.5rem 2rem;
+}
+
+.linha-hist .quando {
+  opacity: 0.7;
+  font-variant-numeric: tabular-nums;
+}
+
+.linha-hist .escutada {
+  text-align: center;
+  color: #3fa66b;
+}
