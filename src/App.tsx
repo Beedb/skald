@@ -3,7 +3,8 @@ import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 import { listen } from "@tauri-apps/api/event";
 import Biblioteca from "./Biblioteca";
-import PlayerBar, { type EstadoPlayer } from "./PlayerBar";
+import PlayerBar, { type EstadoPlayer, type Reproducao } from "./PlayerBar";
+import PlayerCompleto, { type Detalhes } from "./PlayerCompleto";
 import Fila, { type VisaoFila } from "./Fila";
 import "./App.css";
 
@@ -36,6 +37,9 @@ function App() {
   const [estado, setEstado] = useState<EstadoPlayer | null>(null);
   const [fila, setFila] = useState<VisaoFila | null>(null);
   const [filaAberta, setFilaAberta] = useState(false);
+  const [tela, setTela] = useState<"biblioteca" | "player">("biblioteca");
+  const [volume, setVolume] = useState(1);
+  const [detalhes, setDetalhes] = useState<Detalhes | null>(null);
 
   const mostrarErro = (mensagem: string) => {
     setErro(mensagem);
@@ -62,6 +66,39 @@ function App() {
       ouvintes.forEach((o) => o.then((parar) => parar()));
     };
   }, []);
+
+  // Capa e informações da música atual (lidas do arquivo só quando ela muda).
+  const idAtual = fila?.atual?.id ?? null;
+  useEffect(() => {
+    if (idAtual === null) return setDetalhes(null);
+    let valido = true;
+    invoke<Detalhes | null>("get_track_details", { id: idAtual })
+      .then((d) => valido && setDetalhes(d))
+      .catch(() => valido && setDetalhes(null));
+    return () => {
+      valido = false;
+    };
+  }, [idAtual]);
+
+  // Esc fecha o player completo.
+  useEffect(() => {
+    if (tela !== "player") return;
+    const tecla = (e: KeyboardEvent) => e.key === "Escape" && setTela("biblioteca");
+    window.addEventListener("keydown", tecla);
+    return () => window.removeEventListener("keydown", tecla);
+  }, [tela]);
+
+  const r: Reproducao = {
+    musica: fila?.atual ?? null,
+    estado,
+    capa: detalhes && detalhes.id === idAtual ? detalhes.capa : null,
+    volume,
+    onVolume: (v) => {
+      setVolume(v);
+      invoke("set_volume", { volume: v });
+    },
+    onErro: mostrarErro,
+  };
 
   async function tocar(id: number) {
     setErro(null);
@@ -126,7 +163,7 @@ function App() {
           )}
         </div>
       )}
-      <div className="conteudo">
+      <div className="conteudo" hidden={tela === "player"}>
         {status && (
           <Biblioteca
             total={status.media_count}
@@ -134,17 +171,21 @@ function App() {
             tocandoId={estado && estado.estado !== "parado" ? estado.id : null}
             onTocar={tocar}
             onEnfileirar={enfileirar}
+            visivel={tela === "biblioteca"}
           />
         )}
         {filaAberta && <Fila fila={fila} />}
       </div>
-      <PlayerBar
-        musica={fila?.atual ?? null}
-        estado={estado}
-        filaAberta={filaAberta}
-        onAlternarFila={() => setFilaAberta((a) => !a)}
-        onErro={mostrarErro}
-      />
+      {tela === "player" ? (
+        <PlayerCompleto r={r} fila={fila} detalhes={detalhes} onVoltar={() => setTela("biblioteca")} />
+      ) : (
+        <PlayerBar
+          r={r}
+          filaAberta={filaAberta}
+          onAlternarFila={() => setFilaAberta((a) => !a)}
+          onAbrirPlayer={() => setTela("player")}
+        />
+      )}
     </main>
   );
 }

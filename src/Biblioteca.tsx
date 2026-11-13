@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { useVirtualizer } from "@tanstack/react-virtual";
 
@@ -30,12 +30,20 @@ type Props = {
   tocandoId: number | null;
   onTocar: (id: number) => void;
   onEnfileirar: (id: number, aSeguir: boolean) => void;
+  /** Falso enquanto o player completo ocupa a tela; a lista fica montada e guarda a rolagem. */
+  visivel: boolean;
 };
 
 type Menu = { x: number; y: number; id: number };
 
-export default function Biblioteca({ total, versao, tocandoId, onTocar, onEnfileirar }: Props) {
+export default function Biblioteca({ total, versao, tocandoId, onTocar, onEnfileirar, visivel }: Props) {
   const scrollRef = useRef<HTMLDivElement>(null);
+  const rolagem = useRef(0);
+
+  // Ao voltar do player completo, a lista reaparece na mesma posição.
+  useLayoutEffect(() => {
+    if (visivel && scrollRef.current) scrollRef.current.scrollTop = rolagem.current;
+  }, [visivel]);
   const paginas = useRef(new Map<number, MediaRow[]>());
   const pedidas = useRef(new Set<number>());
   const versaoAtual = useRef(versao);
@@ -106,7 +114,14 @@ export default function Biblioteca({ total, versao, tocandoId, onTocar, onEnfile
         <span>Álbum</span>
         <span className="duracao">Duração</span>
       </div>
-      <div ref={scrollRef} className="lista" role="table">
+      <div
+        ref={scrollRef}
+        className="lista"
+        role="table"
+        onScroll={(e) => {
+          if (visivel) rolagem.current = e.currentTarget.scrollTop;
+        }}
+      >
         <div style={{ height: virtualizer.getTotalSize(), position: "relative" }}>
           {itens.map((item) => {
             const m = paginas.current.get(Math.floor(item.index / PAGINA))?.[item.index % PAGINA];

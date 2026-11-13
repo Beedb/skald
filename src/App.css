@@ -142,6 +142,156 @@ body {
   gap: 0.4rem;
 }
 
+.conteudo[hidden] {
+  display: none;
+}
+
+.capa {
+  display: block;
+  object-fit: cover;
+  border-radius: 6px;
+  flex-shrink: 0;
+  background: rgba(128, 128, 128, 0.15);
+}
+
+.sem-capa {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0.6;
+}
+
+.capa-mini {
+  width: 44px;
+  height: 44px;
+  font-size: 1.2rem;
+}
+
+.faixa-mini {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  min-width: 0;
+  padding: 0.25rem 0.5rem 0.25rem 0.25rem;
+  text-align: left;
+  background: none;
+  border: none;
+  border-radius: 8px;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.faixa-mini:hover {
+  background: rgba(128, 128, 128, 0.15);
+}
+
+.player-completo {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  margin-top: 1rem;
+  padding-bottom: 1rem;
+}
+
+.voltar {
+  align-self: flex-start;
+}
+
+.pc-corpo {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  gap: 2rem;
+  margin-top: 1rem;
+}
+
+.pc-principal {
+  /* Largura fixa: a capa nunca muda de tamanho nem de lugar. */
+  width: 22rem;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.capa-grande {
+  width: 22rem;
+  height: 22rem;
+  font-size: 5rem;
+  border-radius: 10px;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.35);
+}
+
+.pc-titulos h2 {
+  margin: 0;
+  font-size: 1.5rem;
+  overflow-wrap: anywhere;
+}
+
+.pc-titulos p {
+  margin: 0.25rem 0 0;
+}
+
+.pc-artista {
+  font-size: 1.1rem;
+}
+
+.pc-album {
+  opacity: 0.7;
+}
+
+.pc-controles {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.pc-lateral {
+  flex: 1;
+  min-width: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.pc-lateral .painel-fila {
+  width: auto;
+  overflow: visible;
+  border-left: none;
+  padding-left: 0;
+}
+
+.pc-info h3 {
+  margin: 0 0 0.5rem;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  opacity: 0.6;
+}
+
+.pc-info dl {
+  margin: 0;
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 0.3rem 1rem;
+}
+
+.pc-info dl > div {
+  display: contents;
+}
+
+.pc-info dt {
+  opacity: 0.7;
+}
+
+.pc-info dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
 .botao-fila.ativo {
   outline: 2px solid #4f8ef7;
 }

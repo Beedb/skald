@@ -56,7 +56,7 @@ Marcar `[x]` ao concluir.
 - [x] Listar músicas na biblioteca
 - [x] Tocar uma música (GStreamer): play, pausa, volume, progresso
 - [x] Fila de reprodução
-- [ ] Mini-player e player completo
+- [x] Mini-player e player completo
 - [ ] Busca por metadados
 - [ ] Playlists
 - [ ] Histórico de reprodução
@@ -65,4 +65,4 @@ Depois do MVP: monitoramento de pastas, shuffle, repetir, estatísticas, MPRIS, 
 
 ## Estado atual
 
-Etapa 5 concluída: `src-tauri/src/queue.rs` (lógica pura, testada) guarda a fila manual (toca antes) e o contexto (biblioteca a partir da música escolhida). Comandos `next_track`, `previous_track` (após 3 s reinicia a faixa), `queue_add` (`a_seguir`), `queue_remove`, `get_queue`; evento `fila-mudou`. No fim da faixa (`EstadoPlayer.fim`) o backend avança sozinho, pulando arquivos ausentes. Front: clique direito na lista (`Tocar agora` / `Tocar a seguir` / `Adicionar à fila`), ⏮ ⏭ e painel `src/Fila.tsx`. Testes: `SKALD_TEST_DIR=/pasta cargo test -- --test-threads=1`. Próximo: mini-player e player completo.
+Etapa 6 concluída: `get_track_details` (`src-tauri/src/details.rs`) devolve campos do banco + capa (embutida, senão `cover`/`folder`/`front`/`album`/`albumart` da pasta, como data URL) e qualidade (kbps, kHz, bits, canais), lidos fora da thread principal. `src/PlayerBar.tsx` exporta `Capa`, `Controles`, `Progresso`, `Volume` (estado `Reproducao` no `App.tsx`); o mini-player abre `src/PlayerCompleto.tsx` (capa fixa 22 rem, fila, informações; Esc/botão volta). A biblioteca fica montada e restaura a rolagem. Capas ainda sem cache. Próximo: busca por metadados.

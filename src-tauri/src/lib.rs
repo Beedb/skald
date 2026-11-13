@@ -1,4 +1,5 @@
 mod db;
+mod details;
 mod import;
 mod library;
 mod player;
@@ -158,6 +159,21 @@ fn get_queue(db: State<db::Db>, fila: State<FilaState>) -> Result<VisaoFila, Str
     })
 }
 
+/// Capa e informações adicionais da música (lidas do arquivo, fora da thread principal).
+#[tauri::command]
+async fn get_track_details(app: AppHandle, id: i64) -> Result<Option<details::Detalhes>, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let base = {
+            let db = app.state::<db::Db>();
+            let conn = db.0.lock().map_err(erro_db)?;
+            details::do_banco(&conn, id)?
+        };
+        Ok(base.map(details::completar_do_arquivo))
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
 #[tauri::command]
 fn toggle_pause(player: State<player::Player>) -> Result<(), String> {
     player.alternar_pausa()
@@ -209,6 +225,7 @@ pub fn run() {
             queue_add,
             queue_remove,
             get_queue,
+            get_track_details,
             toggle_pause,
             set_volume,
             seek

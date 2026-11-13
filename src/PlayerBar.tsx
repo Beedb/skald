@@ -11,94 +11,127 @@ export type EstadoPlayer = {
   erro: string | null;
 };
 
-type Props = {
+/** Estado de reprodução compartilhado pelo mini-player e pelo player completo. */
+export type Reproducao = {
   musica: MediaRow | null;
   estado: EstadoPlayer | null;
-  filaAberta: boolean;
-  onAlternarFila: () => void;
+  capa: string | null;
+  volume: number;
+  onVolume: (v: number) => void;
   onErro: (mensagem: string) => void;
 };
 
-export default function PlayerBar({ musica, estado, filaAberta, onAlternarFila, onErro }: Props) {
-  const [volume, setVolume] = useState(1);
+const ativo = (r: Reproducao) => r.estado !== null && r.estado.estado !== "parado" && r.musica !== null;
+
+export function Capa({ src, className }: { src: string | null; className: string }) {
+  return src ? (
+    <img className={"capa " + className} src={src} alt="Capa do álbum" draggable={false} />
+  ) : (
+    <div className={"capa sem-capa " + className} aria-label="Sem capa">
+      ♪
+    </div>
+  );
+}
+
+export function Controles({ r }: { r: Reproducao }) {
+  const tocando = r.estado?.estado === "tocando";
+  const comando = (nome: string) => invoke(nome).catch((e) => r.onErro(String(e)));
+  return (
+    <div className="controles">
+      <button onClick={() => comando("previous_track")} disabled={!r.musica} aria-label="Anterior" title="Anterior">
+        ⏮
+      </button>
+      <button
+        className="play"
+        onClick={() => comando("toggle_pause")}
+        disabled={!ativo(r)}
+        aria-label={tocando ? "Pausar" : "Tocar"}
+        title={tocando ? "Pausar" : "Tocar"}
+      >
+        {tocando ? "❚❚" : "▶"}
+      </button>
+      <button onClick={() => comando("next_track")} disabled={!r.musica} aria-label="Próxima" title="Próxima">
+        ⏭
+      </button>
+    </div>
+  );
+}
+
+export function Progresso({ r }: { r: Reproducao }) {
   const [arrastando, setArrastando] = useState<number | null>(null);
+  const duracao = r.estado?.duracao_ms || r.musica?.duration_ms || 0;
+  const posicao = arrastando ?? (ativo(r) ? r.estado!.posicao_ms : 0);
 
-  const ativo = estado !== null && estado.estado !== "parado" && musica !== null;
-  const duracao = estado?.duracao_ms || musica?.duration_ms || 0;
-  const posicao = arrastando ?? (ativo ? estado.posicao_ms : 0);
-
-  function mudarVolume(v: number) {
-    setVolume(v);
-    invoke("set_volume", { volume: v });
-  }
-
-  function soltarProgresso() {
+  function soltar() {
     if (arrastando !== null) invoke("seek", { posicaoMs: Math.round(arrastando) });
     setArrastando(null);
   }
 
-  const comando = (nome: string) => invoke(nome).catch((e) => onErro(String(e)));
+  return (
+    <div className="progresso">
+      <span className="tempo">{formatarDuracao(posicao) || "0:00"}</span>
+      <input
+        type="range"
+        min={0}
+        max={duracao || 1}
+        step={1000}
+        value={Math.min(posicao, duracao || 1)}
+        disabled={!ativo(r) || !duracao}
+        aria-label="Posição"
+        onChange={(e) => setArrastando(Number(e.target.value))}
+        onPointerUp={soltar}
+        onKeyUp={soltar}
+      />
+      <span className="tempo">{formatarDuracao(duracao) || "0:00"}</span>
+    </div>
+  );
+}
 
+export function Volume({ r }: { r: Reproducao }) {
+  return (
+    <label className="volume" title={`Volume: ${Math.round(r.volume * 100)}%`}>
+      <span aria-hidden>🔊</span>
+      <input
+        type="range"
+        min={0}
+        max={1}
+        step={0.01}
+        value={r.volume}
+        aria-label="Volume"
+        onChange={(e) => r.onVolume(Number(e.target.value))}
+      />
+    </label>
+  );
+}
+
+type Props = {
+  r: Reproducao;
+  filaAberta: boolean;
+  onAlternarFila: () => void;
+  onAbrirPlayer: () => void;
+};
+
+/** Mini-player fixo no rodapé. Clicar na capa ou no título abre o player completo. */
+export default function PlayerBar({ r, filaAberta, onAlternarFila, onAbrirPlayer }: Props) {
+  const m = r.musica;
   return (
     <footer className="player">
-      <div className="controles">
-        <button onClick={() => comando("previous_track")} disabled={!musica} aria-label="Anterior" title="Anterior">
-          ⏮
-        </button>
-        <button
-          className="play"
-          onClick={() => invoke("toggle_pause")}
-          disabled={!ativo}
-          aria-label={estado?.estado === "tocando" ? "Pausar" : "Tocar"}
-          title={estado?.estado === "tocando" ? "Pausar" : "Tocar"}
-        >
-          {estado?.estado === "tocando" ? "❚❚" : "▶"}
-        </button>
-        <button onClick={() => comando("next_track")} disabled={!musica} aria-label="Próxima" title="Próxima">
-          ⏭
-        </button>
-      </div>
+      <Controles r={r} />
 
-      <div className="faixa">
-        {ativo ? (
-          <>
-            <strong>{musica.title ?? "Sem título"}</strong>
-            <span>{musica.artist ?? "Artista desconhecido"}</span>
-          </>
-        ) : (
-          <span className="dica">Dê dois cliques numa música para tocar</span>
-        )}
-      </div>
+      {ativo(r) && m ? (
+        <button className="faixa-mini" onClick={onAbrirPlayer} title="Abrir o player completo">
+          <Capa src={r.capa} className="capa-mini" />
+          <span className="faixa">
+            <strong>{m.title ?? "Sem título"}</strong>
+            <span>{m.artist ?? "Artista desconhecido"}</span>
+          </span>
+        </button>
+      ) : (
+        <span className="dica">Dê dois cliques numa música para tocar</span>
+      )}
 
-      <div className="progresso">
-        <span className="tempo">{formatarDuracao(posicao) || "0:00"}</span>
-        <input
-          type="range"
-          min={0}
-          max={duracao || 1}
-          step={1000}
-          value={Math.min(posicao, duracao || 1)}
-          disabled={!ativo || !duracao}
-          aria-label="Posição"
-          onChange={(e) => setArrastando(Number(e.target.value))}
-          onPointerUp={soltarProgresso}
-          onKeyUp={soltarProgresso}
-        />
-        <span className="tempo">{formatarDuracao(duracao) || "0:00"}</span>
-      </div>
-
-      <label className="volume" title={`Volume: ${Math.round(volume * 100)}%`}>
-        <span aria-hidden>🔊</span>
-        <input
-          type="range"
-          min={0}
-          max={1}
-          step={0.01}
-          value={volume}
-          aria-label="Volume"
-          onChange={(e) => mudarVolume(Number(e.target.value))}
-        />
-      </label>
+      <Progresso r={r} />
+      <Volume r={r} />
 
       <button
         className={"botao-fila" + (filaAberta ? " ativo" : "")}
