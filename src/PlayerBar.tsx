@@ -2,6 +2,7 @@ import { useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import type { MediaRow } from "./Biblioteca";
 import { BotaoCurtir, formatarDuracao } from "./Biblioteca";
+import type { Repetir } from "./Fila";
 
 export type EstadoPlayer = {
   id: number | null;
@@ -21,6 +22,15 @@ export type Reproducao = {
   onErro: (mensagem: string) => void;
   curtida: boolean;
   onCurtir: () => void;
+  aleatorio: boolean;
+  repetir: Repetir;
+};
+
+const PROXIMO_REPETIR: Record<Repetir, Repetir> = { desligado: "fila", fila: "faixa", faixa: "desligado" };
+const ROTULO_REPETIR: Record<Repetir, string> = {
+  desligado: "Repetir: desligado",
+  fila: "Repetir: fila",
+  faixa: "Repetir: faixa",
 };
 
 const ativo = (r: Reproducao) => r.estado !== null && r.estado.estado !== "parado" && r.musica !== null;
@@ -37,9 +47,19 @@ export function Capa({ src, className }: { src: string | null; className: string
 
 export function Controles({ r }: { r: Reproducao }) {
   const tocando = r.estado?.estado === "tocando";
-  const comando = (nome: string) => invoke(nome).catch((e) => r.onErro(String(e)));
+  const comando = (nome: string, args?: Record<string, unknown>) =>
+    invoke(nome, args).catch((e) => r.onErro(String(e)));
   return (
     <div className="controles">
+      <button
+        className={"modo" + (r.aleatorio ? " ligado" : "")}
+        onClick={() => comando("set_shuffle", { ativo: !r.aleatorio })}
+        aria-pressed={r.aleatorio}
+        aria-label="Aleatório"
+        title={r.aleatorio ? "Aleatório: ligado" : "Aleatório: desligado"}
+      >
+        🔀
+      </button>
       <button onClick={() => comando("previous_track")} disabled={!r.musica} aria-label="Anterior" title="Anterior">
         ⏮
       </button>
@@ -54,6 +74,15 @@ export function Controles({ r }: { r: Reproducao }) {
       </button>
       <button onClick={() => comando("next_track")} disabled={!r.musica} aria-label="Próxima" title="Próxima">
         ⏭
+      </button>
+      <button
+        className={"modo" + (r.repetir !== "desligado" ? " ligado" : "")}
+        onClick={() => comando("set_repeat", { modo: PROXIMO_REPETIR[r.repetir] })}
+        aria-pressed={r.repetir !== "desligado"}
+        aria-label={ROTULO_REPETIR[r.repetir]}
+        title={ROTULO_REPETIR[r.repetir]}
+      >
+        {r.repetir === "faixa" ? "🔂" : "🔁"}
       </button>
     </div>
   );

@@ -38,8 +38,11 @@ fn db_status(app: tauri::AppHandle, db: State<db::Db>) -> Result<DbStatus, Strin
 #[tauri::command]
 async fn import_folder(app: tauri::AppHandle, path: String) -> Result<import::ImportResumo, String> {
     tauri::async_runtime::spawn_blocking(move || {
-        let db = app.state::<db::Db>();
-        import::importar(&db.0, std::path::Path::new(&path))
+        let resumo = import::importar(&app.state::<db::Db>().0, std::path::Path::new(&path))?;
+        if resumo.adicionados > 0 {
+            incluir_novas(&app, Origem::Biblioteca)?;
+        }
+        Ok(resumo)
     })
     .await
     .map_err(|e| e.to_string())?
@@ -64,6 +67,38 @@ fn count_media(db: State<db::Db>, busca: Option<String>) -> Result<i64, String> 
 }
 
 struct FilaState(Mutex<queue::Fila>);
+
+/// De onde veio o contexto da fila, para incluir nele músicas novas (Shuffle Bag).
+#[derive(Clone, Copy, PartialEq)]
+enum Origem {
+    Biblioteca,
+    Playlist(i64, playlists::Ordem),
+}
+
+struct OrigemState(Mutex<Option<Origem>>);
+
+/// Acrescenta ao contexto da fila as músicas novas de `origem`, se ela for a origem atual.
+fn incluir_novas(app: &AppHandle, origem: Origem) -> Result<(), String> {
+    if *app.state::<OrigemState>().0.lock().map_err(erro_db)? != Some(origem) {
+        return Ok(());
+    }
+    let ids = {
+        let db = app.state::<db::Db>();
+        let conn = db.0.lock().map_err(erro_db)?;
+        match origem {
+            Origem::Biblioteca => library::ids_em_ordem(&conn, "").map_err(|e| e.to_string())?,
+            Origem::Playlist(id, ordem) => playlists::itens(&conn, id, ordem)?.into_iter().map(|i| i.media.id).collect(),
+        }
+    };
+    app.state::<FilaState>().0.lock().map_err(erro_db)?.incluir(&ids);
+    let _ = app.emit(EVENTO_FILA, ());
+    Ok(())
+}
+
+fn definir_origem(app: &AppHandle, origem: Option<Origem>) -> Result<(), String> {
+    *app.state::<OrigemState>().0.lock().map_err(erro_db)? = origem;
+    Ok(())
+}
 
 const EVENTO_FILA: &str = "fila-mudou";
 
@@ -163,11 +198,15 @@ fn tocar_id(app: &AppHandle, id: i64) -> Result<(), String> {
 }
 
 /// Toca a próxima da fila, pulando arquivos ausentes. Sem próxima, para.
-fn avancar(app: &AppHandle) -> Result<(), String> {
+/// `automatica`: a faixa terminou sozinha (aí "repetir faixa" vale).
+fn avancar(app: &AppHandle, automatica: bool) -> Result<(), String> {
     let fila = app.state::<FilaState>();
     let mut resultado = Ok(());
-    for _ in 0..100 {
-        let Some(id) = fila.0.lock().map_err(erro_db)?.proxima() else { break };
+    for tentativa in 0..100 {
+        let mut f = fila.0.lock().map_err(erro_db)?;
+        let proxima = if automatica && tentativa == 0 { f.proxima_automatica() } else { f.proxima() };
+        drop(f);
+        let Some(id) = proxima else { break };
         resultado = tocar_id(app, id);
         if resultado.is_ok() {
             break;
@@ -186,6 +225,8 @@ fn play_media(app: AppHandle, fila: State<FilaState>, id: i64, busca: Option<Str
         library::ids_em_ordem(&conn, busca.as_deref().unwrap_or("")).map_err(|e| e.to_string())?
     };
     fila.0.lock().map_err(erro_db)?.tocar_do_contexto(ids, id);
+    let busca_vazia = busca.as_deref().unwrap_or("").trim().is_empty();
+    definir_origem(&app, busca_vazia.then_some(Origem::Biblioteca))?;
     let _ = app.emit(EVENTO_FILA, ());
     tocar_id(&app, id)
 }
@@ -324,7 +365,14 @@ fn playlist_export_m3u(db: State<db::Db>, id: i64, destino: String) -> Result<us
 
 #[tauri::command]
 fn playlist_add(app: AppHandle, id: i64, media_ids: Vec<i64>) -> Result<(), String> {
-    alterar_playlists(&app, |conn| playlists::adicionar(conn, id, &media_ids))
+    alterar_playlists(&app, |conn| playlists::adicionar(conn, id, &media_ids))?;
+    let origem = *app.state::<OrigemState>().0.lock().map_err(erro_db)?;
+    if let Some(o @ Origem::Playlist(tocando, _)) = origem {
+        if tocando == id {
+            incluir_novas(&app, o)?;
+        }
+    }
+    Ok(())
 }
 
 #[tauri::command]
@@ -357,6 +405,7 @@ fn play_playlist(app: AppHandle, fila: State<FilaState>, id: i64, ordem: playlis
         .map_err(erro_db)?
         .tocar_do_contexto_em(ids, indice)
         .ok_or("A playlist está vazia.")?;
+    definir_origem(&app, Some(Origem::Playlist(id, ordem)))?;
     let _ = app.emit(EVENTO_FILA, ());
     tocar_id(&app, musica)
 }
@@ -375,7 +424,21 @@ fn history_count(db: State<db::Db>) -> Result<i64, String> {
 
 #[tauri::command]
 fn next_track(app: AppHandle) -> Result<(), String> {
-    avancar(&app)
+    avancar(&app, false)
+}
+
+#[tauri::command]
+fn set_shuffle(app: AppHandle, fila: State<FilaState>, ativo: bool) -> Result<(), String> {
+    fila.0.lock().map_err(erro_db)?.definir_aleatorio(ativo);
+    let _ = app.emit(EVENTO_FILA, ());
+    Ok(())
+}
+
+#[tauri::command]
+fn set_repeat(app: AppHandle, fila: State<FilaState>, modo: queue::Repetir) -> Result<(), String> {
+    fila.0.lock().map_err(erro_db)?.definir_repetir(modo);
+    let _ = app.emit(EVENTO_FILA, ());
+    Ok(())
 }
 
 /// Depois de 3 s volta ao início da faixa; antes disso, vai para a anterior.
@@ -412,13 +475,15 @@ struct VisaoFila {
     atual: Option<library::MediaRow>,
     manual: Vec<library::MediaRow>,
     contexto: Vec<library::MediaRow>,
+    aleatorio: bool,
+    repetir: queue::Repetir,
 }
 
 #[tauri::command]
 fn get_queue(db: State<db::Db>, fila: State<FilaState>) -> Result<VisaoFila, String> {
-    let (atual, manual, contexto) = {
+    let (atual, manual, contexto, aleatorio, repetir) = {
         let f = fila.0.lock().map_err(erro_db)?;
-        (f.atual(), f.manual().collect::<Vec<_>>(), f.proximas_do_contexto(50).to_vec())
+        (f.atual(), f.manual().collect::<Vec<_>>(), f.proximas_do_contexto(50), f.aleatorio(), f.repetir())
     };
     let conn = db.0.lock().map_err(erro_db)?;
     let buscar = |ids: &[i64]| library::obter_varios(&conn, ids).map_err(|e| e.to_string());
@@ -426,6 +491,8 @@ fn get_queue(db: State<db::Db>, fila: State<FilaState>) -> Result<VisaoFila, Str
         atual: buscar(&atual.into_iter().collect::<Vec<_>>())?.pop(),
         manual: buscar(&manual)?,
         contexto: buscar(&contexto)?,
+        aleatorio,
+        repetir,
     })
 }
 
@@ -470,6 +537,7 @@ pub fn run() {
             app.manage(db::Db(Mutex::new(conn)));
             app.manage(FilaState(Mutex::new(queue::Fila::default())));
             app.manage(HistoricoState(Mutex::new(None)));
+            app.manage(OrigemState(Mutex::new(None)));
             let handle = app.handle().clone();
             app.manage(player::Player::new(move |estado| {
                 let fim = estado.fim;
@@ -479,7 +547,7 @@ pub fn run() {
                     // Fora da thread do barramento, para não bloqueá-la.
                     let h = handle.clone();
                     std::thread::spawn(move || {
-                        if let Err(e) = avancar(&h) {
+                        if let Err(e) = avancar(&h, true) {
                             let _ = h.emit("player-erro", e);
                         }
                     });
@@ -494,6 +562,8 @@ pub fn run() {
             count_media,
             play_media,
             next_track,
+            set_shuffle,
+            set_repeat,
             previous_track,
             queue_add,
             queue_remove,

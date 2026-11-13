@@ -352,6 +352,15 @@ body {
   gap: 0.4rem;
 }
 
+.controles .modo {
+  opacity: 0.45;
+}
+
+.controles .modo.ligado {
+  opacity: 1;
+  outline: 2px solid #4f8ef7;
+}
+
 .conteudo[hidden] {
   display: none;
 }

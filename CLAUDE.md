@@ -66,7 +66,7 @@ Depois do MVP: monitoramento de pastas, shuffle, repetir, estatísticas, MPRIS, 
 ## Fase 2
 
 - [ ] 10. Monitoramento de pastas (`notify`)
-- [ ] 11. Shuffle Bag e modo repetir
+- [x] 11. Shuffle Bag e modo repetir
 - [ ] 12. MPRIS e teclas de mídia
 - [ ] 13. Estatísticas (painel e critério de 60%)
 - [ ] 14. Gapless
@@ -78,4 +78,4 @@ Depois do MVP: monitoramento de pastas, shuffle, repetir, estatísticas, MPRIS, 
 
 ## Estado atual
 
-**MVP concluído.** Etapa 9 (histórico): migração v5 cria `play_history` (cópia de título/artista/álbum/gênero/duração, `category`, `started_at`, `listened_ms`, `completed`, `counted`; `media_id` vira nulo se a música sair da biblioteca). `src-tauri/src/history.rs`: `Sessao` soma só o tempo tocando; escutada = mais de 60% e no mínimo 20 s, uma vez por reprodução. Em `lib.rs`, `tocar_id` encerra/inicia a sessão e `acompanhar_sessao` recebe os avisos do player; grava ao pausar/terminar, a cada 10 s e no `RunEvent::Exit`. Comandos `history_list`/`history_count`, evento `historico-mudou`; tela `src/Historico.tsx`. Próximo: itens de "Depois do MVP" (painel de estatísticas 11.2 é um bom começo, os dados já existem).
+**MVP concluído; etapa 11 feita.** `queue.rs`: `ordem` (posições do contexto) vira Shuffle Bag com aleatório (atual protegida no início, novo ciclo sem repetir a última); `Repetir` desligado/fila/faixa (faixa só no fim natural: `proxima_automatica`). `incluir` põe música nova entre as restantes; `lib.rs` guarda `OrigemState` (biblioteca sem busca ou playlist) e chama `incluir_novas` após importar/`playlist_add`. Comandos `set_shuffle`/`set_repeat`; modos vêm em `get_queue`; botões em `Controles`. Modos não persistem entre execuções. Histórico (etapa 9): `history.rs`, `play_history` (migração v5). Próximo: etapa 10 (monitoramento) ou 13 (estatísticas, dados já existem).

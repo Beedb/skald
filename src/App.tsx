@@ -162,6 +162,8 @@ function App() {
     onErro: mostrarErro,
     curtida: idAtual !== null && curtidas.has(idAtual),
     onCurtir: () => idAtual !== null && curtir(idAtual),
+    aleatorio: fila?.aleatorio ?? false,
+    repetir: fila?.repetir ?? "desligado",
   };
 
   async function tocar(id: number) {

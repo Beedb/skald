@@ -6,7 +6,11 @@ export type VisaoFila = {
   atual: MediaRow | null;
   manual: MediaRow[];
   contexto: MediaRow[];
+  aleatorio: boolean;
+  repetir: Repetir;
 };
+
+export type Repetir = "desligado" | "fila" | "faixa";
 
 function Item({ m, onRemover }: { m: MediaRow; onRemover?: () => void }) {
   return (
