@@ -34,3 +34,8 @@ coverage/
 
 # Claude Code local settings
 .claude/settings.local.json
+
+# Vite / Tauri
+dist-ssr/
+*.local
+src-tauri/gen/schemas/

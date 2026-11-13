@@ -40,11 +40,18 @@ Reprodutor de áudio desktop para Linux, focado em arquivos locais e offline. Pl
 - Commit a cada etapa que funciona.
 - Erros de compilação: analisar o erro exato antes de propor mudanças.
 
+## Ambiente
+
+- Node via nvm (versão em `.nvmrc`; o Node do sistema é 18 e não serve ao Vite 8): `. ~/.nvm/nvm.sh && nvm use`.
+- Rust em `~/.cargo/bin` (pode faltar no PATH de shells não interativos).
+- Rodar: `npm run tauri dev`. Gerar `.deb`: `npm run tauri build`.
+- Banco: `~/.local/share/com.skald.app/skald.db`. Migrações em `src-tauri/src/db.rs` (`PRAGMA user_version`; nunca editar migração antiga, só acrescentar).
+
 ## Ordem do MVP
 
 Marcar `[x]` ao concluir.
 
-- [ ] Projeto base: Tauri 2 + React + TS rodando, SQLite conectado
+- [x] Projeto base: Tauri 2 + React + TS rodando, SQLite conectado
 - [ ] Importar pasta e ler metadados (`lofty`)
 - [ ] Listar músicas na biblioteca
 - [ ] Tocar uma música (GStreamer): play, pausa, volume, progresso
@@ -58,4 +65,4 @@ Depois do MVP: monitoramento de pastas, shuffle, repetir, estatísticas, MPRIS, 
 
 ## Estado atual
 
-Planejamento fechado (v0.3). Nenhum código escrito ainda.
+Etapa 1 concluída: app Tauri abre, cria o banco e mostra o status (comando `db_status`). Próximo: importar pasta com `lofty`.
