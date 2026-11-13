@@ -1,5 +1,6 @@
 import Fila, { type VisaoFila } from "./Fila";
 import { Capa, Controles, Progresso, Volume, type Reproducao } from "./PlayerBar";
+import { BotaoCurtir } from "./Biblioteca";
 
 export type Detalhes = {
   id: number;
@@ -66,7 +67,10 @@ export default function PlayerCompleto({ r, fila, detalhes, onVoltar }: Props) {
         <div className="pc-principal">
           <Capa src={r.capa} className="capa-grande" />
           <div className="pc-titulos">
-            <h2>{m ? (m.title ?? "Sem título") : "Nada tocando"}</h2>
+            <h2>
+              {m ? (m.title ?? "Sem título") : "Nada tocando"}
+              {m && <BotaoCurtir curtida={r.curtida} onClick={r.onCurtir} />}
+            </h2>
             {m && <p className="pc-artista">{m.artist ?? "Artista desconhecido"}</p>}
             {m?.album && <p className="pc-album">{m.album}</p>}
           </div>

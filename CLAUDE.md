@@ -58,7 +58,7 @@ Marcar `[x]` ao concluir.
 - [x] Fila de reprodução
 - [x] Mini-player e player completo
 - [x] Busca por metadados
-- [ ] Playlists
+- [x] Playlists
 - [ ] Histórico de reprodução
 
 Depois do MVP: monitoramento de pastas, shuffle, repetir, estatísticas, MPRIS, gapless/crossfade, ReplayGain, equalizador, letras, retrospectivas.
@@ -78,4 +78,4 @@ Depois do MVP: monitoramento de pastas, shuffle, repetir, estatísticas, MPRIS, 
 
 ## Estado atual
 
-Etapa 8 (Playlists), parte 1 concluída: migração v3 (`playlist`, `playlist_item` com referência a `media.id` e `position`); collation `SEMACENTO` registrada em `db::open` para ordem alfabética sem acentos. `src-tauri/src/playlists.rs` + comandos `playlists_list`, `playlist_create`, `playlist_rename`, `playlist_delete`, `playlist_add`, `playlist_items` (ordem personalizada/título/artista), `playlist_remove_item`, `playlist_move_item`, `play_playlist`; evento `playlists-mudou`. Front: `src/Lateral.tsx` (barra lateral), `src/PlaylistView.tsx` (capa automática da 1ª música, renomear, excluir com `ask`, ↑↓×), menu da biblioteca com "Adicionar à playlist". Falta (parte 2): capa escolhida (`playlist.cover_path` já existe), Curtidas, exportar M3U. Item do MVP só é marcado `[x]` depois da parte 2.
+Etapa 8 (Playlists) concluída. Migrações v3 (`playlist`, `playlist_item` com referência a `media.id` e `position`) e v4 (`playlist.kind`: `user`/`curtidas`; "Curtidas" fixa, sem renomear/excluir). Collation `SEMACENTO` em `db::open` para ordem alfabética sem acentos. `src-tauri/src/playlists.rs`: criar, renomear, excluir, adicionar, itens (personalizada/título/artista), remover, mover, curtir (`toggle_like`, `liked_ids`), capa escolhida (copiada para `app_data/capas/`; o app só apaga arquivos dessa pasta) e M3U (`playlist_export_m3u`). Evento `playlists-mudou`. Front: `src/Lateral.tsx`, `src/PlaylistView.tsx`, `BotaoCurtir` em `src/Biblioteca.tsx`. Próximo: histórico de reprodução.

@@ -7,6 +7,8 @@ export type PlaylistResumo = {
   total: number;
   duracao_ms: number;
   primeira_media_id: number | null;
+  kind: "user" | "curtidas";
+  capa_escolhida: boolean;
 };
 
 export type Vista = { tipo: "biblioteca" } | { tipo: "playlist"; id: number };
@@ -60,9 +62,22 @@ export default function Lateral({ vista, playlists, onVista, onErro }: Props) {
         ♫ Músicas
       </button>
 
+      {playlists
+        .filter((p) => p.kind === "curtidas")
+        .map((p) => (
+          <button
+            key={p.id}
+            className={"item-lateral" + (vista.tipo === "playlist" && vista.id === p.id ? " ativo" : "")}
+            onClick={() => onVista({ tipo: "playlist", id: p.id })}
+          >
+            <span className="nome">♥ {p.name}</span>
+            <span className="qtd">{p.total}</span>
+          </button>
+        ))}
+
       <h2>Playlists</h2>
       <ul>
-        {playlists.map((p) => (
+        {playlists.filter((p) => p.kind === "user").map((p) => (
           <li key={p.id}>
             <button
               className={"item-lateral" + (vista.tipo === "playlist" && vista.id === p.id ? " ativo" : "")}

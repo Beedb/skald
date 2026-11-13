@@ -11,6 +11,10 @@ pub struct Resumo {
     pub duracao_ms: i64,
     /// Primeira música na ordem personalizada: dá a capa automática.
     pub primeira_media_id: Option<i64>,
+    /// `user` ou `curtidas`.
+    pub kind: String,
+    /// Capa escolhida pelo usuário (senão, a automática).
+    pub capa_escolhida: bool,
 }
 
 #[derive(Serialize, Debug)]
@@ -58,12 +62,13 @@ pub fn listar(conn: &Connection) -> Result<Vec<Resumo>, String> {
     let mut stmt = conn
         .prepare_cached(
             "SELECT p.id, p.name, COUNT(pi.id), COALESCE(SUM(m.duration_ms), 0),
-                    (SELECT media_id FROM playlist_item WHERE playlist_id = p.id ORDER BY position, id LIMIT 1)
+                    (SELECT media_id FROM playlist_item WHERE playlist_id = p.id ORDER BY position, id LIMIT 1),
+                    p.kind, p.cover_path IS NOT NULL
              FROM playlist p
              LEFT JOIN playlist_item pi ON pi.playlist_id = p.id
              LEFT JOIN media m ON m.id = pi.media_id
              GROUP BY p.id
-             ORDER BY p.name COLLATE SEMACENTO, p.id",
+             ORDER BY p.kind = 'curtidas' DESC, p.name COLLATE SEMACENTO, p.id",
         )
         .map_err(sql)?;
     let linhas = stmt
@@ -74,6 +79,8 @@ pub fn listar(conn: &Connection) -> Result<Vec<Resumo>, String> {
                 total: r.get(2)?,
                 duracao_ms: r.get(3)?,
                 primeira_media_id: r.get(4)?,
+                kind: r.get(5)?,
+                capa_escolhida: r.get(6)?,
             })
         })
         .map_err(sql)?;
@@ -85,7 +92,21 @@ pub fn criar(conn: &Connection, nome: &str) -> Result<i64, String> {
     Ok(conn.last_insert_rowid())
 }
 
+/// Recusa alterações proibidas na playlist fixa "Curtidas".
+fn exigir_comum(conn: &Connection, id: i64, acao: &str) -> Result<(), String> {
+    let kind: Option<String> = conn
+        .query_row("SELECT kind FROM playlist WHERE id = ?1", [id], |r| r.get(0))
+        .optional()
+        .map_err(sql)?;
+    match kind.as_deref() {
+        None => Err("Playlist não encontrada.".into()),
+        Some("curtidas") => Err(format!("A playlist Curtidas não pode ser {acao}.")),
+        _ => Ok(()),
+    }
+}
+
 pub fn renomear(conn: &Connection, id: i64, nome: &str) -> Result<(), String> {
+    exigir_comum(conn, id, "renomeada")?;
     let n = conn
         .execute(
             "UPDATE playlist SET name = ?2, updated_at = unixepoch() WHERE id = ?1",
@@ -97,6 +118,7 @@ pub fn renomear(conn: &Connection, id: i64, nome: &str) -> Result<(), String> {
 
 /// Exclui só a playlist e suas referências; as músicas continuam na biblioteca.
 pub fn excluir(conn: &Connection, id: i64) -> Result<(), String> {
+    exigir_comum(conn, id, "excluída")?;
     conn.execute("DELETE FROM playlist WHERE id = ?1", [id]).map_err(sql)?;
     Ok(())
 }
@@ -175,6 +197,84 @@ pub fn mover_item(conn: &mut Connection, item_id: i64, nova_posicao: usize) -> R
     tx.commit().map_err(sql)
 }
 
+pub fn curtidas_id(conn: &Connection) -> Result<i64, String> {
+    conn.query_row("SELECT id FROM playlist WHERE kind = 'curtidas'", [], |r| r.get(0)).map_err(sql)
+}
+
+/// Curte ou descurte. Devolve se a música ficou curtida.
+pub fn alternar_curtida(conn: &mut Connection, media_id: i64) -> Result<bool, String> {
+    let id = curtidas_id(conn)?;
+    let removidas = conn
+        .execute("DELETE FROM playlist_item WHERE playlist_id = ?1 AND media_id = ?2", params![id, media_id])
+        .map_err(sql)?;
+    if removidas > 0 {
+        return Ok(false);
+    }
+    adicionar(conn, id, &[media_id])?;
+    Ok(true)
+}
+
+pub fn ids_curtidos(conn: &Connection) -> Result<Vec<i64>, String> {
+    let mut stmt = conn
+        .prepare_cached(
+            "SELECT DISTINCT pi.media_id FROM playlist_item pi JOIN playlist p ON p.id = pi.playlist_id
+             WHERE p.kind = 'curtidas'",
+        )
+        .map_err(sql)?;
+    let ids = stmt.query_map([], |r| r.get(0)).map_err(sql)?;
+    ids.collect::<Result<_, _>>().map_err(sql)
+}
+
+pub fn capa(conn: &Connection, id: i64) -> Result<Option<String>, String> {
+    conn.query_row("SELECT cover_path FROM playlist WHERE id = ?1", [id], |r| r.get(0))
+        .optional()
+        .map(Option::flatten)
+        .map_err(sql)
+}
+
+/// Define (ou limpa, com `None`) a capa escolhida. Devolve o caminho anterior.
+pub fn definir_capa(conn: &Connection, id: i64, caminho: Option<&str>) -> Result<Option<String>, String> {
+    let anterior = capa(conn, id)?;
+    let n = conn
+        .execute("UPDATE playlist SET cover_path = ?2, updated_at = unixepoch() WHERE id = ?1", params![id, caminho])
+        .map_err(sql)?;
+    if n == 0 { Err("Playlist não encontrada.".into()) } else { Ok(anterior) }
+}
+
+/// Conteúdo M3U (estendido) da playlist na ordem personalizada, com caminhos absolutos.
+pub fn m3u(conn: &Connection, id: i64) -> Result<(String, usize), String> {
+    let mut stmt = conn
+        .prepare_cached(
+            "SELECT m.path, m.title, m.artist, m.duration_ms
+             FROM playlist_item pi JOIN media m ON m.id = pi.media_id
+             WHERE pi.playlist_id = ?1 ORDER BY pi.position, pi.id",
+        )
+        .map_err(sql)?;
+    let linhas = stmt
+        .query_map([id], |r| {
+            Ok((r.get::<_, String>(0)?, r.get::<_, Option<String>>(1)?, r.get::<_, Option<String>>(2)?, r.get::<_, Option<i64>>(3)?))
+        })
+        .map_err(sql)?;
+    let mut texto = String::from("#EXTM3U\n");
+    let mut n = 0;
+    for linha in linhas {
+        let (path, titulo, artista, duracao) = linha.map_err(sql)?;
+        let segundos = duracao.map_or(-1, |ms| (ms + 500) / 1000);
+        let titulo = titulo.unwrap_or_else(|| {
+            std::path::Path::new(&path).file_stem().map_or(path.clone(), |s| s.to_string_lossy().into_owned())
+        });
+        let nome = match artista {
+            Some(a) => format!("{a} - {titulo}"),
+            None => titulo,
+        };
+        // Quebras de linha nas tags quebrariam o formato.
+        let nome = nome.replace(['\n', '\r'], " ");
+        texto.push_str(&format!("#EXTINF:{segundos},{nome}\n{path}\n"));
+        n += 1;
+    }
+    Ok((texto, n))
+}
+
 #[cfg(test)]
 mod testes {
     use super::*;
@@ -212,7 +312,7 @@ mod testes {
         mover_item(&mut conn, bola, 1).unwrap();
         assert_eq!(titulos(&conn, p, Ordem::Personalizada), ["Zebra", "Bola", "Zebra", "Ágape"]);
 
-        let r = &listar(&conn).unwrap()[0];
+        let r = listar(&conn).unwrap().into_iter().find(|r| r.id == p).unwrap();
         assert_eq!((r.name.as_str(), r.total, r.primeira_media_id), ("HipHop", 4, Some(1)));
     }
 
@@ -235,11 +335,53 @@ mod testes {
         excluir(&conn, a).unwrap();
         let musicas: i64 = conn.query_row("SELECT COUNT(*) FROM media", [], |r| r.get(0)).unwrap();
         assert_eq!(musicas, 3);
-        assert_eq!(listar(&conn).unwrap().len(), 1);
+        assert_eq!(listar(&conn).unwrap().len(), 2); // Batata Doce + Curtidas
         assert_eq!(titulos(&conn, b, Ordem::Personalizada), ["Zebra"]);
 
         renomear(&conn, b, "Batata").unwrap();
         assert!(renomear(&conn, 999, "x").is_err());
         assert!(adicionar(&mut conn, 999, &[1]).is_err());
+    }
+
+    #[test]
+    fn curtidas_fixa() {
+        let mut conn = banco();
+        let c = curtidas_id(&conn).unwrap();
+        assert_eq!(listar(&conn).unwrap()[0].kind, "curtidas");
+        assert!(renomear(&conn, c, "Outra").is_err());
+        assert!(excluir(&conn, c).is_err());
+
+        assert!(alternar_curtida(&mut conn, 2).unwrap());
+        assert!(alternar_curtida(&mut conn, 3).unwrap());
+        assert_eq!(titulos(&conn, c, Ordem::Personalizada), ["Ágape", "Bola"]);
+        assert!(!alternar_curtida(&mut conn, 2).unwrap());
+        assert_eq!(ids_curtidos(&conn).unwrap(), [3]);
+    }
+
+    #[test]
+    fn capa_escolhida_nao_muda_ao_remover_a_primeira() {
+        let mut conn = banco();
+        let p = criar(&conn, "Com capa").unwrap();
+        adicionar(&mut conn, p, &[1, 2]).unwrap();
+        assert_eq!(definir_capa(&conn, p, Some("/capas/x.png")).unwrap(), None);
+        let primeiro = itens(&conn, p, Ordem::Personalizada).unwrap()[0].item_id;
+        remover_item(&conn, primeiro).unwrap();
+        let r = listar(&conn).unwrap().into_iter().find(|r| r.id == p).unwrap();
+        assert!(r.capa_escolhida);
+        assert_eq!(capa(&conn, p).unwrap().as_deref(), Some("/capas/x.png"));
+        assert_eq!(definir_capa(&conn, p, None).unwrap().as_deref(), Some("/capas/x.png"));
+        assert!(!listar(&conn).unwrap().into_iter().find(|r| r.id == p).unwrap().capa_escolhida);
+    }
+
+    #[test]
+    fn exporta_m3u() {
+        let mut conn = banco();
+        conn.execute("UPDATE media SET duration_ms = 61400 WHERE id = 1", []).unwrap();
+        conn.execute("INSERT INTO media (id, path) VALUES (4, '/musicas/sem tags.flac')", []).unwrap();
+        let p = criar(&conn, "Exportar").unwrap();
+        adicionar(&mut conn, p, &[1, 4]).unwrap();
+        let (texto, n) = m3u(&conn, p).unwrap();
+        assert_eq!(n, 2);
+        assert_eq!(texto, "#EXTM3U\n#EXTINF:61,Banda - Zebra\n/1\n#EXTINF:-1,sem tags\n/musicas/sem tags.flac\n");
     }
 }

@@ -45,6 +45,7 @@ function App() {
   const [vista, setVista] = useState<Vista>({ tipo: "biblioteca" });
   const [playlists, setPlaylists] = useState<PlaylistResumo[]>([]);
   const [versaoPlaylists, setVersaoPlaylists] = useState(0);
+  const [curtidas, setCurtidas] = useState<Set<number>>(new Set());
 
   // Busca: `busca` é o texto digitado; `buscaAtiva` é aplicada 200 ms depois da última tecla.
   const [busca, setBusca] = useState("");
@@ -101,7 +102,12 @@ function App() {
       invoke<PlaylistResumo[]>("playlists_list")
         .then(setPlaylists)
         .catch((e) => setErro(String(e)));
+    const carregarCurtidas = () =>
+      invoke<number[]>("liked_ids")
+        .then((ids) => setCurtidas(new Set(ids)))
+        .catch((e) => setErro(String(e)));
     carregarPlaylists();
+    carregarCurtidas();
     const ouvintes = [
       listen<EstadoPlayer>("player-estado", (e) => {
         setEstado(e.payload);
@@ -110,6 +116,7 @@ function App() {
       listen("fila-mudou", carregarFila),
       listen("playlists-mudou", () => {
         carregarPlaylists();
+        carregarCurtidas();
         setVersaoPlaylists((v) => v + 1);
       }),
       listen<string>("player-erro", (e) => mostrarErro(e.payload)),
@@ -150,6 +157,8 @@ function App() {
       invoke("set_volume", { volume: v });
     },
     onErro: mostrarErro,
+    curtida: idAtual !== null && curtidas.has(idAtual),
+    onCurtir: () => idAtual !== null && curtir(idAtual),
   };
 
   async function tocar(id: number) {
@@ -164,6 +173,10 @@ function App() {
   // Logo após criar, a playlist pode ainda não ter chegado na lista: a área fica vazia por um instante.
   // Excluir só acontece pela própria tela da playlist, que volta para a biblioteca.
   const playlistAtual = vista.tipo === "playlist" ? playlists.find((p) => p.id === vista.id) : undefined;
+
+  function curtir(mediaId: number) {
+    invoke("toggle_like", { mediaId }).catch((e) => setErro(String(e)));
+  }
 
   function adicionarPlaylist(playlistId: number, mediaId: number) {
     invoke("playlist_add", { id: playlistId, mediaIds: [mediaId] }).catch((e) => setErro(String(e)));
@@ -274,6 +287,8 @@ function App() {
               playlists={playlists}
               onAdicionarPlaylist={adicionarPlaylist}
               onNovaPlaylistCom={novaPlaylistCom}
+              curtidas={curtidas}
+              onCurtir={curtir}
               visivel={tela === "biblioteca" && vista.tipo === "biblioteca"}
             />
           )}

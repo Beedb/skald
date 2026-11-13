@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { ask } from "@tauri-apps/plugin-dialog";
+import { ask, open, save } from "@tauri-apps/plugin-dialog";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { formatarDuracao, type MediaRow } from "./Biblioteca";
 import { Capa } from "./PlayerBar";
@@ -32,6 +32,8 @@ export default function PlaylistView({ playlist, versao, tocandoId, onExcluida, 
   const [capa, setCapa] = useState<string | null>(null);
   const [renomeando, setRenomeando] = useState(false);
   const [nome, setNome] = useState(playlist.name);
+  const [aviso, setAviso] = useState<string | null>(null);
+  const fixa = playlist.kind === "curtidas";
   const finalizado = useRef(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -45,23 +47,26 @@ export default function PlaylistView({ playlist, versao, tocandoId, onExcluida, 
     };
   }, [playlist.id, ordem, versao]);
 
-  // Capa automática: a da primeira música da ordem personalizada.
+  // Capa escolhida pelo usuário; sem ela, a da primeira música da ordem personalizada.
   useEffect(() => {
-    const id = playlist.primeira_media_id;
-    if (id === null) return setCapa(null);
     let valido = true;
-    invoke<{ capa: string | null } | null>("get_track_details", { id })
-      .then((d) => valido && setCapa(d?.capa ?? null))
-      .catch(() => valido && setCapa(null));
+    const id = playlist.primeira_media_id;
+    const pedido = playlist.capa_escolhida
+      ? invoke<string | null>("playlist_cover", { id: playlist.id })
+      : id === null
+        ? Promise.resolve(null)
+        : invoke<{ capa: string | null } | null>("get_track_details", { id }).then((d) => d?.capa ?? null);
+    pedido.then((c) => valido && setCapa(c)).catch(() => valido && setCapa(null));
     return () => {
       valido = false;
     };
-  }, [playlist.primeira_media_id]);
+  }, [playlist.id, playlist.primeira_media_id, playlist.capa_escolhida, versao]);
 
   // Trocar de playlist: volta ao topo e à ordem personalizada.
   useEffect(() => {
     setOrdem("personalizada");
     setRenomeando(false);
+    setAviso(null);
     if (scrollRef.current) scrollRef.current.scrollTop = 0;
   }, [playlist.id]);
 
@@ -99,6 +104,31 @@ export default function PlaylistView({ playlist, versao, tocandoId, onExcluida, 
     onExcluida();
   }
 
+  async function escolherCapa() {
+    const arquivo = await open({
+      title: "Escolher capa da playlist",
+      multiple: false,
+      directory: false,
+      filters: [{ name: "Imagens", extensions: ["jpg", "jpeg", "png", "webp"] }],
+    });
+    if (typeof arquivo === "string") acao("playlist_set_cover", { id: playlist.id, origem: arquivo });
+  }
+
+  async function exportar() {
+    const destino = await save({
+      title: "Exportar playlist em M3U",
+      defaultPath: `${playlist.name.replace(/[/\\]/g, "-")}.m3u`,
+      filters: [{ name: "Playlist M3U", extensions: ["m3u", "m3u8"] }],
+    });
+    if (!destino) return;
+    try {
+      const n = await invoke<number>("playlist_export_m3u", { id: playlist.id, destino });
+      setAviso(`${n} ${n === 1 ? "música exportada" : "músicas exportadas"} para ${destino}`);
+    } catch (e) {
+      onErro(String(e));
+    }
+  }
+
   const tocar = (indice: number) => acao("play_playlist", { id: playlist.id, ordem, indice });
   const personalizada = ordem === "personalizada";
 
@@ -107,7 +137,7 @@ export default function PlaylistView({ playlist, versao, tocandoId, onExcluida, 
       <header className="pl-cabecalho">
         <Capa src={capa} className="capa-playlist" />
         <div className="pl-titulos">
-          <span className="pl-tipo">Playlist</span>
+          <span className="pl-tipo">{fixa ? "Playlist fixa" : "Playlist"}</span>
           {renomeando ? (
             <input
               className="pl-renomear"
@@ -127,7 +157,7 @@ export default function PlaylistView({ playlist, versao, tocandoId, onExcluida, 
               }}
             />
           ) : (
-            <h2 onDoubleClick={abrirRenomear} title="Dois cliques para renomear">
+            <h2 onDoubleClick={fixa ? undefined : abrirRenomear} title={fixa ? undefined : "Dois cliques para renomear"}>
               {playlist.name}
             </h2>
           )}
@@ -139,8 +169,15 @@ export default function PlaylistView({ playlist, versao, tocandoId, onExcluida, 
             <button onClick={() => tocar(0)} disabled={itens.length === 0}>
               ▶ Tocar
             </button>
-            <button onClick={abrirRenomear}>Renomear</button>
-            <button onClick={excluir}>Excluir</button>
+            {!fixa && <button onClick={abrirRenomear}>Renomear</button>}
+            <button onClick={escolherCapa}>Escolher capa</button>
+            {playlist.capa_escolhida && (
+              <button onClick={() => acao("playlist_clear_cover", { id: playlist.id })}>Usar capa automática</button>
+            )}
+            <button onClick={exportar} disabled={itens.length === 0}>
+              Exportar M3U
+            </button>
+            {!fixa && <button onClick={excluir}>Excluir</button>}
             <label>
               Ordem:{" "}
               <select value={ordem} onChange={(e) => setOrdem(e.target.value as Ordem)}>
@@ -150,12 +187,15 @@ export default function PlaylistView({ playlist, versao, tocandoId, onExcluida, 
               </select>
             </label>
           </div>
+          {aviso && <span className="pl-aviso">{aviso}</span>}
         </div>
       </header>
 
       {itens.length === 0 ? (
         <p className="vazio">
-          Playlist vazia. Na biblioteca, clique com o botão direito numa música e escolha “Adicionar à playlist”.
+          {fixa
+            ? "Nenhuma música curtida ainda. Clique no ♡ de uma música para curtir."
+            : "Playlist vazia. Na biblioteca, clique com o botão direito numa música e escolha “Adicionar à playlist”."}
         </p>
       ) : (
         <>

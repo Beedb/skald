@@ -51,6 +51,10 @@ const MIGRATIONS: &[&str] = &[
     );
     CREATE INDEX idx_playlist_item_ordem ON playlist_item(playlist_id, position);
     CREATE INDEX idx_playlist_item_media ON playlist_item(media_id);",
+    // v4: playlist fixa "Curtidas" (favoritos), que não pode ser renomeada nem excluída.
+    "ALTER TABLE playlist ADD COLUMN kind TEXT NOT NULL DEFAULT 'user' CHECK (kind IN ('user', 'curtidas'));
+    CREATE UNIQUE INDEX idx_playlist_curtidas ON playlist(kind) WHERE kind = 'curtidas';
+    INSERT INTO playlist (name, kind) VALUES ('Curtidas', 'curtidas');",
 ];
 
 pub fn open(path: &Path) -> rusqlite::Result<Connection> {

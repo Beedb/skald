@@ -114,6 +114,20 @@ fn capa_da_pasta(musica: &Path) -> Option<String> {
     None
 }
 
+/// Imagem (jpg, png, webp) como data URL, se tiver extensão aceita e não for grande demais.
+pub fn imagem_data_url(caminho: &Path) -> Option<String> {
+    let mime = mime_imagem(caminho)?;
+    data_url(mime, &std::fs::read(caminho).ok()?)
+}
+
+/// Tipo MIME pela extensão, só para os formatos de imagem aceitos.
+pub fn mime_imagem(caminho: &Path) -> Option<&'static str> {
+    let ext = caminho.extension()?.to_string_lossy().to_ascii_lowercase();
+    EXTENSOES_IMAGEM.iter().find(|(e, _)| *e == ext).map(|(_, m)| *m)
+}
+
+pub const CAPA_MAX: usize = CAPA_MAX_BYTES;
+
 #[cfg(test)]
 mod testes {
     use super::*;

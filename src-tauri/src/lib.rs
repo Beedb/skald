@@ -156,7 +156,98 @@ fn playlist_rename(app: AppHandle, id: i64, name: String) -> Result<(), String> 
 
 #[tauri::command]
 fn playlist_delete(app: AppHandle, id: i64) -> Result<(), String> {
-    alterar_playlists(&app, |conn| playlists::excluir(conn, id))
+    let capa = alterar_playlists(&app, |conn| {
+        let capa = playlists::capa(conn, id)?;
+        playlists::excluir(conn, id)?;
+        Ok(capa)
+    })?;
+    apagar_capa_copiada(&app, capa.as_deref());
+    Ok(())
+}
+
+/// Pasta onde o Skáld guarda cópias das capas escolhidas para playlists.
+fn pasta_capas(app: &AppHandle) -> Result<std::path::PathBuf, String> {
+    Ok(app.path().app_data_dir().map_err(|e| e.to_string())?.join("capas"))
+}
+
+/// Apaga uma capa copiada pelo próprio Skáld. Nunca toca em arquivos fora da pasta de capas.
+fn apagar_capa_copiada(app: &AppHandle, caminho: Option<&str>) {
+    let (Some(caminho), Ok(pasta)) = (caminho, pasta_capas(app)) else { return };
+    let caminho = std::path::Path::new(caminho);
+    if caminho.parent() == Some(pasta.as_path()) {
+        let _ = std::fs::remove_file(caminho);
+    }
+}
+
+#[tauri::command]
+fn toggle_like(app: AppHandle, media_id: i64) -> Result<bool, String> {
+    alterar_playlists(&app, |conn| playlists::alternar_curtida(conn, media_id))
+}
+
+#[tauri::command]
+fn liked_ids(db: State<db::Db>) -> Result<Vec<i64>, String> {
+    let conn = db.0.lock().map_err(erro_db)?;
+    playlists::ids_curtidos(&conn)
+}
+
+/// Copia a imagem escolhida para a pasta de capas do Skáld (o original não é alterado).
+#[tauri::command]
+fn playlist_set_cover(app: AppHandle, id: i64, origem: String) -> Result<(), String> {
+    let origem = std::path::Path::new(&origem);
+    let ext = details::mime_imagem(origem)
+        .and(origem.extension())
+        .ok_or("Escolha uma imagem JPG, PNG ou WEBP.")?
+        .to_string_lossy()
+        .to_ascii_lowercase();
+    let tamanho = std::fs::metadata(origem).map_err(|_| "Imagem não encontrada.")?.len();
+    if tamanho as usize > details::CAPA_MAX {
+        return Err("A imagem é grande demais (máximo de 8 MB).".into());
+    }
+    let pasta = pasta_capas(&app)?;
+    std::fs::create_dir_all(&pasta).map_err(|e| e.to_string())?;
+    let agora = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_millis());
+    let destino = pasta.join(format!("playlist-{id}-{agora}.{ext}"));
+    std::fs::copy(origem, &destino).map_err(|e| format!("Não foi possível copiar a imagem: {e}"))?;
+    let destino_txt = destino.to_string_lossy().into_owned();
+    match alterar_playlists(&app, |conn| playlists::definir_capa(conn, id, Some(&destino_txt))) {
+        Ok(anterior) => {
+            apagar_capa_copiada(&app, anterior.as_deref());
+            Ok(())
+        }
+        Err(e) => {
+            let _ = std::fs::remove_file(&destino);
+            Err(e)
+        }
+    }
+}
+
+/// Volta à capa automática (a da primeira música).
+#[tauri::command]
+fn playlist_clear_cover(app: AppHandle, id: i64) -> Result<(), String> {
+    let anterior = alterar_playlists(&app, |conn| playlists::definir_capa(conn, id, None))?;
+    apagar_capa_copiada(&app, anterior.as_deref());
+    Ok(())
+}
+
+/// Capa escolhida como data URL (`None` se a playlist usa a capa automática).
+#[tauri::command]
+fn playlist_cover(db: State<db::Db>, id: i64) -> Result<Option<String>, String> {
+    let caminho = {
+        let conn = db.0.lock().map_err(erro_db)?;
+        playlists::capa(&conn, id)?
+    };
+    Ok(caminho.and_then(|c| details::imagem_data_url(std::path::Path::new(&c))))
+}
+
+/// Exporta em M3U (ordem personalizada, caminhos absolutos). Devolve quantas músicas foram gravadas.
+#[tauri::command]
+fn playlist_export_m3u(db: State<db::Db>, id: i64, destino: String) -> Result<usize, String> {
+    let (texto, n) = {
+        let conn = db.0.lock().map_err(erro_db)?;
+        playlists::m3u(&conn, id)?
+    };
+    std::fs::write(&destino, texto).map_err(|e| format!("Não foi possível salvar o arquivo: {e}"))?;
+    Ok(n)
 }
 
 #[tauri::command]
@@ -331,6 +422,12 @@ pub fn run() {
             playlist_remove_item,
             playlist_move_item,
             play_playlist,
+            toggle_like,
+            liked_ids,
+            playlist_set_cover,
+            playlist_clear_cover,
+            playlist_cover,
+            playlist_export_m3u,
             toggle_pause,
             set_volume,
             seek

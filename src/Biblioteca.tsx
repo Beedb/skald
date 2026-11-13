@@ -36,11 +36,28 @@ type Props = {
   playlists: PlaylistResumo[];
   onAdicionarPlaylist: (playlistId: number, mediaId: number) => void;
   onNovaPlaylistCom: (mediaId: number) => void;
+  curtidas: Set<number>;
+  onCurtir: (mediaId: number) => void;
   /** Falso enquanto o player completo ocupa a tela; a lista fica montada e guarda a rolagem. */
   visivel: boolean;
 };
 
 type Menu = { x: number; y: number; id: number };
+
+export function BotaoCurtir({ curtida, onClick }: { curtida: boolean; onClick: () => void }) {
+  return (
+    <button
+      className={"curtir" + (curtida ? " curtida" : "")}
+      onClick={onClick}
+      onDoubleClick={(e) => e.stopPropagation()}
+      aria-pressed={curtida}
+      aria-label={curtida ? "Descurtir" : "Curtir"}
+      title={curtida ? "Remover de Curtidas" : "Adicionar a Curtidas"}
+    >
+      {curtida ? "♥" : "♡"}
+    </button>
+  );
+}
 
 export default function Biblioteca({
   total,
@@ -52,6 +69,8 @@ export default function Biblioteca({
   playlists,
   onAdicionarPlaylist,
   onNovaPlaylistCom,
+  curtidas,
+  onCurtir,
   visivel,
 }: Props) {
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -139,6 +158,7 @@ export default function Biblioteca({
   return (
     <div className="biblioteca">
       <div className="linha cabecalho" role="row">
+        <span />
         <span>Título</span>
         <span>Artista</span>
         <span>Álbum</span>
@@ -175,6 +195,7 @@ export default function Biblioteca({
               >
                 {m ? (
                   <>
+                    <BotaoCurtir curtida={curtidas.has(m.id)} onClick={() => onCurtir(m.id)} />
                     <span>{m.title ?? "Sem título"}</span>
                     <span>{m.artist ?? "Artista desconhecido"}</span>
                     <span>{m.album ?? ""}</span>
@@ -203,7 +224,7 @@ export default function Biblioteca({
           <li role="presentation" className="titulo-menu">
             Adicionar à playlist
           </li>
-          {playlists.map((p) => (
+          {playlists.filter((p) => p.kind === "user").map((p) => (
             <li key={p.id} role="menuitem" className="recuado" onClick={() => onAdicionarPlaylist(p.id, menu.id)}>
               {p.name}
             </li>

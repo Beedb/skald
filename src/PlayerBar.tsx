@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import type { MediaRow } from "./Biblioteca";
-import { formatarDuracao } from "./Biblioteca";
+import { BotaoCurtir, formatarDuracao } from "./Biblioteca";
 
 export type EstadoPlayer = {
   id: number | null;
@@ -19,6 +19,8 @@ export type Reproducao = {
   volume: number;
   onVolume: (v: number) => void;
   onErro: (mensagem: string) => void;
+  curtida: boolean;
+  onCurtir: () => void;
 };
 
 const ativo = (r: Reproducao) => r.estado !== null && r.estado.estado !== "parado" && r.musica !== null;
@@ -129,6 +131,7 @@ export default function PlayerBar({ r, filaAberta, onAlternarFila, onAbrirPlayer
       ) : (
         <span className="dica">Dê dois cliques numa música para tocar</span>
       )}
+      {ativo(r) && m ? <BotaoCurtir curtida={r.curtida} onClick={r.onCurtir} /> : <span />}
 
       <Progresso r={r} />
       <Volume r={r} />

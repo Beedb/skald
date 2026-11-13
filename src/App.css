@@ -513,7 +513,7 @@ body {
 
 .linha {
   display: grid;
-  grid-template-columns: 3fr 2fr 2fr 5rem;
+  grid-template-columns: 1.75rem 3fr 2fr 2fr 5rem;
   gap: 1rem;
   align-items: center;
   padding: 0 0.5rem;
@@ -560,7 +560,7 @@ body {
 
 .player {
   display: grid;
-  grid-template-columns: auto minmax(10rem, 1fr) minmax(12rem, 2fr) auto auto;
+  grid-template-columns: auto minmax(10rem, 1fr) auto minmax(12rem, 2fr) auto auto;
   gap: 1rem;
   align-items: center;
   padding: 0.75rem 0;
@@ -634,4 +634,37 @@ body {
 
 .erro {
   color: #c62828;
+}
+
+.curtir {
+  padding: 0;
+  width: 1.75rem;
+  height: 1.75rem;
+  font-size: 1.1rem;
+  line-height: 1;
+  background: none;
+  border: none;
+  color: inherit;
+  opacity: 0.45;
+  cursor: pointer;
+}
+
+.curtir:hover {
+  opacity: 0.9;
+}
+
+.curtir.curtida {
+  color: #e2457a;
+  opacity: 1;
+}
+
+.pc-titulos h2 .curtir {
+  margin-left: 0.5rem;
+  vertical-align: middle;
+}
+
+.pl-aviso {
+  font-size: 0.85rem;
+  opacity: 0.75;
+  overflow-wrap: anywhere;
 }
