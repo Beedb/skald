@@ -240,11 +240,26 @@ function App() {
   async function importarPasta() {
     const pasta = await open({ directory: true, title: "Escolha a pasta de músicas" });
     if (typeof pasta !== "string") return;
+    await importar("import_folder", { path: pasta });
+  }
+
+  /** Arquivos soltos: entram na biblioteca sem monitorar a pasta deles. */
+  async function importarArquivos() {
+    const arquivos = await open({
+      multiple: true,
+      title: "Escolha os arquivos de música",
+      filters: [{ name: "Áudio", extensions: ["mp3", "flac", "ogg", "opus", "oga", "m4a", "aac", "wav"] }],
+    });
+    if (!arquivos || arquivos.length === 0) return;
+    await importar("import_files", { paths: arquivos });
+  }
+
+  async function importar(comando: string, args: Record<string, unknown>) {
     setImportando(true);
     setResumo(null);
     setErro(null);
     try {
-      setResumo(await invoke<ImportResumo>("import_folder", { path: pasta }));
+      setResumo(await invoke<ImportResumo>(comando, args));
       await carregarStatus();
       setVersao((v) => v + 1);
     } catch (e) {
@@ -285,6 +300,9 @@ function App() {
         />
         <button onClick={importarPasta} disabled={importando}>
           {importando ? "Importando…" : "Importar pasta"}
+        </button>
+        <button onClick={importarArquivos} disabled={importando} title="Adiciona arquivos soltos, sem monitorar a pasta deles">
+          Importar arquivos
         </button>
         <Pastas versao={versao} onErro={setErro} />
         <Duplicados versao={versao} onErro={setErro} />

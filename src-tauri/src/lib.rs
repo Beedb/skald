@@ -65,6 +65,29 @@ async fn import_folder(app: tauri::AppHandle, path: String) -> Result<import::Im
     .map_err(|e| e.to_string())?
 }
 
+/// Importa arquivos soltos escolhidos pelo usuário (não viram pasta monitorada). Arquivos
+/// excluídos antes da biblioteca voltam, porque a importação foi pedida explicitamente.
+#[tauri::command]
+async fn import_files(app: tauri::AppHandle, paths: Vec<String>) -> Result<import::ImportResumo, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let arquivos: Vec<std::path::PathBuf> = paths.iter().map(std::path::PathBuf::from).collect();
+        {
+            let db = app.state::<db::Db>();
+            let conn = db.0.lock().map_err(erro_db)?;
+            import::readmitir(&conn, &arquivos).map_err(|e| e.to_string())?;
+        }
+        let mut resumo = import::importar_arquivos(&app.state::<db::Db>().0, &arquivos)?;
+        resumo.duplicados += import::preencher_hashes(&app.state::<db::Db>().0)?;
+        reconciliar_movidos(&app, &mut resumo)?;
+        if resumo.adicionados > 0 {
+            incluir_novas(&app, Origem::Biblioteca)?;
+        }
+        Ok(resumo)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
 const EVENTO_BIBLIOTECA: &str = "biblioteca-mudou";
 
 /// Chamado pelo monitoramento de pastas: avisa a interface e põe as novas no contexto da fila.
@@ -902,6 +925,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             db_status,
             import_folder,
+            import_files,
             duplicates_list,
             remove_from_library,
             duplicate_ignore,

@@ -172,7 +172,17 @@ pub fn importar(conn_db: &std::sync::Mutex<Connection>, raiz: &Path) -> Result<I
     Ok(resumo)
 }
 
-/// Importa arquivos soltos (avisados pelo monitoramento).
+/// Importação pedida pelo usuário: os caminhos voltam a ser aceitos mesmo se tinham sido
+/// excluídos da biblioteca antes.
+pub fn readmitir(conn: &Connection, arquivos: &[std::path::PathBuf]) -> rusqlite::Result<()> {
+    let mut stmt = conn.prepare_cached("DELETE FROM excluded_path WHERE path = ?1")?;
+    for p in arquivos {
+        stmt.execute([p.to_string_lossy()])?;
+    }
+    Ok(())
+}
+
+/// Importa arquivos soltos (escolhidos pelo usuário ou avisados pelo monitoramento).
 pub fn importar_arquivos(conn_db: &std::sync::Mutex<Connection>, arquivos: &[std::path::PathBuf]) -> Result<ImportResumo, String> {
     let mut resumo = ImportResumo::default();
     let mut faixas = Vec::new();
@@ -456,6 +466,10 @@ mod testes {
         let paths: Vec<String> = conn.prepare("SELECT path FROM media").unwrap()
             .query_map([], |r| r.get(0)).unwrap().map(Result::unwrap).collect();
         assert_eq!(paths, ["/dentro.mp3"]);
+        readmitir(&conn, &["/fora.mp3".into()]).unwrap();
+        let mut resumo = ImportResumo::default();
+        gravar(&mut conn, &[faixa("/fora.mp3")], &mut resumo).unwrap();
+        assert_eq!(resumo.adicionados, 1);
     }
 
     #[test]
