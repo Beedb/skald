@@ -2479,9 +2479,49 @@ input[type="range"].trilha:disabled {
   background: linear-gradient(180deg, color-mix(in srgb, var(--fundo) 40%, transparent), var(--fundo));
 }
 
-.pc-voltar {
-  align-self: flex-start;
+.pc-barra {
+  display: flex;
+  justify-content: space-between;
+}
+
+.pc-barra .icone-botao {
   color: var(--texto);
+}
+
+.pc-lateral[hidden] {
+  display: none;
+}
+
+/* Sem o painel: capa grande no centro, título e controles embaixo dela. */
+.sem-painel .pc-principal {
+  align-items: center;
+  gap: 2rem;
+}
+
+.sem-painel .pc-topo {
+  flex-direction: column;
+  align-items: center;
+  gap: 1.5rem;
+  text-align: center;
+}
+
+.sem-painel .capa-grande {
+  width: min(26rem, 46vh);
+  height: min(26rem, 46vh);
+}
+
+.sem-painel .pc-titulos {
+  min-width: 0;
+  padding-bottom: 0;
+}
+
+.sem-painel .pc-acoes {
+  justify-content: center;
+  margin-top: 0.6rem;
+}
+
+.sem-painel .pc-base {
+  width: min(44rem, 100%);
 }
 
 .pc-corpo {

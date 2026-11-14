@@ -1,7 +1,7 @@
 import Fila, { type VisaoFila } from "./Fila";
 import { Capa, Controles, Progresso, Volume, type Reproducao } from "./PlayerBar";
 import { useState } from "react";
-import { ArrowLeft, Ellipsis } from "lucide-react";
+import { ArrowLeft, Ellipsis, PanelRightClose, PanelRightOpen } from "lucide-react";
 import { BotaoCurtir } from "./Biblioteca";
 import Letra from "./Letra";
 import Relacionados from "./Relacionados";
@@ -68,17 +68,47 @@ const ABAS: [Aba, string][] = [
   ["sobre", "Sobre"],
 ];
 
+const CHAVE_PAINEL = "skald-player-painel-oculto";
+
 export default function PlayerCompleto({ r, fila, detalhes, onVoltar }: Props) {
   const m = r.musica;
   const [aba, setAba] = useState<Aba>("fila");
+  // Painel de detalhes (fila, letra…) escondido: capa e controles vão para o centro. Lembrado nesta tela.
+  const [oculto, setOculto] = useState(() => {
+    try {
+      return localStorage.getItem(CHAVE_PAINEL) === "1";
+    } catch {
+      return false;
+    }
+  });
+  function alternarPainel() {
+    const novo = !oculto;
+    setOculto(novo);
+    try {
+      localStorage.setItem(CHAVE_PAINEL, novo ? "1" : "0");
+    } catch {
+      /* sem armazenamento local: vale só nesta sessão */
+    }
+  }
   const abrirMenu = useMenuMusica();
   const info = detalhes && detalhes.id === m?.id ? informacoes(detalhes) : [];
   return (
-    <section className="player-completo" aria-label="Player completo">
+    <section className={"player-completo" + (oculto ? " sem-painel" : "")} aria-label="Player completo">
       {r.capa && <div className="pc-fundo" style={{ backgroundImage: `url("${r.capa}")` }} aria-hidden="true" />}
-      <button className="pc-voltar icone-botao" onClick={onVoltar} aria-label="Voltar" title="Voltar">
-        <ArrowLeft size={22} />
-      </button>
+      <div className="pc-barra">
+        <button className="icone-botao" onClick={onVoltar} aria-label="Voltar" title="Voltar">
+          <ArrowLeft size={22} />
+        </button>
+        <button
+          className="icone-botao"
+          onClick={alternarPainel}
+          aria-pressed={!oculto}
+          aria-label={oculto ? "Mostrar fila e detalhes" : "Ocultar fila e detalhes"}
+          title={oculto ? "Mostrar fila e detalhes" : "Ocultar fila e detalhes"}
+        >
+          {oculto ? <PanelRightOpen size={22} /> : <PanelRightClose size={22} />}
+        </button>
+      </div>
 
       <div className="pc-corpo">
         <div className="pc-principal">
@@ -113,7 +143,7 @@ export default function PlayerCompleto({ r, fila, detalhes, onVoltar }: Props) {
           </div>
         </div>
 
-        <div className="pc-lateral">
+        <div className="pc-lateral" hidden={oculto}>
           <div className="abas" role="tablist">
             {ABAS.map(([id, rotulo]) => (
               <button
