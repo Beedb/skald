@@ -473,6 +473,8 @@ function App() {
                 onPlaylist={(id) => setVista({ tipo: "playlist", id })}
                 onAlbum={(chave) => setVista({ tipo: "album", chave, de: vista })}
                 onBiblioteca={() => setVista({ tipo: "biblioteca" })}
+                onAlbuns={() => setVista({ tipo: "albuns" })}
+                onHistorico={() => setVista({ tipo: "historico" })}
                 onTocarMusica={(id) => invoke("play_media", { id, busca: "" }).catch((e) => mostrarErro(String(e)))}
                 onErro={setErro}
               />

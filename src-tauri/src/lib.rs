@@ -12,6 +12,7 @@ mod import;
 mod letras;
 mod library;
 mod miniaturas;
+mod mixes;
 mod player;
 mod playlists;
 mod mpris;
@@ -677,6 +678,7 @@ fn play_playlist(app: AppHandle, fila: State<FilaState>, id: i64, ordem: playlis
 struct Inicio {
     albuns_recentes: Vec<colecao::Album>,
     tocadas_recentes: Vec<library::MediaRow>,
+    mixes: Vec<mixes::Mix>,
 }
 
 /// Prévia da biblioteca para a tela inicial (seção 4.2). As playlists recentes vêm de
@@ -687,7 +689,19 @@ fn home_data(db: State<db::Db>) -> Result<Inicio, String> {
     Ok(Inicio {
         albuns_recentes: colecao::albuns_recentes(&conn, 12).map_err(|e| e.to_string())?,
         tocadas_recentes: colecao::tocadas_recentes(&conn, 8).map_err(|e| e.to_string())?,
+        mixes: mixes::listar(&conn).map_err(|e| e.to_string())?,
     })
+}
+
+/// Toca um mix da tela inicial (geral, gênero ou artista), sorteado na hora.
+#[tauri::command]
+fn play_mix(app: AppHandle, fila: State<FilaState>, tipo: mixes::Tipo, valor: Option<String>) -> Result<(), String> {
+    let ids = {
+        let db = app.state::<db::Db>();
+        let conn = db.0.lock().map_err(erro_db)?;
+        mixes::ids(&conn, tipo, valor.as_deref()).map_err(|e| e.to_string())?
+    };
+    tocar_lista(&app, &fila, ids, 0)
 }
 
 #[tauri::command]
@@ -1634,6 +1648,7 @@ pub fn run() {
             albums_list,
             album_tracks,
             play_album,
+            play_mix,
             play_artist,
             cover_thumb,
             toggle_like,

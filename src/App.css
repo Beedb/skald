@@ -1453,13 +1453,7 @@ button.primario {
 
 /* ---------- Tela inicial ---------- */
 
-.inicio h2 {
-  margin: 0;
-}
 
-.inicio h3 {
-  margin: 1.4rem 0 0.6rem;
-}
 
 .faixa-cartoes {
   display: flex;
@@ -1518,8 +1512,14 @@ button.primario {
   top: calc(160px - 3.4rem);
   width: 2.4rem;
   height: 2.4rem;
+  display: grid;
+  place-items: center;
   border-radius: 50%;
   padding: 0;
+  color: var(--acento-txt);
+  background: var(--acento);
+  border: none;
+  box-shadow: var(--sombra);
   opacity: 0;
   transition: opacity 0.15s;
 }
@@ -1529,53 +1529,12 @@ button.primario {
   opacity: 1;
 }
 
-.tocadas-recentes {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr));
-  gap: 0.4rem;
-}
 
-.tocadas-recentes button {
-  width: 100%;
-  display: grid;
-  grid-template-columns: 44px 1fr;
-  grid-template-rows: auto auto;
-  column-gap: 0.6rem;
-  align-items: center;
-  padding: 0.35rem;
-  text-align: left;
-  background: var(--card);
-  border: none;
-  border-radius: var(--raio-p);
-  cursor: pointer;
-}
 
-.tocadas-recentes button:hover {
-  background: var(--card-2);
-}
 
-.tocadas-recentes button.ausente {
-  opacity: 0.5;
-}
 
-.tocadas-recentes .capa-colecao {
-  grid-row: span 2;
-  width: 44px;
-}
 
-.tocadas-recentes .nome,
-.tocadas-recentes .detalhe {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
 
-.tocadas-recentes .nome {
-  font-weight: 600;
-}
 
 /* Janela de informações da música (enriquecimento de metadados). */
 .fundo-modal {
@@ -2421,4 +2380,167 @@ input[type="range"].trilha:disabled {
 .icone-botao.ativo,
 .icone-botao.ligado {
   color: var(--acento);
+}
+
+/* ---------- Início ---------- */
+
+.inicio-topo h1 {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0;
+  font-size: 2rem;
+}
+
+.estrela {
+  color: var(--acento);
+  flex-shrink: 0;
+}
+
+.secao-inicio {
+  margin-top: 1.6rem;
+}
+
+.secao-topo {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.7rem;
+}
+
+.secao-topo h3 {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  margin: 0;
+  font-family: var(--fonte-titulo);
+  font-size: 1.2rem;
+  font-weight: 600;
+}
+
+.ver-tudo {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.2rem 0.4rem;
+  font-size: 0.85rem;
+  color: var(--acento);
+  background: none;
+  border: none;
+}
+
+:where(.ver-tudo):hover {
+  background: none;
+  text-decoration: underline;
+}
+
+.faixa-mixes {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(15rem, 1fr);
+  gap: 0.9rem;
+  overflow-x: auto;
+  padding-bottom: 0.4rem;
+}
+
+.cartao-mix {
+  position: relative;
+  aspect-ratio: 16 / 10;
+  padding: 0;
+  overflow: hidden;
+  text-align: left;
+  border: 1px solid var(--linha);
+  border-radius: var(--raio);
+  background: var(--card);
+  color: var(--forte);
+  cursor: pointer;
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+:where(.cartao-mix):hover {
+  background: var(--card);
+  border-color: var(--borda);
+  box-shadow: var(--sombra);
+}
+
+.mix-arte {
+  position: absolute;
+  inset: 0;
+  display: grid;
+}
+
+.mix-arte.mosaico {
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: 1fr 1fr;
+}
+
+.mix-arte .capa-colecao {
+  width: 100%;
+  height: 100%;
+  aspect-ratio: auto;
+  border-radius: 0;
+  font-size: 3rem;
+}
+
+/* Escurece embaixo para o texto e tinge com o acento. */
+.cartao-mix::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(180deg, transparent 30%, color-mix(in srgb, var(--fundo) 92%, transparent) 100%),
+    color-mix(in srgb, var(--acento) 16%, transparent);
+  mix-blend-mode: normal;
+}
+
+.mix-texto {
+  position: absolute;
+  left: 0.9rem;
+  right: 3.6rem;
+  bottom: 0.75rem;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  line-height: 1.3;
+}
+
+.mix-texto strong,
+.mix-texto span {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.mix-texto strong {
+  font-family: var(--fonte-titulo);
+  font-size: 1.05rem;
+}
+
+.mix-texto span {
+  font-size: 0.8rem;
+  color: var(--texto);
+  opacity: 0.85;
+}
+
+.mix-play {
+  position: absolute;
+  right: 0.8rem;
+  bottom: 0.8rem;
+  z-index: 1;
+  width: 2.3rem;
+  height: 2.3rem;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  color: var(--forte);
+  background: color-mix(in srgb, var(--fundo) 55%, transparent);
+  border: 2px solid var(--forte);
+  transition: background 0.15s ease;
+}
+
+.cartao-mix:hover .mix-play {
+  background: var(--acento);
+  border-color: var(--acento);
 }
