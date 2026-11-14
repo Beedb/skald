@@ -168,7 +168,7 @@
 
 /* ---------- temas com claro e escuro (gerados) ---------- */
 
-:root[data-tema="catppuccin-escuro"] {
+:root[data-tema="ametista-escuro"] {
     --fundo: #11111b;
     --card: #1e1e2e;
     --card-2: #313244;
@@ -200,7 +200,7 @@
     color-scheme: dark;
 }
 
-:root[data-tema="catppuccin-claro"] {
+:root[data-tema="ametista-claro"] {
     --fundo: #dce0e8;
     --card: #eff1f5;
     --card-2: #e6e9ef;
@@ -424,7 +424,7 @@
     color-scheme: light;
 }
 
-:root[data-tema="yotsuba-escuro"] {
+:root[data-tema="pessego-escuro"] {
     --fundo: #1a1412;
     --card: #221a17;
     --card-2: #2d2420;
@@ -456,7 +456,7 @@
     color-scheme: dark;
 }
 
-:root[data-tema="yotsuba-claro"] {
+:root[data-tema="pessego-claro"] {
     --fundo: #f3ebe7;
     --card: #ffffff;
     --card-2: #f8f1ee;
@@ -616,7 +616,7 @@
     color-scheme: light;
 }
 
-:root[data-tema="nord-escuro"] {
+:root[data-tema="fiorde-escuro"] {
     --fundo: #242933;
     --card: #2e3440;
     --card-2: #3b4252;
@@ -648,7 +648,7 @@
     color-scheme: dark;
 }
 
-:root[data-tema="nord-claro"] {
+:root[data-tema="fiorde-claro"] {
     --fundo: #d8dee9;
     --card: #eceff4;
     --card-2: #e5e9f0;

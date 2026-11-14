@@ -13,14 +13,14 @@ const UNICOS: Record<string, string> = {
 
 /** Famílias com variante clara e escura (`<id>-claro` / `<id>-escuro`). */
 const DUPLOS: Record<string, string> = {
-  catppuccin: "Catppuccin",
+  ametista: "Ametista",
   maca: "Maçã",
   lavanda: "Lavanda",
   yinyang: "Yin-yang",
-  yotsuba: "Yotsuba",
+  pessego: "Pêssego",
   mono: "Mono",
   aurora: "Aurora",
-  nord: "Nord",
+  fiorde: "Fiorde",
   rosa: "Rosa",
   rubi: "Rubi",
   oceano: "Oceano",
@@ -39,6 +39,13 @@ const DUPLOS: Record<string, string> = {
 
 export const TEMA_PADRAO = "carmesim";
 
+/** Nomes antigos de temas (trocados por nomes próprios); o salvo passa para o novo. */
+const RENOMEADOS: Record<string, string> = { catppuccin: "ametista", nord: "fiorde", yotsuba: "pessego" };
+
+export function temaAtual(tema: string): string {
+  return RENOMEADOS[tema] ?? tema;
+}
+
 export const TEMAS: { id: string; nome: string; duplo: boolean }[] = [
   ...Object.entries(UNICOS).map(([id, nome]) => ({ id, nome, duplo: false })),
   ...Object.entries(DUPLOS).map(([id, nome]) => ({ id, nome, duplo: true })),
@@ -52,6 +59,7 @@ const escuroNoSistema = () => window.matchMedia("(prefers-color-scheme: dark)").
 
 /** Valor final de `data-tema` para a família e o modo escolhidos. */
 export function resolverTema(tema: string, modo: ModoTema): string {
+  tema = temaAtual(tema);
   if (tema in UNICOS) return tema;
   if (!(tema in DUPLOS)) return TEMA_PADRAO;
   const escuro = modo === "escuro" || (modo === "sistema" && escuroNoSistema());

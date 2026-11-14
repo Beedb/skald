@@ -26,7 +26,7 @@ pub struct Configuracoes {
     /// ReplayGain: desligada, faixa (padrão) ou álbum.
     pub normalizacao: crate::ganho::Modo,
     pub equalizador: crate::eq::Preset,
-    /// Família de cores de docs/temas.css (ex.: "carmesim", "nord").
+    /// Família de cores de docs/temas.css (ex.: "carmesim", "fiorde").
     pub tema: String,
     /// "claro", "escuro" ou "sistema" (padrão).
     pub modo_tema: String,
@@ -63,6 +63,13 @@ pub fn carregar(conn: &Connection) -> rusqlite::Result<Configuracoes> {
         .and_then(|v| crate::eq::Preset::de_texto(&v))
         .unwrap_or_default();
     let tema = ler(conn, TEMA)?.unwrap_or_else(|| TEMA_PADRAO.into());
+    // Temas renomeados (nomes de outros projetos trocados por nomes próprios).
+    let tema = match tema.as_str() {
+        "catppuccin" => "ametista".into(),
+        "nord" => "fiorde".into(),
+        "yotsuba" => "pessego".into(),
+        _ => tema,
+    };
     let modo_tema = ler(conn, MODO_TEMA)?.unwrap_or_else(|| "sistema".into());
     let cores_dinamicas = ler(conn, CORES_DINAMICAS)?.is_none_or(|v| v == "1");
     let bandeja = ler(conn, BANDEJA)?.is_some_and(|v| v == "1");
@@ -212,9 +219,12 @@ mod testes {
         assert!(c.cores_dinamicas);
         definir_cores_dinamicas(&conn, false).unwrap();
         assert!(!carregar(&conn).unwrap().cores_dinamicas);
-        definir_aparencia(&conn, "nord", "claro").unwrap();
+        definir_aparencia(&conn, "fiorde", "claro").unwrap();
         let c = carregar(&conn).unwrap();
-        assert_eq!((c.tema.as_str(), c.modo_tema.as_str()), ("nord", "claro"));
+        assert_eq!((c.tema.as_str(), c.modo_tema.as_str()), ("fiorde", "claro"));
+        // Nome antigo salvo vira o novo.
+        definir_aparencia(&conn, "nord", "claro").unwrap();
+        assert_eq!(carregar(&conn).unwrap().tema, "fiorde");
         assert!(definir_aparencia(&conn, "x\" onload", "claro").is_err());
         assert!(definir_aparencia(&conn, "nord", "roxo").is_err());
     }
