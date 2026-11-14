@@ -11,6 +11,8 @@ type Config = {
   tema: string;
   modo_tema: ModoTema;
   cores_dinamicas: boolean;
+  bandeja: boolean;
+  notificar: boolean;
 };
 
 const PRESETS: [Preset, string][] = [
@@ -30,6 +32,9 @@ export default function Configuracoes({ onErro }: { onErro: (m: string) => void 
   const [tema, setTema] = useState("brasa");
   const [modo, setModo] = useState<ModoTema>("sistema");
   const [coresDinamicas, setCoresDinamicas] = useState(true);
+  const [bandeja, setBandeja] = useState(false);
+  const [notificar, setNotificar] = useState(true);
+  const [autostart, setAutostart] = useState(false);
 
   useEffect(() => {
     invoke<Config>("get_settings")
@@ -40,9 +45,35 @@ export default function Configuracoes({ onErro }: { onErro: (m: string) => void 
         setTema(c.tema);
         setModo(c.modo_tema);
         setCoresDinamicas(c.cores_dinamicas);
+        setBandeja(c.bandeja);
+        setNotificar(c.notificar);
       })
       .catch((e) => onErro(String(e)));
+    invoke<boolean>("autostart_get")
+      .then(setAutostart)
+      .catch(() => {});
   }, []);
+
+  function gravarBandeja(ativo: boolean) {
+    setBandeja(ativo);
+    invoke("set_tray", { ativo }).catch((e) => {
+      setBandeja(false);
+      onErro(String(e));
+    });
+  }
+
+  function gravarNotificar(ativo: boolean) {
+    setNotificar(ativo);
+    invoke("set_notifications", { ativo }).catch((e) => onErro(String(e)));
+  }
+
+  function gravarAutostart(ativo: boolean) {
+    setAutostart(ativo);
+    invoke("set_autostart", { ativo }).catch((e) => {
+      setAutostart(!ativo);
+      onErro(String(e));
+    });
+  }
 
   function gravarAparencia(novoTema: string, novoModo: ModoTema) {
     setTema(novoTema);
@@ -156,6 +187,25 @@ export default function Configuracoes({ onErro }: { onErro: (m: string) => void 
         Grave e agudo reforçam as pontas; bateria destaca o bumbo e a caixa; voz realça os médios; instrumental dá
         mais clareza e corpo. O volume é compensado para não distorcer. Vale na hora.
       </p>
+      <h3>Sistema</h3>
+      <label className="opcao">
+        <span>Fechar a janela envia para a bandeja</span>
+        <input type="checkbox" checked={bandeja} onChange={(e) => gravarBandeja(e.target.checked)} />
+      </label>
+      <p className="nota">
+        Mostra um ícone na bandeja com tocar/pausar, próxima, anterior e sair. Fechar a janela só a esconde e a música
+        continua. Desligado, fechar a janela encerra o Skáld.
+      </p>
+      <label className="opcao">
+        <span>Iniciar com o sistema</span>
+        <input type="checkbox" checked={autostart} onChange={(e) => gravarAutostart(e.target.checked)} />
+      </label>
+      <p className="nota">Abre o Skáld ao entrar na sessão. Com a bandeja ligada, ele começa escondido nela.</p>
+      <label className="opcao">
+        <span>Notificar ao trocar de música</span>
+        <input type="checkbox" checked={notificar} onChange={(e) => gravarNotificar(e.target.checked)} />
+      </label>
+      <p className="nota">Só aparece quando a janela do Skáld não está em primeiro plano.</p>
     </section>
   );
 }

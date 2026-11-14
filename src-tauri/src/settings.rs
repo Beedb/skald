@@ -9,6 +9,8 @@ const EQUALIZADOR: &str = "equalizador";
 const TEMA: &str = "tema";
 const MODO_TEMA: &str = "modo_tema";
 const CORES_DINAMICAS: &str = "cores_dinamicas";
+const BANDEJA: &str = "bandeja";
+const NOTIFICAR: &str = "notificar";
 /// Tema padrão do Skáld (docs/temas.css).
 const TEMA_PADRAO: &str = "brasa";
 /// Crossfade padrão: ligado, 5 s (desligado entre faixas do mesmo álbum).
@@ -27,6 +29,10 @@ pub struct Configuracoes {
     pub modo_tema: String,
     /// Acento e fundo do player tirados da capa atual (padrão: ligado).
     pub cores_dinamicas: bool,
+    /// Fechar a janela envia para a bandeja (padrão: desligado, fechar encerra).
+    pub bandeja: bool,
+    /// Notificação ao trocar de música com a janela fora de foco (padrão: ligada).
+    pub notificar: bool,
 }
 
 fn ler(conn: &Connection, chave: &str) -> rusqlite::Result<Option<String>> {
@@ -56,7 +62,17 @@ pub fn carregar(conn: &Connection) -> rusqlite::Result<Configuracoes> {
     let tema = ler(conn, TEMA)?.unwrap_or_else(|| TEMA_PADRAO.into());
     let modo_tema = ler(conn, MODO_TEMA)?.unwrap_or_else(|| "sistema".into());
     let cores_dinamicas = ler(conn, CORES_DINAMICAS)?.is_none_or(|v| v == "1");
-    Ok(Configuracoes { crossfade_ms, normalizacao, equalizador, tema, modo_tema, cores_dinamicas })
+    let bandeja = ler(conn, BANDEJA)?.is_some_and(|v| v == "1");
+    let notificar = ler(conn, NOTIFICAR)?.is_none_or(|v| v == "1");
+    Ok(Configuracoes { crossfade_ms, normalizacao, equalizador, tema, modo_tema, cores_dinamicas, bandeja, notificar })
+}
+
+pub fn definir_bandeja(conn: &Connection, ativo: bool) -> rusqlite::Result<()> {
+    gravar(conn, BANDEJA, if ativo { "1" } else { "0" })
+}
+
+pub fn definir_notificar(conn: &Connection, ativo: bool) -> rusqlite::Result<()> {
+    gravar(conn, NOTIFICAR, if ativo { "1" } else { "0" })
 }
 
 pub fn definir_cores_dinamicas(conn: &Connection, ativo: bool) -> rusqlite::Result<()> {
@@ -114,6 +130,17 @@ mod testes {
         assert_eq!(carregar(&conn).unwrap().normalizacao, Modo::Album);
         definir_normalizacao(&conn, Modo::Desligada).unwrap();
         assert_eq!(carregar(&conn).unwrap().normalizacao, Modo::Desligada);
+    }
+
+    #[test]
+    fn bandeja_e_notificacao() {
+        let conn = crate::db::open(std::path::Path::new(":memory:")).unwrap();
+        let c = carregar(&conn).unwrap();
+        assert!(!c.bandeja && c.notificar);
+        definir_bandeja(&conn, true).unwrap();
+        definir_notificar(&conn, false).unwrap();
+        let c = carregar(&conn).unwrap();
+        assert!(c.bandeja && !c.notificar);
     }
 
     #[test]

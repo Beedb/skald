@@ -13,6 +13,7 @@ mod playlists;
 mod mpris;
 mod queue;
 mod settings;
+mod sistema;
 mod temporizador;
 mod stats;
 mod watch;
@@ -1061,6 +1062,145 @@ fn set_appearance(db: State<db::Db>, tema: String, modo: String) -> Result<(), S
     settings::definir_aparencia(&conn, &tema, &modo)
 }
 
+const ID_BANDEJA: &str = "principal";
+
+fn mostrar_janela(app: &AppHandle) {
+    if let Some(w) = app.get_webview_window("main") {
+        let _ = w.unminimize();
+        let _ = w.show();
+        let _ = w.set_focus();
+    }
+}
+
+/// Mostra ou esconde o ícone da bandeja (criado na primeira vez). Sem a biblioteca de
+/// indicadores (libayatana-appindicator3), a criação falha sem derrubar o app.
+fn definir_bandeja(app: &AppHandle, ativo: bool) -> Result<(), String> {
+    if let Some(t) = app.tray_by_id(ID_BANDEJA) {
+        return t.set_visible(ativo).map_err(|e| e.to_string());
+    }
+    if !ativo {
+        return Ok(());
+    }
+    let criar = || -> tauri::Result<()> {
+        use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
+        use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
+        let mostrar = MenuItem::with_id(app, "mostrar", "Mostrar o Skáld", true, None::<&str>)?;
+        let pausa = MenuItem::with_id(app, "pausa", "Tocar/Pausar", true, None::<&str>)?;
+        let proxima = MenuItem::with_id(app, "proxima", "Próxima", true, None::<&str>)?;
+        let anterior = MenuItem::with_id(app, "anterior", "Anterior", true, None::<&str>)?;
+        let separador = PredefinedMenuItem::separator(app)?;
+        let sair = MenuItem::with_id(app, "sair", "Sair", true, None::<&str>)?;
+        let menu = Menu::with_items(app, &[&mostrar, &pausa, &proxima, &anterior, &separador, &sair])?;
+        let mut b = TrayIconBuilder::with_id(ID_BANDEJA)
+            .tooltip("Skáld")
+            .menu(&menu)
+            .show_menu_on_left_click(false)
+            .on_menu_event(|app, ev| {
+                let r = match ev.id().as_ref() {
+                    "mostrar" => Ok(mostrar_janela(app)),
+                    "pausa" => app.state::<player::Player>().alternar_pausa(),
+                    "proxima" => avancar(app, false),
+                    "anterior" => voltar(app),
+                    "sair" => Ok(app.exit(0)),
+                    _ => Ok(()),
+                };
+                if let Err(e) = r {
+                    let _ = app.emit("player-erro", e);
+                }
+            })
+            .on_tray_icon_event(|tray, ev| {
+                if let TrayIconEvent::Click { button: MouseButton::Left, button_state: MouseButtonState::Up, .. } = ev {
+                    mostrar_janela(tray.app_handle());
+                }
+            });
+        if let Some(icone) = app.default_window_icon() {
+            b = b.icon(icone.clone());
+        }
+        b.build(app)?;
+        Ok(())
+    };
+    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(criar)) {
+        Ok(r) => r.map_err(|e| format!("Não foi possível criar o ícone da bandeja: {e}")),
+        Err(_) => Err("Bandeja indisponível: instale o pacote libayatana-appindicator3-1.".into()),
+    }
+}
+
+/// "Fechar envia para a bandeja". Se a bandeja não puder ser criada, a opção volta a desligada.
+#[tauri::command]
+fn set_tray(app: AppHandle, ativo: bool) -> Result<(), String> {
+    let r = definir_bandeja(&app, ativo);
+    let gravar = ativo && r.is_ok();
+    let db = app.state::<db::Db>();
+    let conn = db.0.lock().map_err(erro_db)?;
+    settings::definir_bandeja(&conn, gravar).map_err(|e| e.to_string())?;
+    r
+}
+
+#[tauri::command]
+fn set_notifications(db: State<db::Db>, ativo: bool) -> Result<(), String> {
+    let conn = db.0.lock().map_err(erro_db)?;
+    settings::definir_notificar(&conn, ativo).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn autostart_get(app: AppHandle) -> Result<bool, String> {
+    Ok(sistema::autostart_ativo(&app.path().config_dir().map_err(|e| e.to_string())?))
+}
+
+#[tauri::command]
+fn set_autostart(app: AppHandle, ativo: bool) -> Result<(), String> {
+    let dir = app.path().config_dir().map_err(|e| e.to_string())?;
+    let exe = std::env::current_exe().map_err(|e| e.to_string())?;
+    sistema::definir_autostart(&dir, &exe, ativo)
+}
+
+/// Última música notificada, para avisar só quando ela muda.
+struct NotificadaState(Mutex<Option<i64>>);
+
+/// Notifica a troca de música se a opção estiver ligada e a janela não estiver em foco.
+fn notificar_troca(app: &AppHandle, estado: &player::EstadoPlayer) {
+    let Some(id) = estado.id else { return };
+    if estado.estado != player::Estado::Tocando {
+        return;
+    }
+    {
+        let estado_notif = app.state::<NotificadaState>();
+        let Ok(mut ultima) = estado_notif.0.lock() else { return };
+        if *ultima == Some(id) {
+            return;
+        }
+        *ultima = Some(id);
+    }
+    let app = app.clone();
+    std::thread::spawn(move || {
+        let em_foco = app
+            .get_webview_window("main")
+            .is_some_and(|w| w.is_visible().unwrap_or(false) && w.is_focused().unwrap_or(false));
+        if em_foco {
+            return;
+        }
+        let musica = {
+            let db = app.state::<db::Db>();
+            let Ok(conn) = db.0.lock() else { return };
+            if !settings::carregar(&conn).is_ok_and(|c| c.notificar) {
+                return;
+            }
+            library::obter(&conn, id).ok().flatten().map(|(m, _)| m)
+        };
+        let Some(m) = musica else { return };
+        let capa = app
+            .path()
+            .app_cache_dir()
+            .ok()
+            .and_then(|c| miniaturas::arquivo(&app.state::<db::Db>().0, &miniaturas::pasta(c), id).ok().flatten());
+        sistema::notificar_musica(
+            m.title.as_deref().unwrap_or("Sem título"),
+            m.artist.as_deref().unwrap_or("Artista desconhecido"),
+            capa.as_deref(),
+        );
+    });
+}
+
 #[tauri::command]
 fn set_dynamic_colors(db: State<db::Db>, ativo: bool) -> Result<(), String> {
     let conn = db.0.lock().map_err(erro_db)?;
@@ -1115,6 +1255,7 @@ pub fn run() {
             app.manage(HistoricoState(Mutex::new(None)));
             app.manage(OrigemState(Mutex::new(None)));
             app.manage(GaplessState(Mutex::new(None)));
+            app.manage(NotificadaState(Mutex::new(None)));
             app.manage(TemporizadorState(Mutex::new(temporizador::Temporizador::default())));
             app.manage(watch::Vigia::iniciar(app.handle().clone())?);
             watch::Vigia::retomar(app.handle().clone());
@@ -1128,6 +1269,7 @@ pub fn run() {
                     }
                 }
                 acompanhar_sessao(&handle, &estado);
+                notificar_troca(&handle, &estado);
                 if let Some(m) = handle.try_state::<mpris::Mpris>() {
                     m.atualizar(&handle, &estado);
                 }
@@ -1159,7 +1301,36 @@ pub fn run() {
                 }
                 Err(e) => eprintln!("{e}"),
             }
+            // Bandeja ligada: cria o ícone; iniciado com o sistema, abre só nela.
+            let bandeja = {
+                let db = app.state::<db::Db>();
+                let conn = db.0.lock().map_err(erro_db)?;
+                settings::carregar(&conn)?.bandeja
+            };
+            if bandeja {
+                match definir_bandeja(app.handle(), true) {
+                    Ok(()) if std::env::args().any(|a| a == sistema::ARG_MINIMIZADO) => {
+                        if let Some(w) = app.get_webview_window("main") {
+                            let _ = w.hide();
+                        }
+                    }
+                    Ok(()) => {}
+                    Err(e) => eprintln!("{e}"),
+                }
+            }
             Ok(())
+        })
+        .on_window_event(|janela, evento| {
+            // Com a bandeja ligada, fechar só esconde a janela; a música continua.
+            if let tauri::WindowEvent::CloseRequested { api, .. } = evento {
+                let app = janela.app_handle();
+                let bandeja = app.tray_by_id(ID_BANDEJA).is_some()
+                    && app.state::<db::Db>().0.lock().ok().and_then(|c| settings::carregar(&c).ok()).is_some_and(|c| c.bandeja);
+                if bandeja {
+                    api.prevent_close();
+                    let _ = janela.hide();
+                }
+            }
         })
         .invoke_handler(tauri::generate_handler![
             db_status,
@@ -1225,6 +1396,10 @@ pub fn run() {
             get_settings,
             set_appearance,
             set_dynamic_colors,
+            set_tray,
+            set_notifications,
+            autostart_get,
+            set_autostart,
             set_crossfade,
             set_normalization,
             set_equalizer

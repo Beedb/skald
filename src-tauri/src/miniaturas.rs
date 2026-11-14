@@ -11,8 +11,13 @@ use rusqlite::Connection;
 const LADO: u32 = 256;
 
 /// Data URL JPEG da miniatura da capa da música, ou `None` se ela não tem capa.
-/// A chave do cache inclui o `mtime` do arquivo: capa trocada gera miniatura nova.
 pub fn obter(conn_db: &std::sync::Mutex<Connection>, pasta_cache: &Path, id: i64) -> Result<Option<String>, String> {
+    Ok(arquivo(conn_db, pasta_cache, id)?.and_then(|jpg| std::fs::read(jpg).ok()).map(|b| data_url(&b)))
+}
+
+/// Caminho do JPEG da miniatura em cache (gerado se preciso), ou `None` se não há capa.
+/// A chave do cache inclui o `mtime` do arquivo: capa trocada gera miniatura nova.
+pub fn arquivo(conn_db: &std::sync::Mutex<Connection>, pasta_cache: &Path, id: i64) -> Result<Option<PathBuf>, String> {
     let (path, mtime): (String, Option<i64>) = {
         let conn = conn_db.lock().map_err(|_| "Banco de dados indisponível.".to_string())?;
         match conn.query_row("SELECT path, file_mtime FROM media WHERE id = ?1", [id], |r| Ok((r.get(0)?, r.get(1)?))) {
@@ -24,8 +29,8 @@ pub fn obter(conn_db: &std::sync::Mutex<Connection>, pasta_cache: &Path, id: i64
     let base = pasta_cache.join(format!("{id}-{}", mtime.unwrap_or(0)));
     let jpg = base.with_extension("jpg");
     let sem = base.with_extension("sem");
-    if let Ok(bytes) = std::fs::read(&jpg) {
-        return Ok(Some(data_url(&bytes)));
+    if jpg.is_file() {
+        return Ok(Some(jpg));
     }
     if sem.exists() {
         return Ok(None);
@@ -33,8 +38,8 @@ pub fn obter(conn_db: &std::sync::Mutex<Connection>, pasta_cache: &Path, id: i64
     let _ = std::fs::create_dir_all(pasta_cache);
     match gerar(Path::new(&path)) {
         Some(bytes) => {
-            let _ = std::fs::write(&jpg, &bytes);
-            Ok(Some(data_url(&bytes)))
+            std::fs::write(&jpg, &bytes).map_err(|e| e.to_string())?;
+            Ok(Some(jpg))
         }
         None => {
             // Arquivo presente sem capa: lembra para não reler. Ausente: tenta de novo depois.
