@@ -99,6 +99,12 @@ const MIGRATIONS: &[&str] = &[
         CHECK (category IN ('music', 'podcast', 'audiobook', 'other'));",
     // v11: quando a playlist foi tocada pela última vez (tela inicial, seção 4.2).
     "ALTER TABLE playlist ADD COLUMN played_at INTEGER;",
+    // v12: apelidos de artistas (seção 11.3): grafias alternativas contam como o nome principal.
+    "CREATE TABLE artist_alias (
+        alias_norm TEXT PRIMARY KEY,
+        alias      TEXT NOT NULL,
+        canonical  TEXT NOT NULL
+    );",
 ];
 
 pub fn open(path: &Path) -> rusqlite::Result<Connection> {

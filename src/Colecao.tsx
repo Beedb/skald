@@ -4,6 +4,7 @@ import { useVirtualizer } from "@tanstack/react-virtual";
 import Capa from "./Capa";
 import { formatarDuracao } from "./Biblioteca";
 import { useMenuMusica } from "./MenuMusica";
+import Apelidos from "./Apelidos";
 
 /** Visões de Artistas e Álbuns (seção 4). */
 
@@ -44,9 +45,11 @@ type Erro = { onErro: (m: string) => void };
 export function Artistas({
   versao,
   onAbrir,
+  onMudou,
   onErro,
-}: { versao: number; onAbrir: (nome: string | null) => void } & Erro) {
+}: { versao: number; onAbrir: (nome: string | null) => void; onMudou: () => void } & Erro) {
   const [artistas, setArtistas] = useState<Artista[] | null>(null);
+  const [apelidos, setApelidos] = useState(false);
   const rolagem = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -65,7 +68,20 @@ export function Artistas({
   if (!artistas) return null;
   return (
     <section className="colecao">
-      <h2>Artistas</h2>
+      <div className="cabecalho-colecao">
+        <h2>Artistas</h2>
+        <button onClick={() => setApelidos(true)} title="Unir grafias diferentes do mesmo artista">
+          Apelidos…
+        </button>
+      </div>
+      {apelidos && (
+        <Apelidos
+          nomes={artistas.flatMap((a) => (a.nome ? [a.nome] : []))}
+          onFechar={() => setApelidos(false)}
+          onMudou={onMudou}
+          onErro={onErro}
+        />
+      )}
       {artistas.length === 0 && <p className="vazio">Nenhum artista na biblioteca.</p>}
       <div className="colecao-rolagem" ref={rolagem}>
         <div style={{ height: virt.getTotalSize(), position: "relative" }}>

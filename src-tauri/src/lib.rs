@@ -1,3 +1,4 @@
+mod apelidos;
 mod artistas;
 mod backup;
 mod colecao;
@@ -1066,6 +1067,30 @@ fn set_appearance(db: State<db::Db>, tema: String, modo: String) -> Result<(), S
 }
 
 #[tauri::command]
+fn aliases_list(db: State<db::Db>) -> Result<Vec<apelidos::Apelido>, String> {
+    let conn = db.0.lock().map_err(erro_db)?;
+    apelidos::listar(&conn).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn alias_add(db: State<db::Db>, alias: String, canonical: String) -> Result<(), String> {
+    let conn = db.0.lock().map_err(erro_db)?;
+    apelidos::adicionar(&conn, &alias, &canonical)
+}
+
+#[tauri::command]
+fn alias_remove(db: State<db::Db>, alias: String) -> Result<(), String> {
+    let conn = db.0.lock().map_err(erro_db)?;
+    apelidos::remover(&conn, &alias).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn alias_suggestions(db: State<db::Db>) -> Result<Vec<Vec<String>>, String> {
+    let conn = db.0.lock().map_err(erro_db)?;
+    apelidos::sugestoes(&conn).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 fn backup_export(db: State<db::Db>, destino: String) -> Result<(), String> {
     let conn = db.0.lock().map_err(erro_db)?;
     backup::exportar(&conn, std::path::Path::new(&destino))
@@ -1481,6 +1506,10 @@ pub fn run() {
             set_dynamic_colors,
             set_tray,
             backup_export,
+            aliases_list,
+            alias_add,
+            alias_remove,
+            alias_suggestions,
             backup_restore,
             cache_size,
             cache_clear,

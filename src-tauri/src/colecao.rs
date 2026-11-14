@@ -50,20 +50,57 @@ pub struct Faixa {
     pub artistas: Vec<String>,
 }
 
+/// Artistas da biblioteca (créditos divididos, apelidos aplicados). Agrupado em Rust numa
+/// leitura só: com a collation `SEMACENTO` no SQL, cada comparação normalizava os textos.
 pub fn artistas(conn: &Connection) -> rusqlite::Result<Vec<Artista>> {
+    use crate::search::normalizar;
+    use std::collections::{HashMap, HashSet};
+
+    struct Acum {
+        nome: Option<String>,
+        albuns: HashSet<(String, String)>,
+        musicas: i64,
+        capa_id: i64,
+    }
+    let apelidos = crate::artistas::mapa(conn);
     let mut stmt = conn.prepare_cached(&format!(
-        "SELECT MIN(a.value), COUNT(DISTINCT (COALESCE(m.album, '') || char(0) || COALESCE(m.album_artist, {pasta})) COLLATE SEMACENTO),
-                COUNT(*), MIN(m.id)
-         FROM media m, json_each(ARTISTAS(m.artist)) a
-         WHERE m.category = 'music'
-         GROUP BY a.value COLLATE SEMACENTO
-         ORDER BY a.value IS NULL, a.value COLLATE SEMACENTO",
-        pasta = PASTA.replace("path", "m.path")
+        "SELECT id, artist, album, COALESCE(album_artist, {PASTA}) FROM media WHERE category = 'music'"
     ))?;
-    let linhas = stmt.query_map([], |r| {
-        Ok(Artista { nome: r.get(0)?, albuns: r.get(1)?, musicas: r.get(2)?, capa_id: r.get(3)? })
-    })?;
-    linhas.collect()
+    let mut grupos: HashMap<Option<String>, Acum> = HashMap::new();
+    let mut linhas = stmt.query([])?;
+    while let Some(r) = linhas.next()? {
+        let id: i64 = r.get(0)?;
+        let artist: Option<String> = r.get(1)?;
+        let album: Option<String> = r.get(2)?;
+        let grupo: String = r.get(3)?;
+        let chave_album = (album.as_deref().map(normalizar).unwrap_or_default(), normalizar(&grupo));
+        let nomes = artist.as_deref().map(|t| crate::artistas::separar_mapeado(t, &apelidos)).unwrap_or_default();
+        let nomes: Vec<Option<String>> = if nomes.is_empty() { vec![None] } else { nomes.into_iter().map(Some).collect() };
+        for nome in nomes {
+            let a = grupos.entry(nome.as_deref().map(normalizar)).or_insert_with(|| Acum {
+                nome: nome.clone(),
+                albuns: HashSet::new(),
+                musicas: 0,
+                capa_id: id,
+            });
+            // Mesma grafia de exibição que antes (a menor, como o MIN do SQL).
+            if nome < a.nome {
+                a.nome = nome;
+            }
+            a.albuns.insert(chave_album.clone());
+            a.musicas += 1;
+            a.capa_id = a.capa_id.min(id);
+        }
+    }
+    let mut lista: Vec<(Option<String>, Artista)> = grupos
+        .into_iter()
+        .map(|(chave, a)| {
+            (chave, Artista { nome: a.nome, albuns: a.albuns.len() as i64, musicas: a.musicas, capa_id: a.capa_id })
+        })
+        .collect();
+    // Sem artista no fim; o resto em ordem alfabética sem acento.
+    lista.sort_by(|(a, _), (b, _)| (a.is_none(), a).cmp(&(b.is_none(), b)));
+    Ok(lista.into_iter().map(|(_, a)| a).collect())
 }
 
 /// Condição "a faixa tem o artista entre os créditos" (nome nulo: sem artista).
@@ -89,6 +126,7 @@ pub fn albuns(conn: &Connection, artista: Option<Option<&str>>) -> rusqlite::Res
         adicionado_em: i64,
     }
     let alvo = artista.map(|a| a.map(normalizar));
+    let apelidos = crate::artistas::mapa(conn);
     let mut stmt = conn.prepare_cached(&format!(
         "SELECT id, album, album_artist, artist, COALESCE(album_artist, {PASTA}), year, duration_ms,
                 disc_number, track_number, added_at
@@ -127,7 +165,7 @@ pub fn albuns(conn: &Connection, artista: Option<Option<&str>>) -> rusqlite::Res
         a.adicionado_em = a.adicionado_em.max(adicionado);
         a.album_artist = a.album_artist.take().or(album_artist);
         if let Some(alvo) = &alvo {
-            a.do_artista |= match (artist.as_deref().map(crate::artistas::separar), alvo) {
+            a.do_artista |= match (artist.as_deref().map(|t| crate::artistas::separar_mapeado(t, &apelidos)), alvo) {
                 (Some(nomes), Some(alvo)) => nomes.iter().any(|n| normalizar(n) == *alvo),
                 (Some(nomes), None) => nomes.is_empty(),
                 (None, alvo) => alvo.is_none(),
@@ -199,9 +237,10 @@ pub fn faixas_do_album(conn: &Connection, chave: &ChaveAlbum) -> rusqlite::Resul
            AND COALESCE(album_artist, {PASTA}) = ?2 COLLATE SEMACENTO
          ORDER BY disc_number, track_number, title COLLATE SEMACENTO, id"
     ))?;
+    let apelidos = crate::artistas::mapa(conn);
     let linhas = stmt.query_map(params![chave.album, chave.grupo], |r| {
         let media = linha(r)?;
-        let artistas = media.artist.as_deref().map(crate::artistas::separar).unwrap_or_default();
+        let artistas = media.artist.as_deref().map(|t| crate::artistas::separar_mapeado(t, &apelidos)).unwrap_or_default();
         Ok(Faixa { media, track_number: r.get(6)?, disc_number: r.get(7)?, artistas })
     })?;
     linhas.collect()
@@ -312,8 +351,9 @@ mod ensaio {
         let conn = crate::db::open(std::path::Path::new(&caminho)).unwrap();
         let t = std::time::Instant::now();
         let a = super::artistas(&conn).unwrap();
+        let ta = t.elapsed();
         let b = super::albuns(&conn, None).unwrap();
-        println!("{} artistas, {} álbuns em {:?}", a.len(), b.len(), t.elapsed());
+        println!("{} artistas em {ta:?}, {} álbuns em {:?}", a.len(), b.len(), t.elapsed() - ta);
         for x in b.iter().take(8) {
             println!("{:?} — {:?} ({})", x.chave.album, x.artista, x.musicas);
         }

@@ -2,6 +2,10 @@
 //! cada participante conta como artista na coleção e nas estatísticas. O texto gravado
 //! na música nunca muda; a divisão é só na hora de agrupar.
 
+use std::collections::HashMap;
+use std::sync::Mutex;
+use std::sync::atomic::{AtomicU64, Ordering};
+
 use rusqlite::Connection;
 use rusqlite::functions::FunctionFlags;
 
@@ -57,19 +61,54 @@ fn separar_palavras(texto: &str) -> Vec<String> {
     saida
 }
 
-/// Registra `ARTISTAS(texto)`: JSON com os artistas, para usar com `json_each`.
-/// Texto nulo ou vazio vira `[null]` (a música continua aparecendo como "Desconhecido").
+/// Apelido normalizado → nome principal (seção 11.3).
+pub type Mapa = HashMap<String, String>;
+
+/// Muda sempre que os apelidos mudam: a função SQL recarrega o mapa em memória.
+static GERACAO: AtomicU64 = AtomicU64::new(1);
+
+pub fn apelidos_mudaram() {
+    GERACAO.fetch_add(1, Ordering::Relaxed);
+}
+
+pub fn mapa(conn: &Connection) -> Mapa {
+    let Ok(mut stmt) = conn.prepare("SELECT alias_norm, canonical FROM artist_alias") else { return Mapa::new() };
+    stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?)))
+        .map(|l| l.filter_map(Result::ok).collect())
+        .unwrap_or_default()
+}
+
+/// `separar` com os apelidos trocados pelo nome principal (sem repetir).
+pub fn separar_mapeado(texto: &str, mapa: &Mapa) -> Vec<String> {
+    let mut saida: Vec<String> = Vec::new();
+    for nome in separar(texto) {
+        let nome = mapa.get(&crate::search::normalizar(&nome)).cloned().unwrap_or(nome);
+        let chave = crate::search::normalizar(&nome);
+        if !saida.iter().any(|x| crate::search::normalizar(x) == chave) {
+            saida.push(nome);
+        }
+    }
+    saida
+}
+
+/// Registra `ARTISTAS(texto)`: JSON com os artistas (apelidos já trocados), para usar com
+/// `json_each`. Texto nulo ou vazio vira `[null]` (a música aparece como "Desconhecido").
+/// Não é determinística: depende da tabela de apelidos (mapa em cache por geração).
 pub fn registrar(conn: &Connection) -> rusqlite::Result<()> {
-    conn.create_scalar_function(
-        "ARTISTAS",
-        1,
-        FunctionFlags::SQLITE_UTF8 | FunctionFlags::SQLITE_DETERMINISTIC,
-        |ctx| {
-            let texto: Option<String> = ctx.get(0)?;
-            let lista = texto.as_deref().map(separar).unwrap_or_default();
-            Ok(if lista.is_empty() { "[null]".to_string() } else { serde_json::to_string(&lista).unwrap_or_default() })
-        },
-    )
+    let cache: Mutex<(u64, Mapa)> = Mutex::new((0, Mapa::new()));
+    conn.create_scalar_function("ARTISTAS", 1, FunctionFlags::SQLITE_UTF8, move |ctx| {
+        let texto: Option<String> = ctx.get(0)?;
+        let Some(texto) = texto else { return Ok("[null]".to_string()) };
+        let mut c = cache.lock().unwrap_or_else(|e| e.into_inner());
+        let geracao = GERACAO.load(Ordering::Relaxed);
+        if c.0 != geracao {
+            // SAFETY: a conexão só é usada aqui dentro, na mesma thread da consulta.
+            let conn = unsafe { ctx.get_connection()? };
+            *c = (geracao, mapa(&conn));
+        }
+        let lista = separar_mapeado(&texto, &c.1);
+        Ok(if lista.is_empty() { "[null]".to_string() } else { serde_json::to_string(&lista).unwrap_or_default() })
+    })
 }
 
 #[cfg(test)]

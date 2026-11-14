@@ -455,7 +455,12 @@ function App() {
         )}
         {vista.tipo === "artistas" && (
           <div className="area">
-            <Artistas versao={versao} onAbrir={(nome) => setVista({ tipo: "artista", nome })} onErro={setErro} />
+            <Artistas
+              versao={versao}
+              onAbrir={(nome) => setVista({ tipo: "artista", nome })}
+              onMudou={() => setVersao((v) => v + 1)}
+              onErro={setErro}
+            />
           </div>
         )}
         {vista.tipo === "artista" && (

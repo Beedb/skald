@@ -47,6 +47,7 @@ pub fn restaurar(conn: &mut Connection, origem: &Path, seguranca: &Path) -> Resu
     exportar(conn, seguranca)?;
     conn.restore(rusqlite::MAIN_DB, origem, None::<fn(rusqlite::backup::Progress)>)
         .map_err(|e| format!("Não foi possível restaurar o backup: {e}"))?;
+    crate::artistas::apelidos_mudaram(); // o backup traz a sua própria tabela de apelidos
     crate::db::atualizar(conn).map_err(|e| format!("Backup restaurado, mas a atualização falhou: {e}"))
 }
 
