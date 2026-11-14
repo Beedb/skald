@@ -13,6 +13,8 @@ use gstreamer as gst;
 use gstreamer::prelude::*;
 use serde::Serialize;
 
+use crate::ganho::{self, Ganho};
+
 #[derive(Serialize, Clone, Copy, PartialEq, Debug)]
 #[serde(rename_all = "lowercase")]
 pub enum Estado {
@@ -40,6 +42,7 @@ pub struct Proxima {
     pub path: String,
     /// Mesmo álbum da atual: emenda sem crossfade (gapless).
     pub mesmo_album: bool,
+    pub ganho: Ganho,
 }
 
 /// Se a próxima já foi pedida ao app para a faixa atual.
@@ -57,12 +60,22 @@ struct Interno {
     ativo: usize,
     atual: Option<i64>,
     /// Faixa emendada no deck ativo pelo `about-to-finish`, esperando começar.
-    pendente: Option<i64>,
+    pendente: Option<(i64, Ganho)>,
     escolha: Escolha,
     cruzando: Option<Cruzamento>,
     /// Volume linear (já convertido da escala percebida).
     volume: f64,
     crossfade_ms: u64,
+    normalizacao: ganho::Modo,
+    /// ReplayGain da faixa em cada deck.
+    ganhos: [Ganho; 2],
+}
+
+impl Interno {
+    /// Volume final do deck `i`: o do usuário vezes a normalização da faixa.
+    fn alvo(&self, i: usize) -> f64 {
+        self.volume * ganho::fator(self.normalizacao, &self.ganhos[i])
+    }
 }
 
 type Pedir = dyn Fn() -> Option<Proxima> + Send + Sync;
@@ -105,6 +118,8 @@ impl Player {
             cruzando: None,
             volume: 1.0,
             crossfade_ms: 0,
+            normalizacao: ganho::Modo::default(),
+            ganhos: [Ganho::default(); 2],
         }));
         let pedir: Arc<Pedir> = Arc::new(pedir_proxima);
         for (i, deck) in decks.iter().enumerate() {
@@ -129,7 +144,7 @@ impl Player {
                         pb.set_property("uri", uri.as_str());
                         let mut g = int.lock().unwrap();
                         if g.ativo == i {
-                            g.pendente = Some(p.id);
+                            g.pendente = Some((p.id, p.ganho));
                         }
                     }
                 }
@@ -144,7 +159,7 @@ impl Player {
         self.int.lock().unwrap().ativo
     }
 
-    pub fn tocar(&self, id: i64, path: &str) -> Result<(), String> {
+    pub fn tocar(&self, id: i64, path: &str, ganho: Ganho) -> Result<(), String> {
         let uri = uri_de(path)?;
         {
             let mut g = self.int.lock().unwrap();
@@ -160,7 +175,9 @@ impl Player {
             g.pendente = None;
             g.escolha = Escolha::NaoPedida;
             g.atual = Some(id);
-            (g.ativo, g.volume)
+            let ativo = g.ativo;
+            g.ganhos[ativo] = ganho;
+            (ativo, g.alvo(ativo))
         };
         let deck = &self.decks[ativo];
         deck.set_property("volume", volume);
@@ -193,12 +210,22 @@ impl Player {
     /// Volume de 0 a 1 na escala percebida; convertido para linear (cúbico).
     pub fn volume(&self, v: f64) {
         let v = v.clamp(0.0, 1.0);
-        let linear = v * v * v;
         let mut g = self.int.lock().unwrap();
-        g.volume = linear;
-        // Durante o crossfade, o próximo passo da rampa aplica o volume novo.
+        g.volume = v * v * v;
+        self.aplicar_volume(&g);
+    }
+
+    /// Normalização (ReplayGain); vale na hora.
+    pub fn definir_normalizacao(&self, modo: ganho::Modo) {
+        let mut g = self.int.lock().unwrap();
+        g.normalizacao = modo;
+        self.aplicar_volume(&g);
+    }
+
+    /// Durante o crossfade, o próximo passo da rampa aplica o volume novo.
+    fn aplicar_volume(&self, g: &Interno) {
         if g.cruzando.is_none() {
-            self.decks[g.ativo].set_property("volume", linear);
+            self.decks[g.ativo].set_property("volume", g.alvo(g.ativo));
         }
     }
 
@@ -219,7 +246,7 @@ impl Player {
         };
         if let Some(s) = saindo {
             let _ = self.decks[s].set_state(gst::State::Null);
-            let volume = self.int.lock().unwrap().volume;
+            let volume = self.int.lock().unwrap().alvo(ativo);
             self.decks[ativo].set_property("volume", volume);
         }
         self.decks[ativo]
@@ -304,8 +331,12 @@ fn vigiar(
                     // A faixa emendada pelo `about-to-finish` começou a tocar (gapless).
                     gst::MessageView::StreamStart(..) if i == ativo => {
                         let mut g = int.lock().unwrap();
-                        if let Some(id) = g.pendente.take() {
+                        if let Some((id, ganho)) = g.pendente.take() {
                             g.atual = Some(id);
+                            // A faixa emendada traz o próprio ganho.
+                            g.ganhos[i] = ganho;
+                            let volume = g.alvo(i);
+                            decks[i].set_property("volume", volume);
                             g.escolha = Escolha::NaoPedida;
                             envio_imediato = true;
                             transicao = true;
@@ -345,7 +376,7 @@ fn vigiar(
 fn terminar_cruzamento(decks: &[gst::Element; 2], int: &Mutex<Interno>) {
     let (ativo, volume, saindo) = {
         let mut g = int.lock().unwrap();
-        (g.ativo, g.volume, g.cruzando.take().map(|c| c.saindo))
+        (g.ativo, g.alvo(g.ativo), g.cruzando.take().map(|c| c.saindo))
     };
     if let Some(s) = saindo {
         let _ = decks[s].set_state(gst::State::Null);
@@ -363,14 +394,14 @@ fn conduzir_cruzamento(decks: &[gst::Element; 2], int: &Mutex<Interno>, pedir: &
         // Progresso pela posição da faixa nova: pausar no meio pausa a rampa.
         let t = (posicao(&decks[ativo]) as f64 / c.dur_ms.max(1) as f64).clamp(0.0, 1.0);
         let saindo = c.saindo;
-        let volume = g.volume;
+        let (entra, sai) = (g.alvo(ativo), g.alvo(saindo));
         drop(g);
         if t >= 1.0 {
             terminar_cruzamento(decks, int);
         } else {
             // Potência constante: a soma não "afunda" no meio.
-            decks[ativo].set_property("volume", volume * (t * FRAC_PI_2).sin());
-            decks[saindo].set_property("volume", volume * (t * FRAC_PI_2).cos());
+            decks[ativo].set_property("volume", entra * (t * FRAC_PI_2).sin());
+            decks[saindo].set_property("volume", sai * (t * FRAC_PI_2).cos());
         }
         return false;
     }
@@ -408,7 +439,8 @@ fn conduzir_cruzamento(decks: &[gst::Element; 2], int: &Mutex<Interno>, pedir: &
         g.pendente = None;
         g.escolha = Escolha::NaoPedida;
         g.cruzando = Some(Cruzamento { saindo: ativo, dur_ms: cf });
-        g.volume
+        g.ganhos[novo] = p.ganho;
+        g.alvo(ativo)
     };
     let _ = decks[novo].set_state(gst::State::Null);
     decks[novo].set_property("volume", 0.0);
@@ -450,7 +482,7 @@ mod testes {
         let p = Player::new(move |e| { let _ = tx.send(e); }, || None).unwrap();
         silenciar(&p);
         p.volume(0.5);
-        p.tocar(7, &format!("{dir}/a.mp3")).unwrap();
+        p.tocar(7, &format!("{dir}/a.mp3"), Ganho::default()).unwrap();
 
         let mut viu_tocando = false;
         let mut maior_posicao = 0;
@@ -476,7 +508,7 @@ mod testes {
         let Ok(dir) = std::env::var("SKALD_TEST_DIR") else { return };
         let (tx, rx) = mpsc::channel();
         let p = Player::new(move |e| { let _ = tx.send(e); }, || None).unwrap();
-        let _ = p.tocar(1, &format!("{dir}/sub/quebrado.ogg"));
+        let _ = p.tocar(1, &format!("{dir}/sub/quebrado.ogg"), Ganho::default());
         let erro = loop {
             let e = rx.recv_timeout(Duration::from_secs(10)).expect("sem eventos do player");
             if let Some(m) = e.erro { break m; }
@@ -516,14 +548,14 @@ mod testes {
         let p = Player::new(
             move |e| { let _ = tx.send(e); },
             move || {
-                (!pedida.swap(true, Ordering::SeqCst)).then(|| Proxima { id: 2, path: b_str.clone(), mesmo_album })
+                (!pedida.swap(true, Ordering::SeqCst)).then(|| Proxima { id: 2, path: b_str.clone(), mesmo_album, ganho: Ganho::default() })
             },
         )
         .unwrap();
         silenciar(&p);
         p.definir_crossfade(crossfade_ms);
         let inicio = Instant::now();
-        p.tocar(1, &a.to_string_lossy()).unwrap();
+        p.tocar(1, &a.to_string_lossy(), Ganho::default()).unwrap();
 
         let mut r = Resultado { transicao: None, parou_antes: false };
         loop {

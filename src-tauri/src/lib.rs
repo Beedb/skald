@@ -1,5 +1,6 @@
 mod db;
 mod details;
+mod ganho;
 mod history;
 mod import;
 mod library;
@@ -242,9 +243,11 @@ fn preparar_proxima(app: &AppHandle) -> Option<player::Proxima> {
                 let _ = library::marcar_ausente(&conn, id, !existe);
             }
             let mesmo_album = antes.atual().is_some_and(|a| library::mesmo_album(&conn, a, id).unwrap_or(false));
-            existe.then_some(player::Proxima { id, path, mesmo_album })
+            existe.then_some((id, path, mesmo_album))
         };
-        if let Some(p) = proxima {
+        if let Some((id, path, mesmo_album)) = proxima {
+            let ganho = ganho::ler(std::path::Path::new(&path));
+            let p = player::Proxima { id, path, mesmo_album, ganho };
             *app.state::<GaplessState>().0.lock().ok()? = Some(Pendente { antes, depois, id });
             return Some(p);
         }
@@ -298,7 +301,8 @@ fn tocar_id(app: &AppHandle, id: i64) -> Result<(), String> {
         path
     };
     encerrar_sessao(app, false);
-    app.state::<player::Player>().tocar(id, &path)?;
+    let ganho = ganho::ler(std::path::Path::new(&path));
+    app.state::<player::Player>().tocar(id, &path, ganho)?;
     iniciar_sessao(app, id);
     Ok(())
 }
@@ -657,6 +661,16 @@ fn set_crossfade(db: State<db::Db>, player: State<player::Player>, ms: u64) -> R
 }
 
 #[tauri::command]
+fn set_normalization(db: State<db::Db>, player: State<player::Player>, modo: ganho::Modo) -> Result<(), String> {
+    {
+        let conn = db.0.lock().map_err(erro_db)?;
+        settings::definir_normalizacao(&conn, modo).map_err(|e| e.to_string())?;
+    }
+    player.definir_normalizacao(modo);
+    Ok(())
+}
+
+#[tauri::command]
 fn seek(player: State<player::Player>, posicao_ms: u64) -> Result<(), String> {
     player.buscar(posicao_ms)
 }
@@ -705,6 +719,7 @@ pub fn run() {
                 let conn = db.0.lock().map_err(erro_db)?;
                 let cfg = settings::carregar(&conn)?;
                 app.state::<player::Player>().definir_crossfade(cfg.crossfade_ms);
+                app.state::<player::Player>().definir_normalizacao(cfg.normalizacao);
             }
             // Sem D-Bus (sessão sem barramento), o app funciona só sem MPRIS.
             match mpris::Mpris::iniciar(app.handle().clone()) {
@@ -753,7 +768,8 @@ pub fn run() {
             set_volume,
             seek,
             get_settings,
-            set_crossfade
+            set_crossfade,
+            set_normalization
         ])
         .build(tauri::generate_context!())
         .expect("falha ao iniciar o Skáld")
