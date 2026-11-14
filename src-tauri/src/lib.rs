@@ -1,6 +1,7 @@
 mod apelidos;
 mod artistas;
 mod backup;
+mod buscaletras;
 mod colecao;
 mod db;
 mod details;
@@ -167,6 +168,7 @@ fn remove_from_library(app: AppHandle, ids: Vec<i64>) -> Result<usize, String> {
     // A capa guardada no Skáld era só deste registro.
     for &id in &ids {
         details::remover_capa_salva(id);
+        letras::remover_salva(id);
     }
     let atual_saiu = {
         let estado_fila = app.state::<FilaState>();
@@ -1110,10 +1112,48 @@ async fn get_lyrics(app: AppHandle, id: i64) -> Result<Option<letras::Letra>, St
             let conn = db.0.lock().map_err(erro_db)?;
             library::obter(&conn, id).map_err(|e| e.to_string())?.map(|(_, p)| p)
         };
-        Ok(path.and_then(|p| letras::carregar(std::path::Path::new(&p))))
+        Ok(path.and_then(|p| letras::carregar(id, std::path::Path::new(&p))))
     })
     .await
     .map_err(|e| e.to_string())?
+}
+
+/// Procura a letra no LRCLIB (rede; só quando o usuário pede). Nada é gravado aqui.
+#[tauri::command]
+async fn lyrics_lookup(app: AppHandle, id: i64) -> Result<Option<buscaletras::Encontrada>, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let (m, _) = {
+            let db = app.state::<db::Db>();
+            let conn = db.0.lock().map_err(erro_db)?;
+            library::obter(&conn, id).map_err(|e| e.to_string())?.ok_or("Música não encontrada.")?
+        };
+        let (Some(titulo), Some(artista)) = (m.title.as_deref(), m.artist.as_deref()) else {
+            return Err("Para buscar a letra, a música precisa ter título e artista.".into());
+        };
+        buscaletras::buscar(titulo, artista, m.album.as_deref(), m.duration_ms)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+/// Guarda a letra só no Skáld ou, se `no_arquivo`, cria o `.lrc` ao lado da música (sem substituir).
+#[tauri::command]
+fn lyrics_save(db: State<db::Db>, id: i64, texto: String, no_arquivo: bool) -> Result<(), String> {
+    if texto.trim().is_empty() {
+        return Err("Letra vazia.".into());
+    }
+    if no_arquivo {
+        let path = {
+            let conn = db.0.lock().map_err(erro_db)?;
+            library::obter(&conn, id).map_err(|e| e.to_string())?.ok_or("Música não encontrada.")?.1
+        };
+        letras::salvar_ao_lado(std::path::Path::new(&path), &texto)?;
+        // O .lrc ao lado passa a valer; a cópia guardada no Skáld não é mais necessária.
+        letras::remover_salva(id);
+        Ok(())
+    } else {
+        letras::salvar_no_skald(id, &texto)
+    }
 }
 
 /// Capa e informações adicionais da música (lidas do arquivo, fora da thread principal).
@@ -1528,6 +1568,7 @@ pub fn run() {
             let conn = db::open(&dir.join("skald.db"))?;
             app.manage(db::Db(Mutex::new(conn)));
             details::definir_pasta_capas(dir.join("capas"));
+            letras::definir_pasta(dir.join("letras"));
             app.manage(FilaState(Mutex::new(queue::Fila::default())));
             app.manage(HistoricoState(Mutex::new(None)));
             app.manage(OrigemState(Mutex::new(None)));
@@ -1641,6 +1682,8 @@ pub fn run() {
             get_queue,
             get_track_details,
             get_lyrics,
+            lyrics_lookup,
+            lyrics_save,
             playlists_list,
             playlist_create,
             playlist_rename,

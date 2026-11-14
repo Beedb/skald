@@ -81,7 +81,7 @@ pub fn atual(conn: &Connection, id: i64) -> Result<Atual, String> {
     Ok(Atual { campos, tem_capa, missing, duracao_ms })
 }
 
-fn agente() -> ureq::Agent {
+pub(crate) fn agente() -> ureq::Agent {
     ureq::Agent::config_builder()
         .timeout_global(Some(Duration::from_secs(15)))
         .user_agent(CLIENTE)
@@ -89,7 +89,7 @@ fn agente() -> ureq::Agent {
         .into()
 }
 
-fn erro_rede(e: ureq::Error, servico: &str) -> String {
+pub(crate) fn erro_rede(e: ureq::Error, servico: &str) -> String {
     match e {
         ureq::Error::StatusCode(503) => format!("O {servico} está ocupado. Tente de novo em alguns segundos."),
         ureq::Error::StatusCode(404) => format!("Nada encontrado no {servico}."),

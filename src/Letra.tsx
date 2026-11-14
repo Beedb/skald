@@ -23,6 +23,98 @@ function linhaAtual(linhas: Linha[], posicao: number) {
   return achada;
 }
 
+type Encontrada = { texto: string; sincronizada: boolean; instrumental: boolean; titulo: string; artista: string };
+
+/** Primeiras linhas da letra encontrada, sem as marcas de tempo. */
+function previa(texto: string) {
+  return texto
+    .split("\n")
+    .map((l) => l.replace(/\[[^\]]*\]/g, "").trim())
+    .filter(Boolean)
+    .slice(0, 6);
+}
+
+/** Busca no LRCLIB (só ao clicar) e deixa escolher onde guardar. */
+function BuscarLetra({ id, onSalva }: { id: number; onSalva: () => void }) {
+  const [estado, setEstado] = useState<
+    { tipo: "parado" } | { tipo: "buscando" } | { tipo: "nada" } | { tipo: "erro"; msg: string } | { tipo: "achou"; e: Encontrada }
+  >({ tipo: "parado" });
+
+  useEffect(() => setEstado({ tipo: "parado" }), [id]);
+
+  async function buscar() {
+    setEstado({ tipo: "buscando" });
+    try {
+      const e = await invoke<Encontrada | null>("lyrics_lookup", { id });
+      setEstado(e ? { tipo: "achou", e } : { tipo: "nada" });
+    } catch (err) {
+      setEstado({ tipo: "erro", msg: String(err) });
+    }
+  }
+
+  async function salvar(noArquivo: boolean) {
+    if (estado.tipo !== "achou") return;
+    try {
+      await invoke("lyrics_save", { id, texto: estado.e.texto, noArquivo });
+      setEstado({ tipo: "parado" });
+      onSalva();
+    } catch (err) {
+      setEstado({ tipo: "erro", msg: String(err) });
+    }
+  }
+
+  if (estado.tipo === "achou") {
+    const { e } = estado;
+    if (e.instrumental)
+      return (
+        <div className="buscar-letra">
+          <p>O LRCLIB marca esta música como instrumental (sem letra).</p>
+          <button onClick={() => setEstado({ tipo: "parado" })}>Fechar</button>
+        </div>
+      );
+    return (
+      <div className="buscar-letra">
+        <p>
+          <strong>Encontrada</strong> ({e.sincronizada ? "sincronizada" : "sem tempos"}): {e.titulo} · {e.artista}
+        </p>
+        <blockquote>
+          {previa(e.texto).map((l, i) => (
+            <span key={i}>{l}</span>
+          ))}
+        </blockquote>
+        <div className="acoes-letra">
+          <button className="primario" onClick={() => salvar(false)} title="Guarda na pasta de dados do Skáld; o arquivo de música não muda">
+            Guardar no Skáld
+          </button>
+          <button
+            onClick={() => salvar(true)}
+            disabled={!e.sincronizada}
+            title={
+              e.sincronizada
+                ? "Cria um arquivo .lrc com o mesmo nome da música (nunca substitui um existente)"
+                : "Só letras sincronizadas viram arquivo .lrc"
+            }
+          >
+            Criar .lrc ao lado do arquivo
+          </button>
+          <button onClick={() => setEstado({ tipo: "parado" })}>Descartar</button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="buscar-letra">
+      <button onClick={buscar} disabled={estado.tipo === "buscando"}>
+        {estado.tipo === "buscando" ? "Buscando…" : "Buscar letra na internet (LRCLIB)"}
+      </button>
+      {estado.tipo === "nada" && <p>Nenhuma letra encontrada para esta música.</p>}
+      {estado.tipo === "erro" && <p className="erro">{estado.msg}</p>}
+      <p className="nota">Envia só título, artista, álbum e duração ao lrclib.net.</p>
+    </div>
+  );
+}
+
 type Props = {
   id: number | null;
   posicaoMs: number;
@@ -32,19 +124,21 @@ type Props = {
 /** Letra da música atual: sincronizada (linha atual em destaque) ou estática. */
 export default function Letra({ id, posicaoMs, onErro }: Props) {
   const [letra, setLetra] = useState<Letra | null | undefined>(undefined);
+  const [recarga, setRecarga] = useState(0);
   const caixa = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (id === null) return setLetra(null);
     let valido = true;
-    setLetra(undefined);
+    if (recarga === 0) setLetra(undefined);
     invoke<Letra | null>("get_lyrics", { id })
       .then((l) => valido && setLetra(l))
       .catch((e) => valido && onErro(String(e)));
     return () => {
       valido = false;
     };
-  }, [id]);
+  }, [id, recarga]);
+  useEffect(() => setRecarga(0), [id]);
 
   const atual = letra?.tipo === "sincronizada" ? linhaAtual(letra.linhas, posicaoMs) : -1;
 
@@ -57,12 +151,13 @@ export default function Letra({ id, posicaoMs, onErro }: Props) {
   }, [atual]);
 
   if (letra === undefined) return <p className="letra-vazia">Carregando a letra…</p>;
+  const recarregar = () => setRecarga((n) => n + 1);
   if (letra === null)
     return (
-      <p className="letra-vazia">
-        Sem letra para esta música. Para letra sincronizada, coloque um arquivo <code>.lrc</code> com o mesmo nome
-        da música na mesma pasta.
-      </p>
+      <div>
+        <p className="letra-vazia">Sem letra para esta música.</p>
+        {id !== null && <BuscarLetra id={id} onSalva={recarregar} />}
+      </div>
     );
 
   return (
@@ -83,6 +178,9 @@ export default function Letra({ id, posicaoMs, onErro }: Props) {
         <p className="letra-estatica">{letra.texto}</p>
       )}
       <p className="letra-origem">Fonte: {letra.origem}</p>
+      {letra.tipo === "estatica" && id !== null && (
+        <BuscarLetra id={id} onSalva={recarregar} />
+      )}
     </div>
   );
 }

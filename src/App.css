@@ -2775,3 +2775,33 @@ input[type="range"].trilha:disabled {
 .lista-relacionadas .ausente {
   opacity: 0.45;
 }
+
+/* ---------- Busca de letra ---------- */
+
+.buscar-letra {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.5rem;
+  margin-top: 0.8rem;
+}
+
+.buscar-letra p {
+  margin: 0;
+}
+
+.buscar-letra blockquote {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0.5rem 0.8rem;
+  border-left: 2px solid var(--acento);
+  color: var(--fraco);
+  font-size: 0.9rem;
+}
+
+.acoes-letra {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}

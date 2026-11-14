@@ -129,10 +129,64 @@ fn da_tag(musica: &Path) -> Option<String> {
     })
 }
 
-pub fn carregar(musica: &Path) -> Option<Letra> {
+/// Pasta das letras guardadas só no Skáld (`<dados>/letras/<id>.lrc`).
+static PASTA_LETRAS: std::sync::OnceLock<PathBuf> = std::sync::OnceLock::new();
+
+pub fn definir_pasta(pasta: PathBuf) {
+    let _ = PASTA_LETRAS.set(pasta);
+}
+
+fn letra_salva(id: i64) -> Option<PathBuf> {
+    Some(PASTA_LETRAS.get()?.join(format!("{id}.lrc")))
+}
+
+/// Guarda a letra só no Skáld (substitui a anterior). O arquivo de música não muda.
+pub fn salvar_no_skald(id: i64, texto: &str) -> Result<(), String> {
+    let caminho = letra_salva(id).ok_or("Pasta de letras indisponível.")?;
+    if let Some(pasta) = caminho.parent() {
+        std::fs::create_dir_all(pasta).map_err(|e| e.to_string())?;
+    }
+    std::fs::write(caminho, texto).map_err(|e| e.to_string())
+}
+
+pub fn remover_salva(id: i64) {
+    if let Some(p) = letra_salva(id) {
+        let _ = std::fs::remove_file(p);
+    }
+}
+
+/// Cria `musica.lrc` ao lado do arquivo. Só letra sincronizada; nunca substitui um `.lrc` existente.
+pub fn salvar_ao_lado(musica: &Path, texto: &str) -> Result<(), String> {
+    if ler_lrc(texto).is_none() {
+        return Err("Só letras sincronizadas podem virar arquivo .lrc.".into());
+    }
+    if achar_lrc(musica).is_some() {
+        return Err("Já existe um arquivo .lrc para esta música; nada foi alterado.".into());
+    }
+    let caminho = musica.with_extension("lrc");
+    use std::io::Write;
+    let mut f = std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&caminho)
+        .map_err(|e| format!("Não foi possível criar {}: {e}", caminho.display()))?;
+    f.write_all(texto.as_bytes()).map_err(|e| e.to_string())
+}
+
+/// Ordem: `.lrc` ao lado, letra guardada no Skáld, tag do arquivo.
+pub fn carregar(id: i64, musica: &Path) -> Option<Letra> {
     if let Some(lrc) = achar_lrc(musica) {
         if let Some(linhas) = std::fs::read(&lrc).ok().and_then(|b| ler_lrc(&decodificar(&b))) {
             return Some(Letra::Sincronizada { linhas, origem: "arquivo .lrc".into() });
+        }
+    }
+    if let Some(texto) = letra_salva(id).and_then(|p| std::fs::read(p).ok()).map(|b| decodificar(&b)) {
+        let texto = texto.trim();
+        if !texto.is_empty() {
+            return Some(match ler_lrc(texto) {
+                Some(linhas) => Letra::Sincronizada { linhas, origem: "LRCLIB (guardada no Skáld)".into() },
+                None => Letra::Estatica { texto: texto.replace("\r\n", "\n"), origem: "LRCLIB (guardada no Skáld)".into() },
+            });
         }
     }
     let texto = da_tag(musica)?;
@@ -187,13 +241,27 @@ mod testes {
         std::fs::create_dir_all(&dir).unwrap();
         let musica = dir.join("Canção.flac");
         std::fs::write(&musica, b"").unwrap();
-        assert_eq!(carregar(&musica), None);
+        assert_eq!(carregar(0, &musica), None);
         // "[00:01.00]Coração" em Latin-1, com extensão em maiúsculas.
         std::fs::write(dir.join("Canção.LRC"), b"[00:01.00]Cora\xe7\xe3o").unwrap();
         assert_eq!(
-            carregar(&musica),
+            carregar(0, &musica),
             Some(Letra::Sincronizada { linhas: vec![l(1000, "Coração")], origem: "arquivo .lrc".into() })
         );
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn cria_lrc_ao_lado_sem_substituir() {
+        let dir = std::env::temp_dir().join(format!("skald-teste-lrc-novo-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let musica = dir.join("faixa.mp3");
+        std::fs::write(&musica, b"").unwrap();
+        assert!(salvar_ao_lado(&musica, "texto sem tempos").is_err(), "só sincronizada");
+        salvar_ao_lado(&musica, "[00:02.00]Oi").unwrap();
+        assert_eq!(std::fs::read_to_string(dir.join("faixa.lrc")).unwrap(), "[00:02.00]Oi");
+        assert!(salvar_ao_lado(&musica, "[00:03.00]Outra").is_err(), "nunca substitui");
+        assert_eq!(std::fs::read_to_string(dir.join("faixa.lrc")).unwrap(), "[00:02.00]Oi");
         std::fs::remove_dir_all(&dir).unwrap();
     }
 }
