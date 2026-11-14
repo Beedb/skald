@@ -5,7 +5,7 @@
 <h1 align="center">Skáld</h1>
 
 <p align="center">
-  Reprodutor de música para Linux, feito para quem tem a própria coleção de arquivos.<br>
+  Reprodutor de música para Linux e Windows, feito para quem tem a própria coleção de arquivos.<br>
   Local, offline e sem conta.
 </p>
 
@@ -30,7 +30,7 @@ O Skáld organiza e toca as músicas que estão no seu computador. Ele não faz 
 - Equalizador com presets
 - Letras sincronizadas (`.lrc` ou tag), com busca no LRCLIB
 - Temporizador para dormir, com o volume baixando devagar
-- Teclas de mídia e integração com o painel do sistema (MPRIS), ícone na bandeja e notificação ao trocar de música
+- Teclas de mídia e integração com o painel do sistema (MPRIS, só no Linux por enquanto), ícone na bandeja e notificação ao trocar de música
 
 **Histórico e estatísticas**
 - Histórico de reprodução: uma música conta como escutada a partir de 60% da duração, com no mínimo 20 s
@@ -45,7 +45,15 @@ O Skáld organiza e toca as músicas que estão no seu computador. Ele não faz 
 
 ## Instalação
 
-Baixe o pacote da sua distribuição na página de [Releases](../../releases/latest).
+Baixe o pacote do seu sistema na página de [Releases](../../releases/latest).
+
+### Windows 10 e 11
+
+1. Baixe `Skald_0.1.0_x64-setup.exe` e abra.
+2. Não precisa ser administrador: o Skáld é instalado só para o seu usuário.
+3. Se aparecer "O Windows protegeu o computador", clique em **Mais informações → Executar assim mesmo** (o instalador ainda não tem assinatura digital).
+
+O GStreamer já vem dentro do instalador. Se faltar o WebView2 (já incluso no Windows 11 e no Windows 10 atualizado), o instalador o baixa na hora. Para desinstalar: Configurações → Aplicativos → Skald.
 
 ### Ubuntu, Debian, Linux Mint, Zorin OS, Pop!_OS…
 
@@ -76,6 +84,8 @@ Os pacotes são para computadores de 64 bits (x86_64).
 | Miniaturas (pode apagar sem problema) | `~/.cache/com.skald.app/` |
 | Retrospectivas exportadas | `Skáld/Retrospectivas/` dentro da pasta Música do sistema |
 
+No Windows, o banco, as capas e as letras ficam em `%APPDATA%\com.skald.app\` e as miniaturas em `%LOCALAPPDATA%\com.skald.app\`.
+
 Em Configurações → Dados dá para fazer e restaurar o backup do banco. Remover uma música da biblioteca apaga só o registro, nunca o arquivo.
 
 ## Compilar a partir do código
@@ -95,6 +105,8 @@ npm install
 npm run tauri dev     # rodar em modo de desenvolvimento
 npm run tauri build   # gerar o .deb e o .rpm em src-tauri/target/release/bundle/
 ```
+
+No Windows: instale o Visual Studio Build Tools (C++), o Rust e os pacotes *runtime* e *development* do GStreamer MSVC x86_64 ([gstreamer.freedesktop.org](https://gstreamer.freedesktop.org/download/)). `npm run build:windows` copia para o instalador só a parte do GStreamer que o Skáld usa e gera o `.exe` em `src-tauri/target/release/bundle/nsis/`.
 
 Feito com [Tauri 2](https://tauri.app), React + TypeScript, Rust, GStreamer e SQLite.
 

@@ -7,7 +7,8 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "build:windows": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/gstreamer-windows.ps1 && tauri build"
   },
   "dependencies": {
     "@fontsource/cinzel": "^5.3.0",

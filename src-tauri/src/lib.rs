@@ -1588,7 +1588,35 @@ fn seek(player: State<player::Player>, posicao_ms: u64) -> Result<(), String> {
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
+/// Windows instalado: o GStreamer vem junto (DLLs ao lado do .exe, plugins em
+/// `gstreamer-1.0/`). Usa só esses plugins, com registro próprio, para não misturar
+/// com um GStreamer instalado no sistema. Em `tauri dev` a pasta não existe e nada muda.
+#[cfg(windows)]
+fn gstreamer_embutido() {
+    let Some(dir) = std::env::current_exe().ok().and_then(|e| e.parent().map(|p| p.to_path_buf())) else { return };
+    let plugins = dir.join("gstreamer-1.0");
+    if !plugins.is_dir() {
+        return;
+    }
+    let registro = std::env::var_os("LOCALAPPDATA")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|| dir.clone())
+        .join("com.skald.app")
+        .join("gstreamer-registry.bin");
+    // SAFETY: chamado no início de `run`, antes de qualquer outra thread existir.
+    unsafe {
+        std::env::set_var("GST_PLUGIN_SYSTEM_PATH_1_0", &plugins);
+        std::env::remove_var("GST_PLUGIN_PATH_1_0");
+        std::env::remove_var("GST_PLUGIN_PATH");
+        std::env::set_var("GST_REGISTRY_1_0", registro);
+        // Sem gst-plugin-scanner.exe: a varredura (só na primeira vez) roda no próprio processo.
+        std::env::set_var("GST_REGISTRY_FORK", "no");
+    }
+}
+
 pub fn run() {
+    #[cfg(windows)]
+    gstreamer_embutido();
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
