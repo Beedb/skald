@@ -26,7 +26,8 @@
   "bundle": {
     "active": true,
     "targets": [
-      "deb"
+      "deb",
+      "rpm"
     ],
     "icon": [
       "icons/32x32.png",
@@ -42,6 +43,18 @@
           "gstreamer1.0-plugins-base",
           "gstreamer1.0-plugins-good",
           "gstreamer1.0-libav"
+        ],
+        "desktopTemplate": "skald.desktop"
+      },
+      "rpm": {
+        "depends": [
+          "gstreamer1",
+          "gstreamer1-plugins-base",
+          "gstreamer1-plugins-good"
+        ],
+        "recommends": [
+          "gstreamer1-plugin-libav",
+          "libayatana-appindicator-gtk3"
         ],
         "desktopTemplate": "skald.desktop"
       }
