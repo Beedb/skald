@@ -25,15 +25,38 @@ type Props = {
   onErro: (mensagem: string) => void;
 };
 
-/** Barra lateral: biblioteca e playlists. */
+const CHAVE_RECOLHIDA = "skald-lateral-recolhida";
+
+/** Barra lateral: biblioteca e playlists. Pode ser recolhida a uma coluna de ícones. */
 export default function Lateral({ vista, playlists, onVista, onErro }: Props) {
   const [criando, setCriando] = useState(false);
   const [nome, setNome] = useState("");
   // Enter/Esc e o blur ao desmontar disparam juntos: só a primeira ação vale.
   const finalizado = useRef(false);
 
+  // Recolhida ou não: preferência local desta tela (lembrada entre aberturas).
+  const [recolhida, setRecolhida] = useState(() => {
+    try {
+      return localStorage.getItem(CHAVE_RECOLHIDA) === "1";
+    } catch {
+      return false;
+    }
+  });
+
+  function alternar() {
+    const nova = !recolhida;
+    setRecolhida(nova);
+    try {
+      localStorage.setItem(CHAVE_RECOLHIDA, nova ? "1" : "0");
+    } catch {
+      /* sem armazenamento local: vale só nesta sessão */
+    }
+  }
+
   function abrir() {
     finalizado.current = false;
+    // Para digitar o nome, a barra precisa estar aberta.
+    if (recolhida) alternar();
     setCriando(true);
   }
 
@@ -58,58 +81,58 @@ export default function Lateral({ vista, playlists, onVista, onErro }: Props) {
     }
   }
 
+  const item = (ativo: boolean, icone: string, rotulo: string, onClick: () => void, qtd?: number, dica?: string) => (
+    <button
+      className={"item-lateral" + (ativo ? " ativo" : "")}
+      onClick={onClick}
+      title={recolhida ? rotulo + (qtd !== undefined ? ` · ${qtd}` : "") : dica}
+      aria-label={recolhida ? rotulo : undefined}
+    >
+      <span className="icone" aria-hidden="true">
+        {icone}
+      </span>
+      <span className="nome">{rotulo}</span>
+      {qtd !== undefined && <span className="qtd">{qtd}</span>}
+    </button>
+  );
+  const naPlaylist = (id: number) => vista.tipo === "playlist" && vista.id === id;
+
   return (
-    <nav className="lateral" aria-label="Navegação">
+    <nav className={"lateral" + (recolhida ? " recolhida" : "")} aria-label="Navegação">
       <button
-        className={"item-lateral" + (vista.tipo === "biblioteca" ? " ativo" : "")}
-        onClick={() => onVista({ tipo: "biblioteca" })}
+        className="item-lateral alternar"
+        onClick={alternar}
+        aria-expanded={!recolhida}
+        title={recolhida ? "Expandir barra lateral" : "Recolher barra lateral"}
       >
-        ♫ Músicas
+        <span className="icone" aria-hidden="true">
+          {recolhida ? "»" : "«"}
+        </span>
+        <span className="nome">Recolher</span>
       </button>
-      <button
-        className={"item-lateral" + (vista.tipo === "historico" ? " ativo" : "")}
-        onClick={() => onVista({ tipo: "historico" })}
-      >
-        ⟲ Histórico
-      </button>
-      <button
-        className={"item-lateral" + (vista.tipo === "estatisticas" ? " ativo" : "")}
-        onClick={() => onVista({ tipo: "estatisticas" })}
-      >
-        ▤ Estatísticas
-      </button>
-      <button
-        className={"item-lateral" + (vista.tipo === "configuracoes" ? " ativo" : "")}
-        onClick={() => onVista({ tipo: "configuracoes" })}
-      >
-        ⚙ Configurações
-      </button>
+      {item(vista.tipo === "biblioteca", "♫", "Músicas", () => onVista({ tipo: "biblioteca" }))}
+      {item(vista.tipo === "historico", "⟲", "Histórico", () => onVista({ tipo: "historico" }))}
+      {item(vista.tipo === "estatisticas", "▤", "Estatísticas", () => onVista({ tipo: "estatisticas" }))}
+      {item(vista.tipo === "configuracoes", "⚙", "Configurações", () => onVista({ tipo: "configuracoes" }))}
 
       {playlists
         .filter((p) => p.kind === "curtidas")
         .map((p) => (
-          <button
-            key={p.id}
-            className={"item-lateral" + (vista.tipo === "playlist" && vista.id === p.id ? " ativo" : "")}
-            onClick={() => onVista({ tipo: "playlist", id: p.id })}
-          >
-            <span className="nome">♥ {p.name}</span>
-            <span className="qtd">{p.total}</span>
-          </button>
+          <div key={p.id}>{item(naPlaylist(p.id), "♥", p.name, () => onVista({ tipo: "playlist", id: p.id }), p.total)}</div>
         ))}
 
       <h2>Playlists</h2>
       <ul>
         {playlists.filter((p) => p.kind === "user").map((p) => (
           <li key={p.id}>
-            <button
-              className={"item-lateral" + (vista.tipo === "playlist" && vista.id === p.id ? " ativo" : "")}
-              onClick={() => onVista({ tipo: "playlist", id: p.id })}
-              title={`${p.name} · ${p.total} ${p.total === 1 ? "música" : "músicas"}`}
-            >
-              <span className="nome">{p.name}</span>
-              <span className="qtd">{p.total}</span>
-            </button>
+            {item(
+              naPlaylist(p.id),
+              (p.name.trim()[0] ?? "♪").toUpperCase(),
+              p.name,
+              () => onVista({ tipo: "playlist", id: p.id }),
+              p.total,
+              `${p.name} · ${p.total} ${p.total === 1 ? "música" : "músicas"}`,
+            )}
           </li>
         ))}
       </ul>
@@ -133,8 +156,11 @@ export default function Lateral({ vista, playlists, onVista, onErro }: Props) {
           }}
         />
       ) : (
-        <button className="item-lateral criar" onClick={abrir}>
-          + Nova playlist
+        <button className="item-lateral criar" onClick={abrir} title={recolhida ? "Nova playlist" : undefined}>
+          <span className="icone" aria-hidden="true">
+            +
+          </span>
+          <span className="nome">Nova playlist</span>
         </button>
       )}
     </nav>
