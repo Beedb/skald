@@ -27,6 +27,7 @@ type ImportResumo = {
   falhas: string[];
   reencontrados: number;
   ausentes: number;
+  movidos: number;
 };
 
 /** Frase curta do que o monitoramento de pastas mudou. */
@@ -34,6 +35,7 @@ function avisoMonitoramento(r: ImportResumo) {
   const partes = [];
   if (r.adicionados) partes.push(`${r.adicionados} música(s) nova(s)`);
   if (r.reencontrados) partes.push(`${r.reencontrados} reencontrada(s)`);
+  if (r.movidos) partes.push(`${r.movidos} renomeada(s) ou movida(s) reconhecida(s)`);
   if (r.ausentes) partes.push(`${r.ausentes} não encontrada(s)`);
   return "Pastas monitoradas: " + partes.join(", ") + ".";
 }
@@ -286,7 +288,8 @@ function App() {
         <div className="resumo">
           <p>
             {resumo.encontrados} arquivo(s) de áudio encontrado(s): {resumo.adicionados} adicionado(s),{" "}
-            {resumo.existentes} já estava(m) na biblioteca.
+            {resumo.existentes} já estava(m) na biblioteca
+            {resumo.movidos > 0 && `, ${resumo.movidos} renomeada(s) ou movida(s) reconhecida(s)`}.
           </p>
           {resumo.falhas.length > 0 && (
             <details>

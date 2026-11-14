@@ -46,13 +46,15 @@ fn db_status(app: tauri::AppHandle, db: State<db::Db>) -> Result<DbStatus, Strin
 async fn import_folder(app: tauri::AppHandle, path: String) -> Result<import::ImportResumo, String> {
     tauri::async_runtime::spawn_blocking(move || {
         let pasta = std::path::Path::new(&path);
-        let resumo = import::importar(&app.state::<db::Db>().0, pasta)?;
+        let mut resumo = import::importar(&app.state::<db::Db>().0, pasta)?;
         {
             let db = app.state::<db::Db>();
             let conn = db.0.lock().map_err(erro_db)?;
             watch::adicionar(&conn, &path).map_err(|e| e.to_string())?;
+            resumo.ausentes += import::marcar_sumidos(&conn, pasta).map_err(|e| e.to_string())?;
         }
         app.state::<watch::Vigia>().vigiar(pasta);
+        reconciliar_movidos(&app, &mut resumo)?;
         if resumo.adicionados > 0 {
             incluir_novas(&app, Origem::Biblioteca)?;
         }
@@ -65,14 +67,45 @@ async fn import_folder(app: tauri::AppHandle, path: String) -> Result<import::Im
 const EVENTO_BIBLIOTECA: &str = "biblioteca-mudou";
 
 /// Chamado pelo monitoramento de pastas: avisa a interface e põe as novas no contexto da fila.
-pub(crate) fn biblioteca_mudou(app: &AppHandle, resumo: &import::ImportResumo) {
+pub(crate) fn biblioteca_mudou(app: &AppHandle, mut resumo: import::ImportResumo) {
+    if resumo.adicionados + resumo.ausentes > 0 {
+        let _ = reconciliar_movidos(app, &mut resumo);
+    }
     if !resumo.mudou_algo() {
         return;
     }
     if resumo.adicionados > 0 {
         let _ = incluir_novas(app, Origem::Biblioteca);
     }
-    let _ = app.emit(EVENTO_BIBLIOTECA, resumo);
+    let _ = app.emit(EVENTO_BIBLIOTECA, &resumo);
+}
+
+/// Une registros de arquivos renomeados/movidos (seção 5) e atualiza a fila. Os renomeados
+/// deixam de contar como "novos" e "não encontrados" no resumo.
+fn reconciliar_movidos(app: &AppHandle, resumo: &mut import::ImportResumo) -> Result<(), String> {
+    let pares = {
+        let db = app.state::<db::Db>();
+        let mut conn = db.0.lock().map_err(erro_db)?;
+        import::reconciliar_movidos(&mut conn).map_err(|e| e.to_string())?
+    };
+    if pares.is_empty() {
+        return Ok(());
+    }
+    {
+        let estado_fila = app.state::<FilaState>();
+        let mut fila = estado_fila.0.lock().map_err(erro_db)?;
+        for &(de, para) in &pares {
+            fila.trocar_id(de, para);
+        }
+    }
+    let n = pares.len() as u32;
+    resumo.movidos += n;
+    resumo.adicionados = resumo.adicionados.saturating_sub(n);
+    resumo.ausentes = resumo.ausentes.saturating_sub(n);
+    let _ = app.emit(EVENTO_FILA, ());
+    let _ = app.emit(EVENTO_PLAYLISTS, ());
+    let _ = app.emit(EVENTO_HISTORICO, ());
+    Ok(())
 }
 
 #[tauri::command]

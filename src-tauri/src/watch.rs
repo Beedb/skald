@@ -33,7 +33,7 @@ impl Vigia {
                     juntar(&mut caminhos, evento);
                 }
                 let resumo = processar(&h, caminhos);
-                crate::biblioteca_mudou(&h, &resumo);
+                crate::biblioteca_mudou(&h, resumo);
             }
         });
         Ok(Vigia(Mutex::new(watcher)))
@@ -53,7 +53,7 @@ impl Vigia {
                 app.state::<Vigia>().vigiar(Path::new(&pasta));
                 resumo.somar(sincronizar(&app, Path::new(&pasta)));
             }
-            crate::biblioteca_mudou(&app, &resumo);
+            crate::biblioteca_mudou(&app, resumo);
         });
     }
 

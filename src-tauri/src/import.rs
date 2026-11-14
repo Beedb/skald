@@ -19,6 +19,8 @@ pub struct ImportResumo {
     pub reencontrados: u32,
     /// Músicas cujo arquivo sumiu e foram marcadas como não encontradas.
     pub ausentes: u32,
+    /// Arquivos renomeados ou movidos reconhecidos (registro antigo ficou com o caminho novo).
+    pub movidos: u32,
 }
 
 impl ImportResumo {
@@ -28,11 +30,12 @@ impl ImportResumo {
         self.existentes += outro.existentes;
         self.reencontrados += outro.reencontrados;
         self.ausentes += outro.ausentes;
+        self.movidos += outro.movidos;
         self.falhas.extend(outro.falhas);
     }
 
     pub fn mudou_algo(&self) -> bool {
-        self.adicionados + self.reencontrados + self.ausentes > 0
+        self.adicionados + self.reencontrados + self.ausentes + self.movidos > 0
     }
 }
 
@@ -187,6 +190,60 @@ pub fn marcar_sumidos(conn: &Connection, raiz: &Path) -> rusqlite::Result<u32> {
     Ok(sumidos.len() as u32)
 }
 
+/// Arquivos renomeados ou movidos (seção 5): um registro ausente e um presente com a mesma
+/// duração (±1 s) são o mesmo arquivo se, além disso,
+/// - têm o mesmo tamanho em bytes e o mesmo título e artista (renomeado), ou o título dos
+///   dois veio do nome do arquivo (sem tag de título, o nome mudou junto); ou
+/// - têm título, artista e álbum iguais e preenchidos (tags regravadas mudam o tamanho);
+/// e o par é único dos dois lados. O registro antigo fica com o caminho novo
+/// (mantendo playlists, curtidas e histórico) e o duplicado sai, passando as referências
+/// dele para o antigo. Nenhum arquivo é tocado. Devolve os pares (duplicado, antigo).
+pub fn reconciliar_movidos(conn: &mut Connection) -> rusqlite::Result<Vec<(i64, i64)>> {
+    let tx = conn.transaction()?;
+    let pares: Vec<(i64, i64, String, Option<i64>)> = {
+        let mut stmt = tx.prepare(
+            "WITH candidatos AS (
+                SELECT a.id AS antigo, b.id AS novo, b.path AS path, b.file_mtime AS mtime
+                FROM media a JOIN media b
+                  ON a.missing = 1 AND b.missing = 0
+                 AND a.category = b.category
+                 AND ABS(COALESCE(a.duration_ms, 0) - COALESCE(b.duration_ms, 0)) <= 1000
+                 AND (
+                    (a.file_size IS NOT NULL AND a.file_size = b.file_size AND (
+                        (COALESCE(a.title, '') = COALESCE(b.title, '') AND COALESCE(a.artist, '') = COALESCE(b.artist, ''))
+                        OR (a.path LIKE '%/' || a.title || '.%' AND b.path LIKE '%/' || b.title || '.%')))
+                    OR (a.title IS NOT NULL AND a.artist IS NOT NULL
+                        AND a.title = b.title AND a.artist = b.artist
+                        AND COALESCE(a.album, '') = COALESCE(b.album, ''))
+                 )
+            )
+            SELECT novo, antigo, path, mtime FROM candidatos c
+            WHERE (SELECT COUNT(*) FROM candidatos x WHERE x.antigo = c.antigo) = 1
+              AND (SELECT COUNT(*) FROM candidatos x WHERE x.novo = c.novo) = 1",
+        )?;
+        let linhas = stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)))?;
+        linhas.collect::<rusqlite::Result<_>>()?
+    };
+    for (novo, antigo, path, mtime) in &pares {
+        // Curtida duplicada (curtiu de novo depois de renomear): fica uma só.
+        tx.execute(
+            "DELETE FROM playlist_item WHERE media_id = ?1 AND playlist_id IN (
+                SELECT pi.playlist_id FROM playlist_item pi JOIN playlist p ON p.id = pi.playlist_id
+                WHERE pi.media_id = ?2 AND p.kind = 'curtidas')",
+            params![novo, antigo],
+        )?;
+        tx.execute("UPDATE playlist_item SET media_id = ?2 WHERE media_id = ?1", params![novo, antigo])?;
+        tx.execute("UPDATE play_history SET media_id = ?2 WHERE media_id = ?1", params![novo, antigo])?;
+        tx.execute("DELETE FROM media WHERE id = ?1", [novo])?;
+        tx.execute(
+            "UPDATE media SET path = ?2, file_mtime = ?3, missing = 0 WHERE id = ?1",
+            params![antigo, path, mtime],
+        )?;
+    }
+    tx.commit()?;
+    Ok(pares.into_iter().map(|(novo, antigo, _, _)| (novo, antigo)).collect())
+}
+
 #[cfg(test)]
 mod testes {
     use super::*;
@@ -229,5 +286,71 @@ mod testes {
         let total: i64 = conn.query_row("SELECT COUNT(*) FROM media", [], |r| r.get(0)).unwrap();
         assert_eq!(total, 3);
         std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn renomeado_mantem_playlists_curtidas_e_historico() {
+        let mut conn = crate::db::open(Path::new(":memory:")).unwrap();
+        let ins = |c: &Connection, id: i64, path: &str, titulo: &str, tam: i64, dur: i64, ausente: bool| {
+            c.execute(
+                "INSERT INTO media (id, path, title, artist, file_size, duration_ms, missing) VALUES (?1, ?2, ?3, 'Djavan', ?4, ?5, ?6)",
+                params![id, path, titulo, tam, dur, ausente],
+            )
+            .unwrap();
+        };
+        ins(&conn, 1, "/m/oceano.{ext}.mp3", "Oceano", 5000, 200_000, true);
+        ins(&conn, 2, "/m/Djavan - Oceano.mp3", "Oceano", 5000, 200_400, false);
+        // Ambíguo: dois ausentes iguais para um presente → não mexe.
+        ins(&conn, 3, "/m/a1.mp3", "Lilás", 7000, 100_000, true);
+        ins(&conn, 4, "/m/a2.mp3", "Lilás", 7000, 100_000, true);
+        ins(&conn, 5, "/m/Lilás.mp3", "Lilás", 7000, 100_000, false);
+        // Tags regravadas: tamanho mudou, título/artista/álbum/duração iguais → mesmo arquivo.
+        ins(&conn, 6, "/m/b.mp3", "Sina", 9000, 100_000, true);
+        ins(&conn, 7, "/m/Sina.mp3", "Sina", 9300, 100_000, false);
+        // Sem tag de título (título = nome do arquivo), mesmo tamanho → mesmo arquivo.
+        ins(&conn, 8, "/m/faixa 01.{ext}.mp3", "faixa 01.{ext}", 4000, 90_000, true);
+        ins(&conn, 9, "/m/Faixa 1.mp3", "Faixa 1", 4000, 90_000, false);
+        // Duração diferente → outro arquivo, mesmo com o mesmo título.
+        ins(&conn, 10, "/m/c.mp3", "Velha", 3000, 100_000, true);
+        ins(&conn, 11, "/m/Velha.mp3", "Velha", 3000, 120_000, false);
+
+        let curtidas: i64 = conn.query_row("SELECT id FROM playlist WHERE kind = 'curtidas'", [], |r| r.get(0)).unwrap();
+        conn.execute("INSERT INTO playlist (id, name) VALUES (50, 'Minha')", []).unwrap();
+        for (pl, m, pos) in [(curtidas, 1, 0), (curtidas, 2, 1), (50, 1, 0), (50, 2, 1)] {
+            conn.execute("INSERT INTO playlist_item (playlist_id, media_id, position) VALUES (?1, ?2, ?3)", params![pl, m, pos]).unwrap();
+        }
+        for m in [1, 2] {
+            conn.execute("INSERT INTO play_history (media_id, title, started_at) VALUES (?1, 'Oceano', 0)", [m]).unwrap();
+        }
+
+        let mut pares = reconciliar_movidos(&mut conn).unwrap();
+        pares.sort();
+        assert_eq!(pares, [(2, 1), (7, 6), (9, 8)]);
+        let (path, ausente): (String, bool) =
+            conn.query_row("SELECT path, missing FROM media WHERE id = 1", [], |r| Ok((r.get(0)?, r.get(1)?))).unwrap();
+        assert_eq!((path.as_str(), ausente), ("/m/Djavan - Oceano.mp3", false));
+        let conta = |sql: &str| conn.query_row(sql, [], |r| r.get::<_, i64>(0)).unwrap();
+        assert_eq!(conta("SELECT COUNT(*) FROM media WHERE id = 2"), 0);
+        assert_eq!(conta(&format!("SELECT COUNT(*) FROM playlist_item WHERE playlist_id = {curtidas}")), 1);
+        assert_eq!(conta("SELECT COUNT(*) FROM playlist_item WHERE playlist_id = 50 AND media_id = 1"), 2);
+        assert_eq!(conta("SELECT COUNT(*) FROM play_history WHERE media_id = 1"), 2);
+        assert_eq!(conta("SELECT COUNT(*) FROM media"), 8);
+        assert_eq!(conta("SELECT COUNT(*) FROM media WHERE missing = 1"), 3); // Lilás (2) e Velha
+        assert_eq!(reconciliar_movidos(&mut conn).unwrap(), []);
+    }
+
+    /// Ensaio sobre uma CÓPIA do banco real (altera o arquivo indicado).
+    /// Rodar com: SKALD_DB_ENSAIO=/copia.db cargo test ensaio -- --nocapture
+    #[test]
+    fn ensaio_reconciliacao() {
+        let Ok(caminho) = std::env::var("SKALD_DB_ENSAIO") else { return };
+        let mut conn = crate::db::open(Path::new(&caminho)).unwrap();
+        let conta = |c: &Connection, sql: &str| c.query_row(sql, [], |r| r.get::<_, i64>(0)).unwrap();
+        println!("antes: {} músicas, {} ausentes", conta(&conn, "SELECT COUNT(*) FROM media"), conta(&conn, "SELECT COUNT(*) FROM media WHERE missing = 1"));
+        let pares = reconciliar_movidos(&mut conn).unwrap();
+        println!("unidos: {}", pares.len());
+        println!("depois: {} músicas, {} ausentes", conta(&conn, "SELECT COUNT(*) FROM media"), conta(&conn, "SELECT COUNT(*) FROM media WHERE missing = 1"));
+        println!("playlists/curtidas em ausentes: {}", conta(&conn, "SELECT COUNT(*) FROM playlist_item pi JOIN media m ON m.id = pi.media_id WHERE m.missing = 1"));
+        println!("histórico em ausentes: {}", conta(&conn, "SELECT COUNT(*) FROM play_history h JOIN media m ON m.id = h.media_id WHERE m.missing = 1"));
     }
 }

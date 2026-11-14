@@ -165,6 +165,18 @@ impl Fila {
         Some(id)
     }
 
+    /// Troca um id por outro em toda a fila (registro duplicado unido ao original).
+    pub fn trocar_id(&mut self, de: i64, para: i64) {
+        for x in self.manual.iter_mut().chain(self.contexto.iter_mut()) {
+            if *x == de {
+                *x = para;
+            }
+        }
+        if self.atual == Some(de) {
+            self.atual = Some(para);
+        }
+    }
+
     pub fn adicionar(&mut self, id: i64) {
         self.manual.push_back(id);
     }
