@@ -72,12 +72,14 @@ struct Interno {
     ganhos: [Ganho; 2],
     /// Compensa o reforço do preset do equalizador.
     pre_eq: f64,
+    /// Redução do temporizador (1 = nenhuma).
+    atenuacao: f64,
 }
 
 impl Interno {
     /// Volume final do deck `i`: o do usuário vezes a normalização da faixa.
     fn alvo(&self, i: usize) -> f64 {
-        self.volume * ganho::fator(self.normalizacao, &self.ganhos[i]) * self.pre_eq
+        self.volume * ganho::fator(self.normalizacao, &self.ganhos[i]) * self.pre_eq * self.atenuacao
     }
 }
 
@@ -131,6 +133,7 @@ impl Player {
             normalizacao: ganho::Modo::default(),
             ganhos: [Ganho::default(); 2],
             pre_eq: 1.0,
+            atenuacao: 1.0,
         }));
         let pedir: Arc<Pedir> = Arc::new(pedir_proxima);
         for (i, deck) in decks.iter().enumerate() {
@@ -216,6 +219,28 @@ impl Player {
             let _ = self.decks[s].set_state(alvo);
         }
         self.decks[ativo].set_state(alvo).map(|_| ()).map_err(|e| e.to_string())
+    }
+
+    /// Pausa se estiver tocando (temporizador). Não retoma nada.
+    pub fn pausar(&self) -> Result<(), String> {
+        let ativo = {
+            let g = self.int.lock().unwrap();
+            if g.atual.is_none() {
+                return Ok(());
+            }
+            g.ativo
+        };
+        if alvo_de(&self.decks[ativo]) == gst::State::Playing {
+            self.alternar_pausa()?;
+        }
+        Ok(())
+    }
+
+    /// Reduz o volume por um fator de 0 a 1 (atenuação do temporizador).
+    pub fn atenuar(&self, fator: f64) {
+        let mut g = self.int.lock().unwrap();
+        g.atenuacao = fator.clamp(0.0, 1.0);
+        self.aplicar_volume(&g);
     }
 
     /// Volume de 0 a 1 na escala percebida; convertido para linear (cúbico).

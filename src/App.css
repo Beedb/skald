@@ -660,6 +660,63 @@ body {
   overflow-wrap: anywhere;
 }
 
+.extras {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.temporizador {
+  position: relative;
+}
+
+.temporizador > button {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.temporizador > button.ligado {
+  outline: 2px solid var(--acento);
+}
+
+.temporizador .restante {
+  font-size: 0.8rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.menu-temporizador {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 0.5rem);
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  min-width: 12rem;
+  padding: 0.35rem;
+  background: var(--card);
+  color: var(--texto);
+  border: 1px solid var(--linha);
+  border-radius: 6px;
+  box-shadow: var(--sombra);
+}
+
+.menu-temporizador .titulo {
+  padding: 0.3rem 0.6rem;
+  font-size: 0.75rem;
+  opacity: 0.6;
+}
+
+.menu-temporizador button {
+  text-align: left;
+  background: none;
+  border: none;
+}
+
+.menu-temporizador button.atual {
+  color: var(--acento);
+}
+
 .botao-fila.ativo {
   outline: 2px solid var(--acento);
 }

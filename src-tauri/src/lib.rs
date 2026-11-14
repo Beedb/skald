@@ -13,6 +13,7 @@ mod playlists;
 mod mpris;
 mod queue;
 mod settings;
+mod temporizador;
 mod stats;
 mod watch;
 mod search;
@@ -343,6 +344,10 @@ struct GaplessState(Mutex<Option<Pendente>>);
 /// Chamada pelo player pouco antes do fim da faixa: escolhe a seguinte numa cópia da fila
 /// (respeitando fila manual, aleatório e repetir) e pula arquivos ausentes.
 fn preparar_proxima(app: &AppHandle) -> Option<player::Proxima> {
+    // Temporizador "fim desta música": nada é emendado; a faixa termina e para.
+    if app.state::<TemporizadorState>().0.lock().ok()?.fim_da_faixa() {
+        return None;
+    }
     let antes = app.state::<FilaState>().0.lock().ok()?.clone();
     let mut depois = antes.clone();
     for tentativa in 0..100 {
@@ -903,6 +908,77 @@ fn queue_remove(app: AppHandle, fila: State<FilaState>, posicao: usize) -> Resul
     Ok(())
 }
 
+struct TemporizadorState(Mutex<temporizador::Temporizador>);
+
+const EVENTO_TEMPORIZADOR: &str = "temporizador-mudou";
+
+/// No fim natural de uma faixa: se o temporizador é "fim desta música", desliga-o e diz para não avançar.
+fn encerrar_por_temporizador(app: &AppHandle) -> bool {
+    let estado = app.state::<TemporizadorState>();
+    let Ok(mut t) = estado.0.lock() else { return false };
+    if !t.fim_da_faixa() {
+        return false;
+    }
+    t.definir(None);
+    let _ = app.emit(EVENTO_TEMPORIZADOR, ());
+    true
+}
+
+/// Liga o temporizador por `minutos`, até o fim da música atual, ou desliga (nenhum dos dois).
+#[tauri::command]
+fn sleep_timer_set(app: AppHandle, minutos: Option<u32>, fim_da_faixa: bool) -> Result<(), String> {
+    use temporizador::Modo;
+    use std::time::{Duration, Instant};
+    let modo = match (minutos, fim_da_faixa) {
+        (_, true) => Some(Modo::FimDaFaixa),
+        (Some(m), false) if (1..=24 * 60).contains(&m) => Some(Modo::Ate(Instant::now() + Duration::from_secs(m as u64 * 60))),
+        (Some(_), false) => return Err("Tempo inválido para o temporizador.".into()),
+        (None, false) => None,
+    };
+    let geracao = app.state::<TemporizadorState>().0.lock().map_err(erro_db)?.definir(modo);
+    let player = app.state::<player::Player>();
+    player.atenuar(1.0);
+    if let Some(Modo::Ate(fim)) = modo {
+        let h = app.clone();
+        std::thread::spawn(move || contar_temporizador(h, geracao, fim));
+    }
+    // A emenda já preparada para a próxima só respeita o modo novo na troca seguinte.
+    let _ = app.emit(EVENTO_TEMPORIZADOR, ());
+    Ok(())
+}
+
+/// Espera o fim do temporizador, baixando o volume nos últimos segundos; então pausa.
+fn contar_temporizador(app: AppHandle, geracao: u64, fim: std::time::Instant) {
+    use std::time::{Duration, Instant};
+    loop {
+        let vale = app.state::<TemporizadorState>().0.lock().is_ok_and(|t| t.geracao() == geracao);
+        if !vale {
+            return; // trocado ou desligado: quem trocou já restaurou o volume
+        }
+        let restante = fim.saturating_duration_since(Instant::now());
+        let player = app.state::<player::Player>();
+        player.atenuar(temporizador::atenuacao(restante));
+        if restante.is_zero() {
+            let _ = player.pausar();
+            player.atenuar(1.0);
+            if let Ok(mut t) = app.state::<TemporizadorState>().0.lock() {
+                if t.geracao() == geracao {
+                    t.definir(None);
+                }
+            }
+            let _ = app.emit(EVENTO_TEMPORIZADOR, ());
+            return;
+        }
+        let passo = if restante <= temporizador::ATENUAR { Duration::from_millis(100) } else { Duration::from_millis(500) };
+        std::thread::sleep(passo.min(restante));
+    }
+}
+
+#[tauri::command]
+fn sleep_timer_get(estado: State<TemporizadorState>) -> Result<temporizador::Visao, String> {
+    Ok(estado.0.lock().map_err(erro_db)?.visao(std::time::Instant::now()))
+}
+
 #[derive(Serialize)]
 struct VisaoFila {
     atual: Option<library::MediaRow>,
@@ -1036,6 +1112,7 @@ pub fn run() {
             app.manage(HistoricoState(Mutex::new(None)));
             app.manage(OrigemState(Mutex::new(None)));
             app.manage(GaplessState(Mutex::new(None)));
+            app.manage(TemporizadorState(Mutex::new(temporizador::Temporizador::default())));
             app.manage(watch::Vigia::iniciar(app.handle().clone())?);
             watch::Vigia::retomar(app.handle().clone());
             let handle = app.handle().clone();
@@ -1052,7 +1129,9 @@ pub fn run() {
                     m.atualizar(&handle, &estado);
                 }
                 let _ = handle.emit("player-estado", estado);
-                if fim {
+                if fim && encerrar_por_temporizador(&handle) {
+                    // A música atual terminou e o temporizador pediu para parar aqui.
+                } else if fim {
                     // Fora da thread do barramento, para não bloqueá-la.
                     let h = handle.clone();
                     std::thread::spawn(move || {
@@ -1102,6 +1181,8 @@ pub fn run() {
             queue_add_playlist,
             queue_move,
             queue_clear,
+            sleep_timer_set,
+            sleep_timer_get,
             get_queue,
             get_track_details,
             get_lyrics,

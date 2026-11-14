@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import type { MediaRow } from "./Biblioteca";
 import { BotaoCurtir, formatarDuracao } from "./Biblioteca";
 import type { Repetir } from "./Fila";
+import Temporizador from "./Temporizador";
 
 export type EstadoPlayer = {
   id: number | null;
@@ -165,14 +166,17 @@ export default function PlayerBar({ r, filaAberta, onAlternarFila, onAbrirPlayer
       <Progresso r={r} />
       <Volume r={r} />
 
-      <button
-        className={"botao-fila" + (filaAberta ? " ativo" : "")}
-        onClick={onAlternarFila}
-        aria-pressed={filaAberta}
-        title="Mostrar ou esconder a fila"
-      >
-        Fila
-      </button>
+      <div className="extras">
+        <Temporizador onErro={r.onErro} />
+        <button
+          className={"botao-fila" + (filaAberta ? " ativo" : "")}
+          onClick={onAlternarFila}
+          aria-pressed={filaAberta}
+          title="Mostrar ou esconder a fila"
+        >
+          Fila
+        </button>
+      </div>
     </footer>
   );
 }
