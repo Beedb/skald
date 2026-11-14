@@ -1,4 +1,18 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
+import {
+  ListMusic,
+  Maximize2,
+  Pause,
+  Play,
+  Repeat,
+  Repeat1,
+  Shuffle,
+  SkipBack,
+  SkipForward,
+  Volume1,
+  Volume2,
+  VolumeX,
+} from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
 import type { MediaRow } from "./Biblioteca";
 import { BotaoCurtir, formatarDuracao } from "./Biblioteca";
@@ -46,12 +60,13 @@ export function Capa({ src, className }: { src: string | null; className: string
   );
 }
 
-export function Controles({ r }: { r: Reproducao }) {
+export function Controles({ r, grande = false }: { r: Reproducao; grande?: boolean }) {
   const tocando = r.estado?.estado === "tocando";
   const comando = (nome: string, args?: Record<string, unknown>) =>
     invoke(nome, args).catch((e) => r.onErro(String(e)));
+  const t = grande ? 22 : 18;
   return (
-    <div className="controles">
+    <div className={"controles" + (grande ? " grandes" : "")}>
       <button
         className={"modo" + (r.aleatorio ? " ligado" : "")}
         onClick={() => comando("set_shuffle", { ativo: !r.aleatorio })}
@@ -59,10 +74,10 @@ export function Controles({ r }: { r: Reproducao }) {
         aria-label="Aleatório"
         title={r.aleatorio ? "Aleatório: ligado" : "Aleatório: desligado"}
       >
-        🔀
+        <Shuffle size={t} />
       </button>
       <button onClick={() => comando("previous_track")} disabled={!r.musica} aria-label="Anterior" title="Anterior">
-        ⏮
+        <SkipBack size={t} fill="currentColor" />
       </button>
       <button
         className="play"
@@ -71,10 +86,10 @@ export function Controles({ r }: { r: Reproducao }) {
         aria-label={tocando ? "Pausar" : "Tocar"}
         title={tocando ? "Pausar" : "Tocar"}
       >
-        {tocando ? "❚❚" : "▶"}
+        {tocando ? <Pause size={t} fill="currentColor" /> : <Play size={t} fill="currentColor" />}
       </button>
       <button onClick={() => comando("next_track")} disabled={!r.musica} aria-label="Próxima" title="Próxima">
-        ⏭
+        <SkipForward size={t} fill="currentColor" />
       </button>
       <button
         className={"modo" + (r.repetir !== "desligado" ? " ligado" : "")}
@@ -83,11 +98,15 @@ export function Controles({ r }: { r: Reproducao }) {
         aria-label={ROTULO_REPETIR[r.repetir]}
         title={ROTULO_REPETIR[r.repetir]}
       >
-        {r.repetir === "faixa" ? "🔂" : "🔁"}
+        {r.repetir === "faixa" ? <Repeat1 size={t} /> : <Repeat size={t} />}
       </button>
     </div>
   );
 }
+
+/** Preenchimento da trilha (a parte já tocada) para os controles deslizantes. */
+const trilha = (valor: number, max: number) =>
+  ({ "--p": `${max > 0 ? Math.min(100, (valor / max) * 100) : 0}%` }) as React.CSSProperties;
 
 export function Progresso({ r }: { r: Reproducao }) {
   const [arrastando, setArrastando] = useState<number | null>(null);
@@ -104,6 +123,8 @@ export function Progresso({ r }: { r: Reproducao }) {
       <span className="tempo">{formatarDuracao(posicao) || "0:00"}</span>
       <input
         type="range"
+        className="trilha"
+        style={trilha(posicao, duracao)}
         min={0}
         max={duracao || 1}
         step={1000}
@@ -120,11 +141,28 @@ export function Progresso({ r }: { r: Reproducao }) {
 }
 
 export function Volume({ r }: { r: Reproducao }) {
+  const anterior = useRef(1);
+  const mudo = r.volume === 0;
   return (
-    <label className="volume" title={`Volume: ${Math.round(r.volume * 100)}%`}>
-      <span aria-hidden>🔊</span>
+    <div className="volume" title={`Volume: ${Math.round(r.volume * 100)}%`}>
+      <button
+        className="icone-botao"
+        onClick={() => {
+          if (mudo) r.onVolume(anterior.current || 1);
+          else {
+            anterior.current = r.volume;
+            r.onVolume(0);
+          }
+        }}
+        aria-label={mudo ? "Ativar som" : "Silenciar"}
+        title={mudo ? "Ativar som" : "Silenciar"}
+      >
+        {mudo ? <VolumeX size={18} /> : r.volume < 0.5 ? <Volume1 size={18} /> : <Volume2 size={18} />}
+      </button>
       <input
         type="range"
+        className="trilha"
+        style={trilha(r.volume, 1)}
         min={0}
         max={1}
         step={0.01}
@@ -132,7 +170,7 @@ export function Volume({ r }: { r: Reproducao }) {
         aria-label="Volume"
         onChange={(e) => r.onVolume(Number(e.target.value))}
       />
-    </label>
+    </div>
   );
 }
 
@@ -143,38 +181,47 @@ type Props = {
   onAbrirPlayer: () => void;
 };
 
-/** Mini-player fixo no rodapé. Clicar na capa ou no título abre o player completo. */
+/** Player fixo no rodapé: faixa à esquerda, controles e progresso no centro, volume e atalhos à direita. */
 export default function PlayerBar({ r, filaAberta, onAlternarFila, onAbrirPlayer }: Props) {
   const m = r.musica;
   return (
     <footer className="player">
-      <Controles r={r} />
+      <div className="player-faixa">
+        {ativo(r) && m ? (
+          <>
+            <button className="faixa-mini" onClick={onAbrirPlayer} title="Abrir o player completo">
+              <Capa src={r.capa} className="capa-mini" />
+              <span className="faixa">
+                <strong>{m.title ?? "Sem título"}</strong>
+                <span>{m.artist ?? "Artista desconhecido"}</span>
+              </span>
+            </button>
+            <BotaoCurtir curtida={r.curtida} onClick={r.onCurtir} />
+          </>
+        ) : (
+          <span className="dica">Dê dois cliques numa música para tocar</span>
+        )}
+      </div>
 
-      {ativo(r) && m ? (
-        <button className="faixa-mini" onClick={onAbrirPlayer} title="Abrir o player completo">
-          <Capa src={r.capa} className="capa-mini" />
-          <span className="faixa">
-            <strong>{m.title ?? "Sem título"}</strong>
-            <span>{m.artist ?? "Artista desconhecido"}</span>
-          </span>
-        </button>
-      ) : (
-        <span className="dica">Dê dois cliques numa música para tocar</span>
-      )}
-      {ativo(r) && m ? <BotaoCurtir curtida={r.curtida} onClick={r.onCurtir} /> : <span />}
-
-      <Progresso r={r} />
-      <Volume r={r} />
+      <div className="player-centro">
+        <Controles r={r} />
+        <Progresso r={r} />
+      </div>
 
       <div className="extras">
+        <Volume r={r} />
         <Temporizador onErro={r.onErro} />
         <button
-          className={"botao-fila" + (filaAberta ? " ativo" : "")}
+          className={"icone-botao botao-fila" + (filaAberta ? " ativo" : "")}
           onClick={onAlternarFila}
           aria-pressed={filaAberta}
+          aria-label="Fila"
           title="Mostrar ou esconder a fila"
         >
-          Fila
+          <ListMusic size={18} />
+        </button>
+        <button className="icone-botao" onClick={onAbrirPlayer} aria-label="Player completo" title="Abrir o player completo">
+          <Maximize2 size={18} />
         </button>
       </div>
     </footer>

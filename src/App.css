@@ -365,20 +365,8 @@ body {
   line-height: 1.5;
 }
 
-.controles {
-  display: flex;
-  align-items: center;
-  gap: 0.4rem;
-}
 
-.controles .modo {
-  opacity: 0.45;
-}
 
-.controles .modo.ligado {
-  opacity: 1;
-  outline: 2px solid var(--acento);
-}
 
 .conteudo[hidden] {
   display: none;
@@ -399,30 +387,8 @@ body {
   opacity: 0.6;
 }
 
-.capa-mini {
-  width: 44px;
-  height: 44px;
-  font-size: 1.2rem;
-}
 
-.faixa-mini {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  min-width: 0;
-  padding: 0.25rem 0.5rem 0.25rem 0.25rem;
-  text-align: left;
-  background: none;
-  border: none;
-  border-radius: 8px;
-  color: inherit;
-  font: inherit;
-  cursor: pointer;
-}
 
-.faixa-mini:hover {
-  background: var(--card-2);
-}
 
 .player-completo {
   /* Sem capa (ou cores dinâmicas desligadas), --capa é transparente: fica o fundo do tema. */
@@ -534,11 +500,6 @@ body {
   overflow-wrap: anywhere;
 }
 
-.extras {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-}
 
 .temporizador {
   position: relative;
@@ -550,9 +511,6 @@ body {
   gap: 0.35rem;
 }
 
-.temporizador > button.ligado {
-  outline: 2px solid var(--acento);
-}
 
 .temporizador .restante {
   font-size: 0.8rem;
@@ -591,9 +549,6 @@ body {
   color: var(--acento);
 }
 
-.botao-fila.ativo {
-  outline: 2px solid var(--acento);
-}
 
 .lista {
   flex: 1;
@@ -647,21 +602,7 @@ body {
   user-select: none;
 }
 
-.player {
-  display: grid;
-  grid-template-columns: auto minmax(10rem, 1fr) auto minmax(12rem, 2fr) auto auto;
-  gap: 1rem;
-  align-items: center;
-  padding: 0.75rem 0;
-  border-top: 1px solid var(--linha);
-  margin-top: auto;
-}
 
-.player .play {
-  width: 2.5rem;
-  height: 2.5rem;
-  border-radius: 50%;
-}
 
 .faixa {
   display: flex;
@@ -682,32 +623,10 @@ body {
   font-size: 0.9rem;
 }
 
-.progresso {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-}
 
-.progresso input {
-  flex: 1;
-}
 
-.tempo {
-  font-variant-numeric: tabular-nums;
-  font-size: 0.85rem;
-  min-width: 3rem;
-  text-align: center;
-}
 
-.volume {
-  display: flex;
-  align-items: center;
-  gap: 0.25rem;
-}
 
-.volume input {
-  width: 6rem;
-}
 
 .duracao {
   text-align: right;
@@ -2304,4 +2223,202 @@ button.primario {
 .lateral.recolhida .lateral-tocando {
   flex-direction: column;
   padding: 0.3rem;
+}
+
+/* ---------- Barra do player ---------- */
+
+.player {
+  display: grid;
+  grid-template-columns: minmax(12rem, 1fr) minmax(20rem, 2fr) minmax(12rem, 1fr);
+  gap: 1.5rem;
+  align-items: center;
+  padding: 0.6rem 1.2rem;
+  border-top: 1px solid var(--linha);
+  background: color-mix(in srgb, var(--lateral) 92%, transparent);
+}
+
+.player-faixa {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.faixa-mini {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  min-width: 0;
+  padding: 0.2rem 0.5rem 0.2rem 0.2rem;
+  text-align: left;
+  background: none;
+  border: none;
+  border-radius: var(--raio-p);
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+:where(.faixa-mini):hover {
+  background: var(--card-2);
+}
+
+.faixa-mini strong {
+  color: var(--forte);
+}
+
+.capa-mini {
+  width: 52px;
+  height: 52px;
+  font-size: 1.2rem;
+}
+
+.player-centro {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.2rem;
+  min-width: 0;
+}
+
+.controles {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1.1rem;
+}
+
+.controles button {
+  display: grid;
+  place-items: center;
+  padding: 0.3rem;
+  background: none;
+  border: none;
+  border-radius: 50%;
+  color: var(--texto);
+}
+
+:where(.controles button:not(:disabled)):hover {
+  background: none;
+  color: var(--forte);
+}
+
+.controles button:disabled {
+  opacity: 0.35;
+}
+
+.controles .modo {
+  color: var(--fraco);
+}
+
+.controles .modo.ligado {
+  color: var(--acento);
+}
+
+.controles .play {
+  width: 2.6rem;
+  height: 2.6rem;
+  color: var(--forte);
+  border: 2px solid var(--acento);
+  background: color-mix(in srgb, var(--acento) 18%, transparent);
+  box-shadow: var(--sombra);
+}
+
+:where(.controles .play:not(:disabled)):hover {
+  background: color-mix(in srgb, var(--acento) 35%, transparent);
+}
+
+.controles.grandes {
+  gap: 1.6rem;
+}
+
+.controles.grandes .play {
+  width: 3.4rem;
+  height: 3.4rem;
+}
+
+.progresso {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.progresso .trilha {
+  flex: 1;
+}
+
+.tempo {
+  font-variant-numeric: tabular-nums;
+  font-size: 0.78rem;
+  color: var(--fraco);
+  min-width: 2.6rem;
+  text-align: center;
+}
+
+/* Controle deslizante: parte tocada no acento, resto discreto (--p vem do componente). */
+input[type="range"].trilha {
+  appearance: none;
+  height: 4px;
+  margin: 0;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--acento) var(--p, 0%), var(--card-3) var(--p, 0%));
+  cursor: pointer;
+}
+
+input[type="range"].trilha::-webkit-slider-thumb {
+  appearance: none;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--forte);
+  border: none;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+input[type="range"].trilha:hover::-webkit-slider-thumb,
+input[type="range"].trilha:focus-visible::-webkit-slider-thumb {
+  opacity: 1;
+}
+
+input[type="range"].trilha:disabled {
+  cursor: default;
+}
+
+.volume {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.volume .trilha {
+  width: 6.5rem;
+}
+
+.extras {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.4rem;
+}
+
+.icone-botao {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.35rem;
+  background: none;
+  border: none;
+  border-radius: var(--raio-p);
+  color: var(--fraco);
+}
+
+:where(.icone-botao:not(:disabled)):hover {
+  background: var(--card-2);
+  color: var(--forte);
+}
+
+.icone-botao.ativo,
+.icone-botao.ligado {
+  color: var(--acento);
 }

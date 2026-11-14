@@ -1,3 +1,4 @@
+import { Moon } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
@@ -66,12 +67,12 @@ export default function Temporizador({ onErro }: { onErro: (m: string) => void }
   return (
     <div className="temporizador" ref={caixa}>
       <button
-        className={ligado ? "ligado" : undefined}
+        className={"icone-botao" + (ligado ? " ligado" : "")}
         onClick={() => setAberto((a) => !a)}
         aria-expanded={aberto}
         title={ligado ? `Temporizador: ${rotulo}` : "Temporizador"}
       >
-        <span aria-hidden="true">⏾</span>
+        <Moon size={18} aria-hidden="true" />
         {rotulo && <span className="restante">{rotulo}</span>}
       </button>
       {aberto && (
