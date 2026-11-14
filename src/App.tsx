@@ -41,11 +41,13 @@ type ImportResumo = {
 /** Frase curta do que o monitoramento de pastas mudou. */
 function avisoMonitoramento(r: ImportResumo) {
   const partes = [];
-  if (r.adicionados) partes.push(`${r.adicionados} música(s) nova(s)`);
-  if (r.reencontrados) partes.push(`${r.reencontrados} reencontrada(s)`);
-  if (r.movidos) partes.push(`${r.movidos} renomeada(s) ou movida(s) reconhecida(s)`);
-  if (r.ausentes) partes.push(`${r.ausentes} não encontrada(s)`);
-  if (r.duplicados) partes.push(`${r.duplicados} grupo(s) de arquivos duplicados (veja "Duplicados")`);
+  const n = (q: number, um: string, varios: string) => `${q} ${q === 1 ? um : varios}`;
+  if (r.adicionados) partes.push(n(r.adicionados, "música nova", "músicas novas"));
+  if (r.reencontrados) partes.push(n(r.reencontrados, "reencontrada", "reencontradas"));
+  if (r.movidos) partes.push(n(r.movidos, "renomeada ou movida reconhecida", "renomeadas ou movidas reconhecidas"));
+  if (r.ausentes) partes.push(n(r.ausentes, "não encontrada", "não encontradas"));
+  if (r.duplicados)
+    partes.push(n(r.duplicados, "grupo de arquivos duplicados", "grupos de arquivos duplicados") + ' (veja "Duplicados")');
   return "Biblioteca: " + partes.join(", ") + ".";
 }
 

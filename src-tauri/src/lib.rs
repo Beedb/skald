@@ -291,7 +291,10 @@ fn encerrar_sessao(app: &AppHandle, concluida: bool) {
     if let Some(mut s) = hist.take() {
         s.aviso(false, agora_ms(), 0);
         s.concluida |= concluida;
-        gravar_sessao(app, &s);
+        let db = app.state::<db::Db>();
+        if let Ok(conn) = db.0.lock() {
+            let _ = history::encerrar(&conn, &s);
+        }
         let _ = app.emit(EVENTO_HISTORICO, ());
     }
 }

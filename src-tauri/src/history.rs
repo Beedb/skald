@@ -7,6 +7,8 @@ const MINIMO_MS: u64 = 20_000;
 const FRACAO: f64 = 0.6;
 /// Durante a reprodução, o registro é atualizado no banco a cada este intervalo.
 pub const GRAVAR_A_CADA_MS: u64 = 10_000;
+/// Sessão mais curta que isso (ex.: clique duplo que tocou a música duas vezes) não fica no histórico.
+const DESCARTAR_ABAIXO_MS: u64 = 1_000;
 
 /// "Escutada": mais de 60% da duração e no mínimo 20 s. Sem duração conhecida, vale só o mínimo.
 pub fn escutada(ouvido_ms: u64, duracao_ms: u64) -> bool {
@@ -64,6 +66,15 @@ pub fn iniciar(conn: &Connection, media_id: i64, inicio_unix: i64) -> rusqlite::
         params![media_id, inicio_unix],
     )?;
     Ok(conn.last_insert_rowid())
+}
+
+/// Fecha a sessão: grava, ou apaga o registro se ela durou menos de um segundo.
+pub fn encerrar(conn: &Connection, s: &Sessao) -> rusqlite::Result<()> {
+    if s.ouvido_ms < DESCARTAR_ABAIXO_MS && !s.concluida {
+        conn.execute("DELETE FROM play_history WHERE id = ?1", [s.registro])?;
+        return Ok(());
+    }
+    gravar(conn, s)
 }
 
 pub fn gravar(conn: &Connection, s: &Sessao) -> rusqlite::Result<()> {
@@ -206,6 +217,24 @@ mod testes {
         assert_eq!((e.listened_ms, e.completed, e.counted, e.missing), (25_000, true, true, true));
         let categoria: String = conn.query_row("SELECT category FROM play_history", [], |r| r.get(0)).unwrap();
         assert_eq!(categoria, "music");
+        assert_eq!(contar(&conn).unwrap(), 1);
+    }
+
+    #[test]
+    fn sessao_de_menos_de_um_segundo_nao_fica() {
+        let conn = crate::db::open(std::path::Path::new(":memory:")).unwrap();
+        conn.execute("INSERT INTO media (id, path, title) VALUES (7, '/a.mp3', 'X')", []).unwrap();
+        let r = iniciar(&conn, 7, 1000).unwrap();
+        let mut s = Sessao::nova(r, 7, 180_000, 0);
+        s.aviso(true, 0, 0);
+        s.aviso(false, 300, 0);
+        encerrar(&conn, &s).unwrap();
+        assert_eq!(contar(&conn).unwrap(), 0);
+        let r = iniciar(&conn, 7, 1001).unwrap();
+        let mut s = Sessao::nova(r, 7, 180_000, 0);
+        s.aviso(true, 0, 0);
+        s.aviso(false, 5_000, 0);
+        encerrar(&conn, &s).unwrap();
         assert_eq!(contar(&conn).unwrap(), 1);
     }
 

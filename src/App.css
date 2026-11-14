@@ -422,6 +422,10 @@ body {
   margin-bottom: 0.5rem;
 }
 
+.player-completo .fila-topo h2 {
+  visibility: hidden;
+}
+
 .fila-topo button {
   font-size: 0.8rem;
   padding: 0.2rem 0.6rem;
@@ -1455,8 +1459,10 @@ body {
   overflow-y: auto;
 }
 
-.capa-mini {
+.capa-colecao {
+  position: relative;
   aspect-ratio: 1;
+  height: auto;
   display: grid;
   place-items: center;
   overflow: hidden;
@@ -1466,17 +1472,19 @@ body {
   flex-shrink: 0;
 }
 
-.capa-mini img {
+.capa-colecao img {
+  position: absolute;
+  inset: 0;
   width: 100%;
   height: 100%;
   object-fit: cover;
 }
 
-.capa-mini.redonda {
+.capa-colecao.redonda {
   border-radius: 50%;
 }
 
-.capa-mini.grande {
+.capa-colecao.grande {
   width: 12rem;
   font-size: 4rem;
   box-shadow: var(--sombra);
@@ -1501,7 +1509,7 @@ body {
   background: var(--card-2);
 }
 
-.linha-artista .capa-mini {
+.linha-artista .capa-colecao {
   width: 48px;
 }
 
@@ -1543,7 +1551,7 @@ body {
   background: var(--card-2);
 }
 
-.cartao-album .capa-mini {
+.cartao-album .capa-colecao {
   width: 100%;
   font-size: 2.5rem;
   margin-bottom: 0.3rem;
@@ -1567,7 +1575,7 @@ body {
   margin-bottom: 1rem;
 }
 
-.cabecalho-colecao > div:first-child:not(.capa-mini) {
+.cabecalho-colecao > div:first-child:not(.capa-colecao) {
   flex: 1;
 }
 
@@ -1694,7 +1702,7 @@ button.primario {
   background: var(--card-2);
 }
 
-.cartao-playlist .capa-mini {
+.cartao-playlist .capa-colecao {
   width: 100%;
   font-size: 2.5rem;
   margin-bottom: 0.3rem;
@@ -1760,7 +1768,7 @@ button.primario {
   opacity: 0.5;
 }
 
-.tocadas-recentes .capa-mini {
+.tocadas-recentes .capa-colecao {
   grid-row: span 2;
   width: 44px;
 }

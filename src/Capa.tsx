@@ -46,7 +46,7 @@ export default function Capa({ id, className = "" }: { id: number | null; classN
   }, [id]);
 
   return (
-    <div ref={ref} className={"capa-mini " + className}>
+    <div ref={ref} className={"capa-colecao " + className}>
       {url ? <img src={url} alt="" draggable={false} /> : <span aria-hidden="true">♪</span>}
     </div>
   );

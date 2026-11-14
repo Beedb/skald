@@ -31,7 +31,7 @@ function CartaoPlaylist({ p, onAbrir, onTocar }: { p: PlaylistResumo; onAbrir: (
     <div className="cartao-playlist">
       <button className="abrir" onClick={onAbrir} title={p.name}>
         {capaEscolhida ? (
-          <div className="capa-mini">
+          <div className="capa-colecao">
             <img src={capaEscolhida} alt="" draggable={false} />
           </div>
         ) : (
