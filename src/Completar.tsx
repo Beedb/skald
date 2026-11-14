@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { useVirtualizer } from "@tanstack/react-virtual";
+import CompletarLetras from "./CompletarLetras";
 
 /**
  * Completar informações em lote (seção 6): lista músicas com campos vazios, busca uma
@@ -37,7 +38,32 @@ function escolher(c: Candidato[], duracao: number | null) {
   );
 }
 
-export default function Completar({
+/** Duas abas: informações (MusicBrainz) e letras (LRCLIB). */
+export default function Completar(props: {
+  versao: number;
+  onMudou: (mensagem: string) => void;
+  onErro: (m: string) => void;
+}) {
+  const [aba, setAba] = useState<"info" | "letras">("info");
+  return (
+    <section className="colecao completar">
+      <div className="cabecalho-colecao">
+        <h2>Completar informações</h2>
+        <div className="abas abas-compactas" role="tablist">
+          <button role="tab" aria-selected={aba === "info"} className={aba === "info" ? "ativa" : ""} onClick={() => setAba("info")}>
+            Informações
+          </button>
+          <button role="tab" aria-selected={aba === "letras"} className={aba === "letras" ? "ativa" : ""} onClick={() => setAba("letras")}>
+            Letras
+          </button>
+        </div>
+      </div>
+      {aba === "info" ? <CompletarInfo {...props} /> : <CompletarLetras onMudou={props.onMudou} onErro={props.onErro} />}
+    </section>
+  );
+}
+
+function CompletarInfo({
   versao,
   onMudou,
   onErro,
@@ -148,10 +174,7 @@ export default function Completar({
   const buscadas = lista.filter((i) => sugestoes.has(i.id)).length;
 
   return (
-    <section className="colecao completar">
-      <div className="cabecalho-colecao">
-        <h2>Completar informações</h2>
-      </div>
+    <>
       <p className="nota">
         {itens.length} {itens.length === 1 ? "música" : "músicas"} sem artista, álbum, ano ou gênero. A busca usa o
         MusicBrainz (precisa de internet, uma música por segundo) e só sugere quando a semelhança é alta e a duração
@@ -224,6 +247,6 @@ export default function Completar({
           })}
         </div>
       </div>
-    </section>
+    </>
   );
 }

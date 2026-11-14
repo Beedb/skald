@@ -2805,3 +2805,11 @@ input[type="range"].trilha:disabled {
   flex-wrap: wrap;
   gap: 0.4rem;
 }
+
+.abas-compactas {
+  width: fit-content;
+}
+
+.linha-completar .detalhe.ok {
+  color: var(--acento);
+}

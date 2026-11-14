@@ -1136,6 +1136,31 @@ async fn lyrics_lookup(app: AppHandle, id: i64) -> Result<Option<buscaletras::En
     .map_err(|e| e.to_string())?
 }
 
+/// Músicas presentes, com título e artista, sem letra em lugar nenhum (lê as tags; fora da thread principal).
+#[tauri::command]
+async fn lyrics_missing(app: AppHandle) -> Result<Vec<library::MediaRow>, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let linhas: Vec<(library::MediaRow, String)> = {
+            let db = app.state::<db::Db>();
+            let conn = db.0.lock().map_err(erro_db)?;
+            let mut stmt = conn
+                .prepare(
+                    "SELECT id, title, artist, album, duration_ms, missing, path FROM media
+                     WHERE category = 'music' AND missing = 0 AND title IS NOT NULL AND artist IS NOT NULL
+                     ORDER BY artist COLLATE SEMACENTO, album COLLATE SEMACENTO, track_number, id",
+                )
+                .map_err(|e| e.to_string())?;
+            let it = stmt
+                .query_map([], |r| Ok((library::linha(r)?, r.get::<_, String>(6)?)))
+                .map_err(|e| e.to_string())?;
+            it.collect::<Result<_, _>>().map_err(|e| e.to_string())?
+        };
+        Ok(linhas.into_iter().filter(|(m, p)| !letras::tem_letra(m.id, std::path::Path::new(p))).map(|(m, _)| m).collect())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
 /// Guarda a letra só no Skáld ou, se `no_arquivo`, cria o `.lrc` ao lado da música (sem substituir).
 #[tauri::command]
 fn lyrics_save(db: State<db::Db>, id: i64, texto: String, no_arquivo: bool) -> Result<(), String> {
@@ -1684,6 +1709,7 @@ pub fn run() {
             get_lyrics,
             lyrics_lookup,
             lyrics_save,
+            lyrics_missing,
             playlists_list,
             playlist_create,
             playlist_rename,

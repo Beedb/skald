@@ -155,6 +155,11 @@ pub fn remover_salva(id: i64) {
     }
 }
 
+/// Já tem letra em algum lugar (`.lrc` ao lado, guardada no Skáld ou tag)?
+pub fn tem_letra(id: i64, musica: &Path) -> bool {
+    achar_lrc(musica).is_some() || letra_salva(id).is_some_and(|p| p.is_file()) || da_tag(musica).is_some()
+}
+
 /// Cria `musica.lrc` ao lado do arquivo. Só letra sincronizada; nunca substitui um `.lrc` existente.
 pub fn salvar_ao_lado(musica: &Path, texto: &str) -> Result<(), String> {
     if ler_lrc(texto).is_none() {
@@ -263,5 +268,20 @@ mod testes {
         assert!(salvar_ao_lado(&musica, "[00:03.00]Outra").is_err(), "nunca substitui");
         assert_eq!(std::fs::read_to_string(dir.join("faixa.lrc")).unwrap(), "[00:02.00]Oi");
         std::fs::remove_dir_all(&dir).unwrap();
+    }
+}
+
+#[cfg(test)]
+mod ensaio {
+    /// Rodar com: SKALD_DB_ENSAIO=/copia.db cargo test ensaio_sem_letra -- --nocapture
+    #[test]
+    fn ensaio_sem_letra() {
+        let Ok(caminho) = std::env::var("SKALD_DB_ENSAIO") else { return };
+        let conn = crate::db::open(std::path::Path::new(&caminho)).unwrap();
+        let mut stmt = conn.prepare("SELECT id, path FROM media WHERE missing = 0").unwrap();
+        let linhas: Vec<(i64, String)> = stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?))).unwrap().map(Result::unwrap).collect();
+        let t = std::time::Instant::now();
+        let sem = linhas.iter().filter(|(id, p)| !super::tem_letra(*id, std::path::Path::new(p))).count();
+        println!("{sem} de {} sem letra, {:?}", linhas.len(), t.elapsed());
     }
 }
