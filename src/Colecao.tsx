@@ -254,6 +254,7 @@ export function AlbumView({
   versao,
   tocandoId,
   onArtista,
+  onEditar,
   onVoltar,
   onErro,
 }: {
@@ -261,6 +262,7 @@ export function AlbumView({
   versao: number;
   tocandoId: number | null;
   onArtista: (nome: string) => void;
+  onEditar: (ids: number[]) => void;
   onVoltar: () => void;
 } & Erro) {
   const [faixas, setFaixas] = useState<Faixa[] | null>(null);
@@ -316,6 +318,9 @@ export function AlbumView({
             </button>
             <button disabled={faixas.length === 0} onClick={() => enfileirar(false)}>
               Adicionar à fila
+            </button>
+            <button disabled={faixas.length === 0} onClick={() => onEditar(faixas.map((f) => f.id))}>
+              Editar álbum…
             </button>
           </div>
         </div>

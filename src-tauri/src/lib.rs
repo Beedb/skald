@@ -1132,6 +1132,39 @@ async fn cache_clear(app: AppHandle) -> Result<u64, String> {
     tauri::async_runtime::spawn_blocking(move || backup::limpar(&pastas)).await.map_err(|e| e.to_string())?
 }
 
+/// Ids da lista (com a busca) entre duas posições, para selecionar com Shift.
+#[tauri::command]
+fn media_ids_range(db: State<db::Db>, busca: Option<String>, de: usize, ate: usize) -> Result<Vec<i64>, String> {
+    let conn = db.0.lock().map_err(erro_db)?;
+    let ids = library::ids_em_ordem(&conn, busca.as_deref().unwrap_or("")).map_err(|e| e.to_string())?;
+    let (a, b) = (de.min(ate), de.max(ate).saturating_add(1).min(ids.len()));
+    Ok(ids.get(a..b).map(<[i64]>::to_vec).unwrap_or_default())
+}
+
+#[tauri::command]
+fn batch_values(db: State<db::Db>, ids: Vec<i64>) -> Result<enriquecer::Lote, String> {
+    let conn = db.0.lock().map_err(erro_db)?;
+    enriquecer::lote_valores(&conn, &ids)
+}
+
+/// Edição em lote de artista, álbum, gênero e ano (só os campos enviados).
+#[tauri::command]
+async fn batch_edit(
+    app: AppHandle,
+    ids: Vec<i64>,
+    campos: enriquecer::Campos,
+    no_arquivo: bool,
+) -> Result<enriquecer::ResultadoLote, String> {
+    let h = app.clone();
+    let r = tauri::async_runtime::spawn_blocking(move || {
+        enriquecer::lote_aplicar(&h.state::<db::Db>().0, &ids, &campos, no_arquivo)
+    })
+    .await
+    .map_err(|e| e.to_string())?;
+    let _ = app.emit(EVENTO_FILA, ());
+    Ok(r)
+}
+
 /// Valores atuais da música para a janela de informações.
 #[tauri::command]
 fn metadata_get(db: State<db::Db>, id: i64) -> Result<enriquecer::Atual, String> {
@@ -1514,6 +1547,9 @@ pub fn run() {
             cache_size,
             cache_clear,
             metadata_get,
+            media_ids_range,
+            batch_values,
+            batch_edit,
             metadata_lookup,
             metadata_apply,
             set_notifications,

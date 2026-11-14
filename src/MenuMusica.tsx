@@ -1,4 +1,5 @@
 import { createContext, ReactNode, useContext, useEffect, useState } from "react";
+import { invoke } from "@tauri-apps/api/core";
 import type { PlaylistResumo } from "./Lateral";
 
 /**
@@ -10,6 +11,8 @@ import type { PlaylistResumo } from "./Lateral";
 type Opcoes = {
   /** Substitui "Tocar agora" (ex.: tocar dentro da playlist ou do álbum). */
   tocar?: () => void;
+  /** Músicas selecionadas (com mais de uma, o menu age sobre todas). */
+  selecao?: number[];
 };
 
 type Aberto = { x: number; y: number; id: number; opcoes: Opcoes; confirmar?: boolean };
@@ -29,6 +32,8 @@ type Props = {
   onNovaPlaylistCom: (mediaId: number) => void;
   onRemover: (mediaId: number) => void;
   onInformacoes: (mediaId: number) => void;
+  onEditarLote: (ids: number[]) => void;
+  onErro: (m: string) => void;
 };
 
 const LARGURA = 220;
@@ -81,7 +86,10 @@ export function MenuMusicaProvider({ children, playlists, ...acoes }: Props) {
   return (
     <Contexto.Provider value={abrir}>
       {children}
-      {menu && (
+      {menu && menu.opcoes.selecao && menu.opcoes.selecao.length > 1 && (
+        <MenuSelecao ids={menu.opcoes.selecao} x={menu.x} y={menu.y} playlists={playlists} acoes={acoes} />
+      )}
+      {menu && !(menu.opcoes.selecao && menu.opcoes.selecao.length > 1) && (
         <ul className="menu-contexto" role="menu" style={{ left: menu.x, top: menu.y }}>
           <li role="menuitem" onClick={() => (menu.opcoes.tocar ? menu.opcoes.tocar() : acoes.onTocar(menu.id))}>
             Tocar agora
@@ -129,5 +137,50 @@ export function MenuMusicaProvider({ children, playlists, ...acoes }: Props) {
         </ul>
       )}
     </Contexto.Provider>
+  );
+}
+
+/** Menu para várias músicas selecionadas. */
+function MenuSelecao({
+  ids,
+  x,
+  y,
+  playlists,
+  acoes,
+}: {
+  ids: number[];
+  x: number;
+  y: number;
+  playlists: PlaylistResumo[];
+  acoes: Omit<Props, "children" | "playlists">;
+}) {
+  const fazer = (cmd: string, args: Record<string, unknown>) => invoke(cmd, args).catch((e) => acoes.onErro(String(e)));
+  return (
+    <ul className="menu-contexto" role="menu" style={{ left: x, top: y }}>
+      <li role="presentation" className="titulo-menu">
+        {ids.length} músicas selecionadas
+      </li>
+      <li role="menuitem" onClick={() => fazer("queue_add_many", { ids, aSeguir: true })}>
+        Tocar a seguir
+      </li>
+      <li role="menuitem" onClick={() => fazer("queue_add_many", { ids, aSeguir: false })}>
+        Adicionar à fila
+      </li>
+      <li role="separator" className="separador" />
+      <li role="presentation" className="titulo-menu">
+        Adicionar à playlist
+      </li>
+      {playlists
+        .filter((p) => p.kind === "user")
+        .map((p) => (
+          <li key={p.id} role="menuitem" className="recuado" onClick={() => fazer("playlist_add", { id: p.id, mediaIds: ids })}>
+            {p.name}
+          </li>
+        ))}
+      <li role="separator" className="separador" />
+      <li role="menuitem" onClick={() => acoes.onEditarLote(ids)}>
+        Editar {ids.length} músicas…
+      </li>
+    </ul>
   );
 }

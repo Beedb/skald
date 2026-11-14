@@ -16,6 +16,7 @@ import { Albuns, AlbumView, Artistas, ArtistaView } from "./Colecao";
 import Inicio from "./Inicio";
 import { esquecerMiniatura, miniatura } from "./Capa";
 import Informacoes from "./Informacoes";
+import EdicaoLote from "./EdicaoLote";
 import { MenuMusicaProvider } from "./MenuMusica";
 import { aplicarCorCapa, corDaImagem, reaplicarCorCapa } from "./coresCapa";
 import { aplicarTema, ModoTema } from "./tema";
@@ -89,6 +90,7 @@ function App() {
     }
   });
   const [informacoesId, setInformacoesId] = useState<number | null>(null);
+  const [loteIds, setLoteIds] = useState<number[] | null>(null);
 
   // Busca: `busca` é o texto digitado; `buscaAtiva` é aplicada 200 ms depois da última tecla.
   const [busca, setBusca] = useState("");
@@ -328,6 +330,8 @@ function App() {
       onNovaPlaylistCom={novaPlaylistCom}
       onRemover={removerDaBiblioteca}
       onInformacoes={setInformacoesId}
+      onEditarLote={setLoteIds}
+      onErro={mostrarErro}
     >
     <main className="app">
       <header className="topo">
@@ -486,6 +490,7 @@ function App() {
               versao={versao}
               tocandoId={estado && estado.estado !== "parado" ? estado.id : null}
               onArtista={(nome) => setVista({ tipo: "artista", nome })}
+              onEditar={setLoteIds}
               onVoltar={() => setVista(vista.de)}
               onErro={setErro}
             />
@@ -517,6 +522,18 @@ function App() {
           filaAberta={filaAberta}
           onAlternarFila={() => setFilaAberta((a) => !a)}
           onAbrirPlayer={() => setTela("player")}
+        />
+      )}
+      {loteIds && (
+        <EdicaoLote
+          ids={loteIds}
+          onFechar={() => setLoteIds(null)}
+          onSalvo={(mensagem) => {
+            setLoteIds(null);
+            setAviso(mensagem);
+            setVersao((v) => v + 1);
+          }}
+          onErro={setErro}
         />
       )}
       {informacoesId !== null && (

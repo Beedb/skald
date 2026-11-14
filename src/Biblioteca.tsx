@@ -77,6 +77,45 @@ export default function Biblioteca({
   const buscaAnterior = useRef(busca);
   const [, setTick] = useState(0);
   const abrirMenu = useMenuMusica();
+  // Seleção múltipla: clique, Ctrl+clique (alterna) e Shift+clique (intervalo).
+  const [selecao, setSelecao] = useState<Set<number>>(new Set());
+  const ancora = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (selecao.size === 0) return;
+    const tecla = (e: KeyboardEvent) => e.key === "Escape" && setSelecao(new Set());
+    window.addEventListener("keydown", tecla);
+    return () => window.removeEventListener("keydown", tecla);
+  }, [selecao]);
+
+  function clicar(e: React.MouseEvent, indice: number, id: number) {
+    if (e.shiftKey && ancora.current !== null) {
+      const de = ancora.current;
+      invoke<number[]>("media_ids_range", { busca, de, ate: indice })
+        .then((ids) => setSelecao(new Set(ids)))
+        .catch(() => {});
+      return;
+    }
+    ancora.current = indice;
+    if (e.ctrlKey || e.metaKey) {
+      const s = new Set(selecao);
+      if (s.has(id)) s.delete(id);
+      else s.add(id);
+      setSelecao(s);
+    } else {
+      setSelecao(new Set([id]));
+    }
+  }
+
+  function menu(e: React.MouseEvent, indice: number, id: number) {
+    let atual = selecao;
+    if (!selecao.has(id)) {
+      atual = new Set([id]);
+      setSelecao(atual);
+      ancora.current = indice;
+    }
+    abrirMenu(e, id, { tocar: () => onTocar(id), selecao: [...atual] });
+  }
 
   const virtualizer = useVirtualizer({
     count: total,
@@ -94,6 +133,8 @@ export default function Biblioteca({
     }
     paginas.current.clear();
     pedidas.current.clear();
+    setSelecao(new Set());
+    ancora.current = null;
     setTick((t) => t + 1);
   }, [chave]);
 
@@ -151,9 +192,16 @@ export default function Biblioteca({
               <div
                 key={item.key}
                 role="row"
-                className={"linha" + (m?.missing ? " ausente" : "") + (m && m.id === tocandoId ? " atual" : "")}
+                className={
+                  "linha" +
+                  (m?.missing ? " ausente" : "") +
+                  (m && m.id === tocandoId ? " atual" : "") +
+                  (m && selecao.has(m.id) ? " selecionada" : "")
+                }
+                aria-selected={m ? selecao.has(m.id) : undefined}
+                onClick={(e) => m && clicar(e, item.index, m.id)}
                 onDoubleClick={() => m && onTocar(m.id)}
-                onContextMenu={(e) => m && abrirMenu(e, m.id, { tocar: () => onTocar(m.id) })}
+                onContextMenu={(e) => m && menu(e, item.index, m.id)}
                 title={m?.missing ? "Arquivo não encontrado" : undefined}
                 style={{ height: ALTURA_LINHA, transform: `translateY(${item.start}px)` }}
               >

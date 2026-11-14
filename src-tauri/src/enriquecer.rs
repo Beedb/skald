@@ -342,9 +342,104 @@ fn gravar_no_banco(conn: &Connection, id: i64, c: &Campos) -> rusqlite::Result<(
     Ok(())
 }
 
+/// Valor de um campo numa seleção: o comum a todas, ou `varios`.
+#[derive(Serialize, Debug, PartialEq)]
+pub struct ValorLote<T> {
+    pub valor: Option<T>,
+    pub varios: bool,
+}
+
+#[derive(Serialize, Debug)]
+pub struct Lote {
+    pub artist: ValorLote<String>,
+    pub album: ValorLote<String>,
+    pub genre: ValorLote<String>,
+    pub year: ValorLote<i64>,
+    pub musicas: usize,
+}
+
+fn juntar<T: PartialEq + Clone>(valores: &[Option<T>]) -> ValorLote<T> {
+    let primeiro = valores.first().cloned().flatten();
+    let varios = valores.iter().any(|v| *v != primeiro);
+    ValorLote { valor: if varios { None } else { primeiro }, varios }
+}
+
+/// Edição em lote (seção 5): o que as músicas selecionadas têm em comum.
+pub fn lote_valores(conn: &Connection, ids: &[i64]) -> Result<Lote, String> {
+    let mut campos = Vec::with_capacity(ids.len());
+    for &id in ids {
+        campos.push(atual(conn, id)?.campos);
+    }
+    let pegar = |f: fn(&Campos) -> Option<String>| campos.iter().map(f).collect::<Vec<_>>();
+    Ok(Lote {
+        artist: juntar(&pegar(|c| c.artist.clone())),
+        album: juntar(&pegar(|c| c.album.clone())),
+        genre: juntar(&pegar(|c| c.genre.clone())),
+        year: juntar(&campos.iter().map(|c| c.year).collect::<Vec<_>>()),
+        musicas: ids.len(),
+    })
+}
+
+#[derive(Serialize, Debug, Default)]
+pub struct ResultadoLote {
+    pub alteradas: usize,
+    pub falhas: Vec<String>,
+}
+
+/// Aplica os mesmos campos (só artista, álbum, gênero e ano) a várias músicas.
+/// Uma falha (ex.: arquivo somente leitura) não impede as demais.
+pub fn lote_aplicar(conn_db: &std::sync::Mutex<Connection>, ids: &[i64], campos: &Campos, no_arquivo: bool) -> ResultadoLote {
+    let campos = Campos {
+        artist: campos.artist.clone(),
+        album: campos.album.clone(),
+        genre: campos.genre.clone(),
+        year: campos.year,
+        ..Default::default()
+    };
+    let mut r = ResultadoLote::default();
+    for &id in ids {
+        match aplicar(conn_db, id, &campos, no_arquivo, None) {
+            Ok(()) => r.alteradas += 1,
+            Err(e) => {
+                let nome = conn_db
+                    .lock()
+                    .ok()
+                    .and_then(|c| c.query_row("SELECT path FROM media WHERE id = ?1", [id], |x| x.get::<_, String>(0)).ok())
+                    .unwrap_or_else(|| format!("música {id}"));
+                r.falhas.push(format!("{nome}: {e}"));
+            }
+        }
+    }
+    r
+}
+
 #[cfg(test)]
 mod testes {
     use super::*;
+
+    #[test]
+    fn edicao_em_lote() {
+        let conn = crate::db::open(Path::new(":memory:")).unwrap();
+        conn.execute_batch(
+            "INSERT INTO media (id, path, title, artist, album, year) VALUES
+               (1, '/a.mp3', 'A', 'X', 'Disco', 2020), (2, '/b.mp3', 'B', 'Y', 'Disco', 2020);",
+        )
+        .unwrap();
+        let l = lote_valores(&conn, &[1, 2]).unwrap();
+        assert_eq!(l.artist, ValorLote { valor: None, varios: true });
+        assert_eq!(l.album, ValorLote { valor: Some("Disco".into()), varios: false });
+        assert_eq!(l.year.valor, Some(2020));
+        assert_eq!(l.genre, ValorLote { valor: None, varios: false });
+        let db = std::sync::Mutex::new(conn);
+        // Título vem junto, mas o lote só mexe nos quatro campos permitidos.
+        let campos = Campos { artist: Some("Z".into()), title: Some("Ignorado".into()), ..Default::default() };
+        let r = lote_aplicar(&db, &[1, 2, 99], &campos, false);
+        assert_eq!(r.alteradas, 2);
+        assert_eq!(r.falhas.len(), 1);
+        let conn = db.lock().unwrap();
+        let a = atual(&conn, 1).unwrap().campos;
+        assert_eq!((a.artist.as_deref(), a.title.as_deref()), (Some("Z"), Some("A")));
+    }
 
     #[test]
     fn le_resposta_do_musicbrainz() {

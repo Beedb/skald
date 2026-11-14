@@ -2006,3 +2006,15 @@ button.primario {
   flex: 1;
   margin: 0;
 }
+
+.aviso-modal.pre {
+  white-space: pre-line;
+}
+
+.linha.selecionada {
+  background: color-mix(in srgb, var(--acento) 18%, transparent);
+}
+
+.biblioteca .lista {
+  user-select: none;
+}
