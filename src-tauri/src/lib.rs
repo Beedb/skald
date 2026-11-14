@@ -4,6 +4,7 @@ mod eq;
 mod ganho;
 mod history;
 mod import;
+mod letras;
 mod library;
 mod player;
 mod playlists;
@@ -619,6 +620,21 @@ fn get_queue(db: State<db::Db>, fila: State<FilaState>) -> Result<VisaoFila, Str
     })
 }
 
+/// Letra da música (`.lrc` ao lado ou tag), lida fora da thread principal.
+#[tauri::command]
+async fn get_lyrics(app: AppHandle, id: i64) -> Result<Option<letras::Letra>, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let path = {
+            let db = app.state::<db::Db>();
+            let conn = db.0.lock().map_err(erro_db)?;
+            library::obter(&conn, id).map_err(|e| e.to_string())?.map(|(_, p)| p)
+        };
+        Ok(path.and_then(|p| letras::carregar(std::path::Path::new(&p))))
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
 /// Capa e informações adicionais da música (lidas do arquivo, fora da thread principal).
 #[tauri::command]
 async fn get_track_details(app: AppHandle, id: i64) -> Result<Option<details::Detalhes>, String> {
@@ -758,6 +774,7 @@ pub fn run() {
             queue_remove,
             get_queue,
             get_track_details,
+            get_lyrics,
             playlists_list,
             playlist_create,
             playlist_rename,

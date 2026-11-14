@@ -1,6 +1,8 @@
 import Fila, { type VisaoFila } from "./Fila";
 import { Capa, Controles, Progresso, Volume, type Reproducao } from "./PlayerBar";
+import { useState } from "react";
 import { BotaoCurtir } from "./Biblioteca";
+import Letra from "./Letra";
 
 export type Detalhes = {
   id: number;
@@ -57,6 +59,7 @@ type Props = {
 
 export default function PlayerCompleto({ r, fila, detalhes, onVoltar }: Props) {
   const m = r.musica;
+  const [aba, setAba] = useState<"fila" | "letra">("fila");
   return (
     <section className="player-completo" aria-label="Player completo">
       <button className="voltar" onClick={onVoltar}>
@@ -82,7 +85,19 @@ export default function PlayerCompleto({ r, fila, detalhes, onVoltar }: Props) {
         </div>
 
         <div className="pc-lateral">
-          <Fila fila={fila} />
+          <div className="abas" role="tablist">
+            <button role="tab" aria-selected={aba === "fila"} className={aba === "fila" ? "ativa" : ""} onClick={() => setAba("fila")}>
+              Fila
+            </button>
+            <button role="tab" aria-selected={aba === "letra"} className={aba === "letra" ? "ativa" : ""} onClick={() => setAba("letra")}>
+              Letra
+            </button>
+          </div>
+          {aba === "fila" ? (
+            <Fila fila={fila} />
+          ) : (
+            <Letra id={m?.id ?? null} posicaoMs={r.estado?.posicao_ms ?? 0} onErro={r.onErro} />
+          )}
           {detalhes && detalhes.id === m?.id && (
             <section className="pc-info">
               <h3>Informações</h3>

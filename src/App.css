@@ -827,3 +827,74 @@ body {
   font-size: 0.85rem;
   opacity: 0.65;
 }
+
+.abas {
+  display: flex;
+  gap: 0.4rem;
+}
+
+.abas button {
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  padding: 0.3rem 0.6rem;
+  cursor: pointer;
+  color: inherit;
+  opacity: 0.65;
+  font-weight: 600;
+}
+
+.abas button.ativa {
+  opacity: 1;
+  border-bottom-color: #4f8ef7;
+}
+
+.letra {
+  position: relative;
+  max-height: 60vh;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.15rem;
+  padding: 0.5rem 0;
+}
+
+.linha-letra {
+  background: none;
+  border: none;
+  padding: 0.2rem 0.3rem;
+  border-radius: 4px;
+  text-align: left;
+  font-size: 1.1rem;
+  line-height: 1.4;
+  color: inherit;
+  cursor: pointer;
+  opacity: 0.55;
+  transition: opacity 0.2s;
+}
+
+.linha-letra.passada {
+  opacity: 0.4;
+}
+
+.linha-letra.atual {
+  opacity: 1;
+  font-weight: 700;
+}
+
+.linha-letra:hover {
+  background: rgba(128, 128, 128, 0.15);
+}
+
+.letra-estatica {
+  margin: 0;
+  white-space: pre-wrap;
+  line-height: 1.5;
+}
+
+.letra-origem,
+.letra-vazia {
+  font-size: 0.85rem;
+  opacity: 0.6;
+}
