@@ -12,6 +12,7 @@ import Historico from "./Historico";
 import Pastas from "./Pastas";
 import Duplicados from "./Duplicados";
 import Categorias from "./Categorias";
+import { Albuns, AlbumView, Artistas, ArtistaView } from "./Colecao";
 import { aplicarTema, ModoTema } from "./tema";
 import Estatisticas from "./Estatisticas";
 import Configuracoes from "./Configuracoes";
@@ -388,6 +389,39 @@ function App() {
               versao={versaoHistorico}
               onErro={setErro}
               onTocar={(id) => invoke("play_media", { id, busca: "" }).catch((e) => mostrarErro(String(e)))}
+            />
+          </div>
+        )}
+        {vista.tipo === "artistas" && (
+          <div className="area">
+            <Artistas versao={versao} onAbrir={(nome) => setVista({ tipo: "artista", nome })} onErro={setErro} />
+          </div>
+        )}
+        {vista.tipo === "artista" && (
+          <div className="area">
+            <ArtistaView
+              nome={vista.nome}
+              versao={versao}
+              onAbrirAlbum={(chave) => setVista({ tipo: "album", chave, de: vista })}
+              onVoltar={() => setVista({ tipo: "artistas" })}
+              onErro={setErro}
+            />
+          </div>
+        )}
+        {vista.tipo === "albuns" && (
+          <div className="area">
+            <Albuns versao={versao} onAbrir={(chave) => setVista({ tipo: "album", chave, de: vista })} onErro={setErro} />
+          </div>
+        )}
+        {vista.tipo === "album" && (
+          <div className="area">
+            <AlbumView
+              chave={vista.chave}
+              versao={versao}
+              tocandoId={estado && estado.estado !== "parado" ? estado.id : null}
+              onArtista={(nome) => setVista({ tipo: "artista", nome })}
+              onVoltar={() => setVista(vista.de)}
+              onErro={setErro}
             />
           </div>
         )}

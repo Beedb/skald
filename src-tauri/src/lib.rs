@@ -1,3 +1,4 @@
+mod colecao;
 mod db;
 mod details;
 mod eq;
@@ -6,6 +7,7 @@ mod history;
 mod import;
 mod letras;
 mod library;
+mod miniaturas;
 mod player;
 mod playlists;
 mod mpris;
@@ -632,6 +634,66 @@ fn play_playlist(app: AppHandle, fila: State<FilaState>, id: i64, ordem: playlis
 }
 
 #[tauri::command]
+fn artists_list(db: State<db::Db>) -> Result<Vec<colecao::Artista>, String> {
+    let conn = db.0.lock().map_err(erro_db)?;
+    colecao::artistas(&conn).map_err(|e| e.to_string())
+}
+
+/// Álbuns da biblioteca; com `por_artista`, só os que têm faixas de `artista` (nulo: sem artista).
+#[tauri::command]
+fn albums_list(db: State<db::Db>, por_artista: bool, artista: Option<String>) -> Result<Vec<colecao::Album>, String> {
+    let conn = db.0.lock().map_err(erro_db)?;
+    let filtro = por_artista.then_some(artista.as_deref());
+    colecao::albuns(&conn, filtro).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn album_tracks(db: State<db::Db>, chave: colecao::ChaveAlbum) -> Result<Vec<colecao::Faixa>, String> {
+    let conn = db.0.lock().map_err(erro_db)?;
+    colecao::faixas_do_album(&conn, &chave).map_err(|e| e.to_string())
+}
+
+/// Toca o álbum a partir da faixa `indice` (o álbum vira o contexto da fila).
+#[tauri::command]
+fn play_album(app: AppHandle, fila: State<FilaState>, chave: colecao::ChaveAlbum, indice: usize) -> Result<(), String> {
+    let ids: Vec<i64> = {
+        let db = app.state::<db::Db>();
+        let conn = db.0.lock().map_err(erro_db)?;
+        colecao::faixas_do_album(&conn, &chave).map_err(|e| e.to_string())?.into_iter().map(|f| f.media.id).collect()
+    };
+    tocar_lista(&app, &fila, ids, indice)
+}
+
+/// Toca todas as músicas do artista (nulo: sem artista).
+#[tauri::command]
+fn play_artist(app: AppHandle, fila: State<FilaState>, artista: Option<String>) -> Result<(), String> {
+    let ids = {
+        let db = app.state::<db::Db>();
+        let conn = db.0.lock().map_err(erro_db)?;
+        colecao::ids_do_artista(&conn, artista.as_deref()).map_err(|e| e.to_string())?
+    };
+    tocar_lista(&app, &fila, ids, 0)
+}
+
+fn tocar_lista(app: &AppHandle, fila: &FilaState, ids: Vec<i64>, indice: usize) -> Result<(), String> {
+    let musica = fila.0.lock().map_err(erro_db)?.tocar_do_contexto_em(ids, indice).ok_or("Nada para tocar.")?;
+    definir_origem(app, None)?;
+    let _ = app.emit(EVENTO_FILA, ());
+    tocar_id(app, musica)
+}
+
+/// Miniatura da capa (cache em disco), lida fora da thread principal.
+#[tauri::command]
+async fn cover_thumb(app: AppHandle, id: i64) -> Result<Option<String>, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let pasta = miniaturas::pasta(app.path().app_cache_dir().map_err(|e| e.to_string())?);
+        miniaturas::obter(&app.state::<db::Db>().0, &pasta, id)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
 fn history_list(db: State<db::Db>, offset: u32, limit: u32) -> Result<Vec<history::Entrada>, String> {
     let conn = db.0.lock().map_err(erro_db)?;
     history::listar(&conn, offset, limit.min(2000)).map_err(|e| e.to_string())
@@ -966,6 +1028,12 @@ pub fn run() {
             playlist_remove_item,
             playlist_move_item,
             play_playlist,
+            artists_list,
+            albums_list,
+            album_tracks,
+            play_album,
+            play_artist,
+            cover_thumb,
             toggle_like,
             liked_ids,
             playlist_set_cover,

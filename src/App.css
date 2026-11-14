@@ -1309,3 +1309,223 @@ body {
 .rt-com-capa span {
   color: var(--texto);
 }
+
+/* ---------- Artistas e Álbuns ---------- */
+
+.colecao {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.colecao h2 {
+  margin: 0 0 0.6rem;
+}
+
+.colecao .detalhe {
+  color: var(--fraco);
+  font-size: 0.9rem;
+  margin: 0;
+}
+
+.colecao-rolagem {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.capa-mini {
+  aspect-ratio: 1;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  border-radius: var(--raio-p);
+  background: var(--card-2);
+  color: var(--fraco);
+  flex-shrink: 0;
+}
+
+.capa-mini img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.capa-mini.redonda {
+  border-radius: 50%;
+}
+
+.capa-mini.grande {
+  width: 12rem;
+  font-size: 4rem;
+  box-shadow: var(--sombra);
+}
+
+.linha-artista {
+  position: absolute;
+  left: 0;
+  right: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+  padding: 0.3rem 0.5rem;
+  text-align: left;
+  background: none;
+  border: none;
+  border-radius: var(--raio-p);
+  cursor: pointer;
+}
+
+.linha-artista:hover {
+  background: var(--card-2);
+}
+
+.linha-artista .capa-mini {
+  width: 48px;
+}
+
+.linha-artista .nome {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+}
+
+.linha-artista .detalhe {
+  white-space: nowrap;
+}
+
+.linha-grade {
+  position: absolute;
+  left: 0;
+  right: 0;
+  display: flex;
+  gap: 16px;
+}
+
+.cartao-album {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  padding: 0.4rem;
+  text-align: left;
+  background: none;
+  border: none;
+  border-radius: var(--raio);
+  cursor: pointer;
+  min-width: 0;
+}
+
+.cartao-album:hover {
+  background: var(--card-2);
+}
+
+.cartao-album .capa-mini {
+  width: 100%;
+  font-size: 2.5rem;
+  margin-bottom: 0.3rem;
+}
+
+.cartao-album .nome,
+.cartao-album .detalhe {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cartao-album .nome {
+  font-weight: 600;
+}
+
+.cabecalho-colecao {
+  display: flex;
+  align-items: flex-end;
+  gap: 1.2rem;
+  margin-bottom: 1rem;
+}
+
+.cabecalho-colecao > div:first-child:not(.capa-mini) {
+  flex: 1;
+}
+
+.info-album {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.3rem;
+}
+
+.voltar,
+.link {
+  align-self: flex-start;
+  background: none;
+  border: none;
+  padding: 0.2rem 0;
+  color: var(--fraco);
+  cursor: pointer;
+}
+
+.link {
+  color: var(--acento);
+  font-weight: 600;
+}
+
+.voltar:hover,
+.link:hover {
+  text-decoration: underline;
+}
+
+button.primario {
+  background: var(--acento);
+  color: var(--acento-txt);
+  border-color: transparent;
+  padding: 0.4rem 1rem;
+  font-weight: 600;
+}
+
+.faixas-album {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.faixas-album li {
+  display: flex;
+  gap: 0.8rem;
+  align-items: baseline;
+  padding: 0.35rem 0.5rem;
+  border-radius: var(--raio-p);
+  cursor: default;
+}
+
+.faixas-album li:hover {
+  background: var(--card-2);
+}
+
+.faixas-album li.atual {
+  color: var(--acento);
+}
+
+.faixas-album li.ausente {
+  opacity: 0.5;
+}
+
+.faixas-album .numero {
+  width: 2.5rem;
+  text-align: right;
+  color: var(--fraco);
+  font-variant-numeric: tabular-nums;
+}
+
+.faixas-album .titulo {
+  flex: 1;
+  min-width: 0;
+}
+
+.faixas-album .duracao {
+  color: var(--fraco);
+  font-variant-numeric: tabular-nums;
+}

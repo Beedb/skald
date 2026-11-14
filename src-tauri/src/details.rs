@@ -74,6 +74,31 @@ pub fn completar_do_arquivo(mut d: Detalhes) -> Detalhes {
     d
 }
 
+/// Bytes da capa (embutida ou da pasta) e o tipo MIME, sem converter para data URL.
+pub fn capa_bruta(path: &Path) -> Option<(&'static str, Vec<u8>)> {
+    if let Ok(arquivo) = lofty::read_from_path(path) {
+        let imagens: Vec<_> = arquivo.tags().iter().flat_map(|t| t.pictures()).collect();
+        let pic = imagens
+            .iter()
+            .find(|p| p.pic_type() == PictureType::CoverFront)
+            .or_else(|| imagens.first());
+        if let Some(pic) = pic {
+            return Some((mime_de(pic.mime_type()), pic.data().to_vec()));
+        }
+    }
+    let (caminho, mime) = arquivo_capa_da_pasta(path)?;
+    Some((mime, std::fs::read(caminho).ok()?))
+}
+
+fn mime_de(m: Option<&MimeType>) -> &'static str {
+    match m {
+        Some(MimeType::Png) => "image/png",
+        Some(MimeType::Gif) => "image/gif",
+        Some(MimeType::Bmp) => "image/bmp",
+        _ => "image/jpeg",
+    }
+}
+
 fn data_url(mime: &str, bytes: &[u8]) -> Option<String> {
     (bytes.len() <= CAPA_MAX_BYTES).then(|| format!("data:{mime};base64,{}", STANDARD.encode(bytes)))
 }
@@ -85,16 +110,16 @@ fn capa_embutida(arquivo: &lofty::file::TaggedFile) -> Option<String> {
         .iter()
         .find(|p| p.pic_type() == PictureType::CoverFront)
         .or_else(|| imagens.first())?;
-    let mime = match pic.mime_type() {
-        Some(MimeType::Png) => "image/png",
-        Some(MimeType::Gif) => "image/gif",
-        Some(MimeType::Bmp) => "image/bmp",
-        _ => "image/jpeg",
-    };
-    data_url(mime, pic.data())
+    data_url(mime_de(pic.mime_type()), pic.data())
 }
 
 fn capa_da_pasta(musica: &Path) -> Option<String> {
+    let (caminho, mime) = arquivo_capa_da_pasta(musica)?;
+    data_url(mime, &std::fs::read(caminho).ok()?)
+}
+
+/// Imagem de capa na pasta da música (cover.jpg, folder.png...), com o tipo MIME.
+fn arquivo_capa_da_pasta(musica: &Path) -> Option<(std::path::PathBuf, &'static str)> {
     let pasta = musica.parent()?;
     let mut entradas: Vec<_> = std::fs::read_dir(pasta).ok()?.filter_map(Result::ok).map(|e| e.path()).collect();
     entradas.sort();
@@ -106,9 +131,7 @@ fn capa_da_pasta(musica: &Path) -> Option<String> {
             }
             let ext = ext.to_string_lossy().to_ascii_lowercase();
             let Some((_, mime)) = EXTENSOES_IMAGEM.iter().find(|(e, _)| *e == ext) else { continue };
-            if let Ok(bytes) = std::fs::read(caminho) {
-                return data_url(mime, &bytes);
-            }
+            return Some((caminho.clone(), mime));
         }
     }
     None

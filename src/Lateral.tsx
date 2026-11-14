@@ -1,5 +1,6 @@
 import { useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import type { ChaveAlbum } from "./Colecao";
 
 export type PlaylistResumo = {
   id: number;
@@ -16,6 +17,11 @@ export type Vista =
   | { tipo: "historico" }
   | { tipo: "estatisticas" }
   | { tipo: "configuracoes" }
+  | { tipo: "artistas" }
+  | { tipo: "artista"; nome: string | null }
+  | { tipo: "albuns" }
+  /** `de`: a vista de onde o álbum foi aberto (para o "Voltar"). */
+  | { tipo: "album"; chave: ChaveAlbum; de: Vista }
   | { tipo: "playlist"; id: number };
 
 type Props = {
@@ -111,6 +117,8 @@ export default function Lateral({ vista, playlists, onVista, onErro }: Props) {
         <span className="nome">Recolher</span>
       </button>
       {item(vista.tipo === "biblioteca", "♫", "Músicas", () => onVista({ tipo: "biblioteca" }))}
+      {item(vista.tipo === "artistas" || vista.tipo === "artista", "☻", "Artistas", () => onVista({ tipo: "artistas" }))}
+      {item(vista.tipo === "albuns" || vista.tipo === "album", "◉", "Álbuns", () => onVista({ tipo: "albuns" }))}
       {item(vista.tipo === "historico", "⟲", "Histórico", () => onVista({ tipo: "historico" }))}
       {item(vista.tipo === "estatisticas", "▤", "Estatísticas", () => onVista({ tipo: "estatisticas" }))}
       {item(vista.tipo === "configuracoes", "⚙", "Configurações", () => onVista({ tipo: "configuracoes" }))}
