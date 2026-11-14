@@ -62,6 +62,42 @@
 }
 
 :root,
+:root[data-tema="carmesim"] {
+    --fundo: #0c090a;
+    --grade: #1a1012;
+    --card: #141012;
+    --card-2: #1c1517;
+    --card-3: #2a1c1f;
+    --borda: #6e1520;
+    --linha: #2c1d20;
+    --texto: #ece2e3;
+    --fraco: #9d8b8e;
+    --forte: #ffffff;
+    --acento: #d61f30;
+    --acento-txt: #ffffff;
+    --c1: #d61f30;
+    --c2: #ef5560;
+    --c3: #a3303b;
+    --c4: #f19aa0;
+    --c5: #7a1622;
+    --c6: #b3a3a6;
+    --raio: 10px;
+    --raio-p: 7px;
+    --borda-card: 1px solid var(--linha);
+    --sombra: 0 0 22px #d61f3024;
+    --lateral: #0f0b0c;
+    --lateral-txt: #a8989a;
+    --lateral-ativo: #ffffff;
+    --vidro: none;
+    --pixel-frente: #ffffff;
+    --pixel-sombra: #6e1520;
+    color-scheme: dark;
+}
+
+:root[data-tema="carmesim"] .btn.primario,
+:root[data-tema="carmesim"] .cal button.hoje,
+:root[data-tema="carmesim"] .chip.ativo { background: linear-gradient(180deg, #e0303f, #9e1422); border-color: #b5192a; }
+
 :root[data-tema="brasa"] {
     --fundo: #2a2321;
     --grade: #30282500;

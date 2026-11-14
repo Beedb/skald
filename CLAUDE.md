@@ -36,7 +36,7 @@ Reprodutor de áudio desktop para Linux, focado em arquivos locais e offline. Pl
 
 - O visual usa as variáveis CSS de `docs/temas.css` (atributo `data-tema` no `:root`).
 - Nunca escrever cor fixa no código; sempre `var(--...)`.
-- Tema padrão: brasa.
+- Tema padrão: carmesim (preto com vermelho; brasa e os demais seguem em Aparência). Fontes locais via `@fontsource` (`--fonte-marca` Cinzel, `--fonte-titulo` Lora); ícones de `lucide-react`.
 
 ## Fora de escopo por enquanto
 

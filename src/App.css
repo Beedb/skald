@@ -12,6 +12,9 @@
 }
 
 :root {
+  /* Fontes locais (pacotes @fontsource, funcionam offline). */
+  --fonte-marca: "Cinzel", Georgia, serif;
+  --fonte-titulo: "Lora", Georgia, serif;
   transition:
     --acento 0.8s ease,
     --capa 0.8s ease;
@@ -47,6 +50,12 @@ h1,
 h2,
 h3 {
   color: var(--forte);
+}
+
+h1,
+h2 {
+  font-family: var(--fonte-titulo);
+  font-weight: 600;
 }
 
 body {

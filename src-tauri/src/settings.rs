@@ -15,7 +15,7 @@ const ALEATORIO: &str = "aleatorio";
 const REPETIR: &str = "repetir";
 const TEMPORIZADOR: &str = "temporizador";
 /// Tema padrão do Skáld (docs/temas.css).
-const TEMA_PADRAO: &str = "brasa";
+const TEMA_PADRAO: &str = "carmesim";
 /// Crossfade padrão: ligado, 5 s (desligado entre faixas do mesmo álbum).
 const CROSSFADE_PADRAO: u64 = 5000;
 pub const CROSSFADE_MAX: u64 = 12_000;
@@ -26,7 +26,7 @@ pub struct Configuracoes {
     /// ReplayGain: desligada, faixa (padrão) ou álbum.
     pub normalizacao: crate::ganho::Modo,
     pub equalizador: crate::eq::Preset,
-    /// Família de cores de docs/temas.css (ex.: "brasa", "nord").
+    /// Família de cores de docs/temas.css (ex.: "carmesim", "nord").
     pub tema: String,
     /// "claro", "escuro" ou "sistema" (padrão).
     pub modo_tema: String,
@@ -208,7 +208,7 @@ mod testes {
     fn aparencia_padrao_e_gravada() {
         let conn = crate::db::open(std::path::Path::new(":memory:")).unwrap();
         let c = carregar(&conn).unwrap();
-        assert_eq!((c.tema.as_str(), c.modo_tema.as_str()), ("brasa", "sistema"));
+        assert_eq!((c.tema.as_str(), c.modo_tema.as_str()), ("carmesim", "sistema"));
         assert!(c.cores_dinamicas);
         definir_cores_dinamicas(&conn, false).unwrap();
         assert!(!carregar(&conn).unwrap().cores_dinamicas);

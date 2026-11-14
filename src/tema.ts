@@ -4,6 +4,7 @@ export type ModoTema = "claro" | "escuro" | "sistema";
 
 /** Famílias com uma variante só (o modo não muda nada). */
 const UNICOS: Record<string, string> = {
+  carmesim: "Carmesim",
   brasa: "Brasa",
   noite: "Noite",
   papel: "Papel",
@@ -36,7 +37,7 @@ const DUPLOS: Record<string, string> = {
   contraste: "Alto contraste",
 };
 
-export const TEMA_PADRAO = "brasa";
+export const TEMA_PADRAO = "carmesim";
 
 export const TEMAS: { id: string; nome: string; duplo: boolean }[] = [
   ...Object.entries(UNICOS).map(([id, nome]) => ({ id, nome, duplo: false })),
