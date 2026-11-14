@@ -4,7 +4,7 @@
 //! Período: "" (sempre), "AAAA" (ano) ou "AAAA-MM" (mês), em horário local.
 //! Rankings contam reproduções escutadas (`counted`); o tempo soma todas as reproduções.
 
-use rusqlite::{Connection, params};
+use rusqlite::{Connection, OptionalExtension, params};
 use serde::Serialize;
 
 #[derive(Serialize, Debug, PartialEq)]
@@ -132,6 +132,119 @@ pub fn meses(conn: &Connection) -> rusqlite::Result<Vec<String>> {
     meses.collect()
 }
 
+/// Retrospectiva (seções 11.5 e 11.6) de um mês ("AAAA-MM") ou ano ("AAAA") encerrado.
+#[derive(Serialize, Debug)]
+pub struct Retrospectiva {
+    pub periodo: String,
+    pub tempo_ms: i64,
+    pub escutadas: i64,
+    pub artistas: Vec<Item>,
+    pub musicas: Vec<Item>,
+    pub albuns: Vec<Item>,
+    pub genero: Option<Item>,
+    /// A música escutada mais vezes num mesmo dia.
+    pub mais_repetida: Option<Repetida>,
+    /// O artista com a maior fatia do tempo ouvido.
+    pub dominante: Option<Dominante>,
+}
+
+#[derive(Serialize, Debug, PartialEq)]
+pub struct Repetida {
+    pub titulo: String,
+    pub artista: Option<String>,
+    pub vezes: i64,
+    /// "AAAA-MM-DD".
+    pub dia: String,
+}
+
+#[derive(Serialize, Debug, PartialEq)]
+pub struct Dominante {
+    pub nome: String,
+    /// Porcentagem (0–100) do tempo ouvido no período.
+    pub percentual: f64,
+}
+
+pub fn retrospectiva(conn: &Connection, periodo: &str) -> Result<Retrospectiva, String> {
+    if periodo.is_empty() || !periodo_valido(periodo) {
+        return Err("Período inválido.".into());
+    }
+    let erro = |e: rusqlite::Error| e.to_string();
+    let p = painel(conn, periodo)?;
+    let mais_repetida = conn
+        .query_row(
+            &format!(
+                "SELECT MAX(h.title), MAX(h.artist), SUM(h.counted) AS vezes,
+                        strftime('%Y-%m-%d', h.started_at, 'unixepoch', 'localtime') AS dia
+                 FROM play_history h
+                 WHERE {NO_PERIODO} AND h.title IS NOT NULL
+                 GROUP BY dia, TRIM(h.title) COLLATE SEMACENTO, TRIM(COALESCE(h.artist, '')) COLLATE SEMACENTO
+                 HAVING vezes > 0
+                 ORDER BY vezes DESC, SUM(h.listened_ms) DESC, dia
+                 LIMIT 1"
+            ),
+            [periodo],
+            |r| Ok(Repetida { titulo: r.get(0)?, artista: r.get(1)?, vezes: r.get(2)?, dia: r.get(3)? }),
+        )
+        .optional()
+        .map_err(erro)?;
+    let dominante = conn
+        .query_row(
+            &format!(
+                "SELECT MAX(h.artist), SUM(h.listened_ms)
+                 FROM play_history h
+                 WHERE {NO_PERIODO} AND h.artist IS NOT NULL AND TRIM(h.artist) <> ''
+                 GROUP BY TRIM(h.artist) COLLATE SEMACENTO
+                 ORDER BY SUM(h.listened_ms) DESC
+                 LIMIT 1"
+            ),
+            [periodo],
+            |r| Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)?)),
+        )
+        .optional()
+        .map_err(erro)?
+        .filter(|_| p.tempo_ms > 0)
+        .map(|(nome, ms)| Dominante { nome: nome.trim().to_string(), percentual: ms as f64 * 100.0 / p.tempo_ms as f64 });
+    let corta = |mut v: Vec<Item>, n: usize| {
+        v.truncate(n);
+        v
+    };
+    Ok(Retrospectiva {
+        periodo: p.periodo,
+        tempo_ms: p.tempo_ms,
+        escutadas: p.escutadas,
+        artistas: corta(p.artistas, 5),
+        musicas: corta(p.musicas, 10),
+        albuns: corta(p.albuns, 5),
+        genero: p.generos.into_iter().next(),
+        mais_repetida,
+        dominante,
+    })
+}
+
+/// Retrospectivas já liberadas, da mais recente à mais antiga: meses antes de `mes_atual`
+/// ("AAAA-MM") e anos antes do atual, que tenham alguma música escutada.
+pub fn retrospectivas_disponiveis(conn: &Connection, mes_atual: &str) -> rusqlite::Result<Vec<String>> {
+    let mut stmt = conn.prepare(
+        "WITH m AS (
+            SELECT DISTINCT strftime('%Y-%m', started_at, 'unixepoch', 'localtime') AS p
+            FROM play_history WHERE category = 'music' AND counted = 1
+         )
+         SELECT p FROM (
+            SELECT p FROM m WHERE p < ?1
+            UNION
+            SELECT DISTINCT substr(p, 1, 4) FROM m WHERE substr(p, 1, 4) < substr(?1, 1, 4)
+         )
+         ORDER BY substr(p, 1, 4) DESC, length(p) ASC, p DESC",
+    )?;
+    let lista = stmt.query_map([mes_atual], |r| r.get(0))?;
+    lista.collect()
+}
+
+/// Mês atual em horário local ("AAAA-MM").
+pub fn mes_atual(conn: &Connection) -> rusqlite::Result<String> {
+    conn.query_row("SELECT strftime('%Y-%m', 'now', 'localtime')", [], |r| r.get(0))
+}
+
 #[cfg(test)]
 mod testes {
     use super::*;
@@ -185,5 +298,40 @@ mod testes {
         assert_eq!(meses(&conn).unwrap(), ["2026-11", "2026-10", "2025-12"]);
         assert!(painel(&conn, "2026-1").is_err());
         assert!(painel(&conn, "x'; DROP").is_err());
+    }
+
+    #[test]
+    fn retrospectiva_e_disponibilidade() {
+        let conn = crate::db::open(std::path::Path::new(":memory:")).unwrap();
+        tocar(&conn, "2025-12-20 10:00:00", "Velha", "Antigo", "Disco", "Rock", 100_000, true);
+        for h in 10..13 {
+            tocar(&conn, &format!("2026-10-05 {h}:00:00"), "Oceano", "Djavan", "Djavan", "MPB", 200_000, true);
+        }
+        tocar(&conn, "2026-10-06 10:00:00", "Flor de Lis", "Djavan", "A Voz", "MPB", 180_000, true);
+        tocar(&conn, "2026-10-07 10:00:00", "Trevo", "Anavitória", "Anavitória", "Pop", 220_000, true);
+        tocar(&conn, "2026-10-07 11:00:00", "Trevo", "Anavitória", "Anavitória", "Pop", 220_000, true);
+        tocar(&conn, "2026-11-02 10:00:00", "Agora", "Novo", "Novo", "Pop", 100_000, true);
+
+        let r = retrospectiva(&conn, "2026-10").unwrap();
+        assert_eq!(r.tempo_ms, 1_220_000);
+        assert_eq!(r.artistas[0].nome, "Djavan");
+        assert_eq!(r.genero.as_ref().map(|g| g.nome.as_str()), Some("MPB"));
+        assert_eq!(
+            r.mais_repetida,
+            Some(Repetida { titulo: "Oceano".into(), artista: Some("Djavan".into()), vezes: 3, dia: "2026-10-05".into() })
+        );
+        let d = r.dominante.unwrap();
+        assert_eq!(d.nome, "Djavan");
+        assert!((d.percentual - 780.0 / 1220.0 * 100.0).abs() < 0.01);
+        assert!(r.musicas.len() <= 10 && r.artistas.len() <= 5 && r.albuns.len() <= 5);
+        assert!(retrospectiva(&conn, "").is_err());
+
+        // Em novembro de 2026: outubro e dezembro/2025 liberados, e o ano de 2025.
+        assert_eq!(retrospectivas_disponiveis(&conn, "2026-11").unwrap(), ["2026-10", "2025", "2025-12"]);
+        // Em janeiro de 2027: o ano de 2026 também.
+        assert_eq!(
+            retrospectivas_disponiveis(&conn, "2027-01").unwrap(),
+            ["2026", "2026-11", "2026-10", "2025", "2025-12"]
+        );
     }
 }

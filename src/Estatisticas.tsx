@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import Retrospectivas from "./Retrospectivas";
 
 type Resumo = {
   tempo_total_ms: number;
@@ -17,9 +18,9 @@ export function formatarTempoLongo(ms: number) {
   return `${min} min`;
 }
 
-const numero = (n: number) => n.toLocaleString("pt-BR");
+export const numero = (n: number) => n.toLocaleString("pt-BR");
 
-type Item = { nome: string; detalhe: string | null; media_id: number | null; escutadas: number; ms: number };
+export type Item = { nome: string; detalhe: string | null; media_id: number | null; escutadas: number; ms: number };
 type Ponto = { periodo: string; ms: number; escutadas: number };
 type Painel = {
   periodo: string;
@@ -32,7 +33,7 @@ type Painel = {
   evolucao: Ponto[];
 };
 
-const nomeMes = (ano: string, mes: string, formato: "long" | "short") =>
+export const nomeMes = (ano: string, mes: string, formato: "long" | "short") =>
   new Date(Number(ano), Number(mes) - 1, 1).toLocaleDateString("pt-BR", { month: formato });
 
 /** "2026-10" → "out/26"; "2026-10-05" → "5". */
@@ -213,6 +214,7 @@ export default function Estatisticas(props: Props) {
       </div>
       <p className="nota">Contado desde o primeiro uso, inclusive músicas que já saíram da biblioteca.</p>
       <MaquinaDoTempo {...props} />
+      <Retrospectivas versao={versao} onErro={onErro} />
     </section>
   );
 }

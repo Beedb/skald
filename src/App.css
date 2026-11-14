@@ -1016,3 +1016,145 @@ body {
 .ranking .link:hover {
   text-decoration: underline;
 }
+
+.retrospectivas {
+  margin-top: 2rem;
+}
+
+.rt-lista {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.rt-lista button {
+  text-transform: capitalize;
+}
+
+.rt-lista .rt-ano {
+  font-weight: 700;
+}
+
+/* Fundo escuro padrão do Skáld, independente do tema (seção 11.7). */
+.rt-fundo {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  overflow-y: auto;
+  background: #0d0f14;
+  color: #f2f2f2;
+  padding: 2rem 1rem;
+}
+
+.rt-fechar {
+  position: fixed;
+  top: 1rem;
+  right: 1rem;
+  background: none;
+  border: none;
+  color: inherit;
+  font-size: 1.4rem;
+  cursor: pointer;
+}
+
+.rt-composicao {
+  max-width: 60rem;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.rt-composicao header h2 {
+  margin: 0.2rem 0 0;
+  font-size: 2.4rem;
+  text-transform: capitalize;
+}
+
+.rt-marca {
+  font-size: 0.85rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #7aa7ff;
+}
+
+.rt-destaques {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));
+  gap: 1rem;
+}
+
+.rt-listas {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+  gap: 1rem;
+}
+
+.rt-bloco {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  padding: 1rem 1.2rem;
+  border-radius: 10px;
+  background: #1a1e27;
+}
+
+.rt-bloco h3 {
+  margin: 0 0 0.3rem;
+  font-size: 0.75rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #9aa3b5;
+}
+
+.rt-bloco > strong {
+  font-size: 1.4rem;
+}
+
+.rt-bloco > span {
+  color: #b9c0cf;
+}
+
+.rt-grande {
+  background: #24365e;
+}
+
+.rt-grande > strong {
+  font-size: 2rem;
+}
+
+.rt-bloco ol {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.rt-bloco li {
+  display: flex;
+  align-items: baseline;
+  gap: 0.6rem;
+  padding: 0.25rem 0;
+}
+
+.rt-pos {
+  width: 1.4rem;
+  text-align: right;
+  color: #7aa7ff;
+  font-weight: 700;
+}
+
+.rt-nome {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.rt-nome small {
+  color: #9aa3b5;
+}
+
+.rt-vezes {
+  color: #b9c0cf;
+  font-variant-numeric: tabular-nums;
+}

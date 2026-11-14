@@ -575,6 +575,25 @@ fn stats_period(db: State<db::Db>, periodo: String) -> Result<stats::Painel, Str
     stats::painel(&conn, &periodo)
 }
 
+/// Retrospectivas liberadas (meses e anos encerrados com histórico).
+#[tauri::command]
+fn retrospective_list(db: State<db::Db>) -> Result<Vec<String>, String> {
+    let conn = db.0.lock().map_err(erro_db)?;
+    let mes = stats::mes_atual(&conn).map_err(|e| e.to_string())?;
+    stats::retrospectivas_disponiveis(&conn, &mes).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn retrospective_get(db: State<db::Db>, periodo: String) -> Result<stats::Retrospectiva, String> {
+    let conn = db.0.lock().map_err(erro_db)?;
+    let mes = stats::mes_atual(&conn).map_err(|e| e.to_string())?;
+    // Só períodos encerrados (seção 11.5: disponível no 1º dia do período seguinte).
+    if periodo.as_str() >= mes.as_str() || (periodo.len() == 4 && periodo.as_str() >= &mes[..4]) {
+        return Err("Esta retrospectiva ainda não está disponível.".into());
+    }
+    stats::retrospectiva(&conn, &periodo)
+}
+
 #[tauri::command]
 fn stats_months(db: State<db::Db>) -> Result<Vec<String>, String> {
     let conn = db.0.lock().map_err(erro_db)?;
@@ -842,6 +861,8 @@ pub fn run() {
             stats_summary,
             stats_period,
             stats_months,
+            retrospective_list,
+            retrospective_get,
             toggle_pause,
             set_volume,
             seek,
