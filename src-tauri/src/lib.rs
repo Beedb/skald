@@ -816,15 +816,17 @@ fn next_track(app: AppHandle) -> Result<(), String> {
 }
 
 #[tauri::command]
-fn set_shuffle(app: AppHandle, fila: State<FilaState>, ativo: bool) -> Result<(), String> {
+fn set_shuffle(app: AppHandle, fila: State<FilaState>, db: State<db::Db>, ativo: bool) -> Result<(), String> {
     fila.0.lock().map_err(erro_db)?.definir_aleatorio(ativo);
+    settings::definir_aleatorio(&*db.0.lock().map_err(erro_db)?, ativo).map_err(|e| e.to_string())?;
     let _ = app.emit(EVENTO_FILA, ());
     Ok(())
 }
 
 #[tauri::command]
-fn set_repeat(app: AppHandle, fila: State<FilaState>, modo: queue::Repetir) -> Result<(), String> {
+fn set_repeat(app: AppHandle, fila: State<FilaState>, db: State<db::Db>, modo: queue::Repetir) -> Result<(), String> {
     fila.0.lock().map_err(erro_db)?.definir_repetir(modo);
+    settings::definir_repetir(&*db.0.lock().map_err(erro_db)?, modo).map_err(|e| e.to_string())?;
     let _ = app.emit(EVENTO_FILA, ());
     Ok(())
 }
@@ -928,8 +930,56 @@ fn encerrar_por_temporizador(app: &AppHandle) -> bool {
         return false;
     }
     t.definir(None);
+    drop(t);
+    salvar_temporizador(app, None);
     let _ = app.emit(EVENTO_TEMPORIZADOR, ());
     true
+}
+
+/// Guarda o temporizador no banco para continuar depois de fechar e abrir o app.
+fn salvar_temporizador(app: &AppHandle, modo: Option<temporizador::Modo>) {
+    use temporizador::Modo;
+    let salvo = modo.map(|m| match m {
+        Modo::FimDaFaixa => settings::TemporizadorSalvo::FimDaFaixa,
+        Modo::Ate(fim) => {
+            let falta = fim.saturating_duration_since(std::time::Instant::now()).as_millis() as i64;
+            settings::TemporizadorSalvo::Ate(unix_agora_ms() + falta)
+        }
+    });
+    if let Ok(conn) = app.state::<db::Db>().0.lock() {
+        let _ = settings::definir_temporizador(&conn, salvo);
+    }
+}
+
+fn unix_agora_ms() -> i64 {
+    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_millis() as i64)
+}
+
+/// Liga (ou desliga) o temporizador: estado, contagem, volume, banco e aviso à tela.
+fn aplicar_temporizador(app: &AppHandle, modo: Option<temporizador::Modo>) -> Result<(), String> {
+    let geracao = app.state::<TemporizadorState>().0.lock().map_err(erro_db)?.definir(modo);
+    app.state::<player::Player>().atenuar(1.0);
+    if let Some(temporizador::Modo::Ate(fim)) = modo {
+        let h = app.clone();
+        std::thread::spawn(move || contar_temporizador(h, geracao, fim));
+    }
+    salvar_temporizador(app, modo);
+    let _ = app.emit(EVENTO_TEMPORIZADOR, ());
+    Ok(())
+}
+
+/// Ao abrir: retoma o temporizador salvo, se ainda não acabou.
+fn retomar_temporizador(app: &AppHandle) {
+    use std::time::{Duration, Instant};
+    let salvo = app.state::<db::Db>().0.lock().ok().and_then(|c| settings::temporizador(&c).ok().flatten());
+    let modo = match salvo {
+        Some(settings::TemporizadorSalvo::FimDaFaixa) => Some(temporizador::Modo::FimDaFaixa),
+        Some(settings::TemporizadorSalvo::Ate(ms)) if ms > unix_agora_ms() => {
+            Some(temporizador::Modo::Ate(Instant::now() + Duration::from_millis((ms - unix_agora_ms()) as u64)))
+        }
+        _ => None,
+    };
+    let _ = aplicar_temporizador(app, modo);
 }
 
 /// Liga o temporizador por `minutos`, até o fim da música atual, ou desliga (nenhum dos dois).
@@ -943,16 +993,8 @@ fn sleep_timer_set(app: AppHandle, minutos: Option<u32>, fim_da_faixa: bool) -> 
         (Some(_), false) => return Err("Tempo inválido para o temporizador.".into()),
         (None, false) => None,
     };
-    let geracao = app.state::<TemporizadorState>().0.lock().map_err(erro_db)?.definir(modo);
-    let player = app.state::<player::Player>();
-    player.atenuar(1.0);
-    if let Some(Modo::Ate(fim)) = modo {
-        let h = app.clone();
-        std::thread::spawn(move || contar_temporizador(h, geracao, fim));
-    }
     // A emenda já preparada para a próxima só respeita o modo novo na troca seguinte.
-    let _ = app.emit(EVENTO_TEMPORIZADOR, ());
-    Ok(())
+    aplicar_temporizador(&app, modo)
 }
 
 /// Espera o fim do temporizador, baixando o volume nos últimos segundos; então pausa.
@@ -969,10 +1011,14 @@ fn contar_temporizador(app: AppHandle, geracao: u64, fim: std::time::Instant) {
         if restante.is_zero() {
             let _ = player.pausar();
             player.atenuar(1.0);
-            if let Ok(mut t) = app.state::<TemporizadorState>().0.lock() {
-                if t.geracao() == geracao {
+            let acabou = app.state::<TemporizadorState>().0.lock().is_ok_and(|mut t| {
+                t.geracao() == geracao && {
                     t.definir(None);
+                    true
                 }
+            });
+            if acabou {
+                salvar_temporizador(&app, None);
             }
             let _ = app.emit(EVENTO_TEMPORIZADOR, ());
             return;
@@ -1440,6 +1486,12 @@ pub fn run() {
                 app.state::<player::Player>().definir_crossfade(cfg.crossfade_ms);
                 app.state::<player::Player>().definir_normalizacao(cfg.normalizacao);
                 app.state::<player::Player>().definir_equalizador(cfg.equalizador);
+                // Aleatório e repetir voltam como estavam.
+                let (aleatorio, repetir) = settings::modos_fila(&conn)?;
+                let fila = app.state::<FilaState>();
+                let mut f = fila.0.lock().map_err(erro_db)?;
+                f.definir_aleatorio(aleatorio);
+                f.definir_repetir(repetir);
             }
             // Sem D-Bus (sessão sem barramento), o app funciona só sem MPRIS.
             match mpris::Mpris::iniciar(app.handle().clone()) {
@@ -1448,6 +1500,7 @@ pub fn run() {
                 }
                 Err(e) => eprintln!("{e}"),
             }
+            retomar_temporizador(app.handle());
             // Bandeja ligada: cria o ícone; iniciado com o sistema, abre só nela.
             let bandeja = {
                 let db = app.state::<db::Db>();

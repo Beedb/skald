@@ -11,6 +11,9 @@ const MODO_TEMA: &str = "modo_tema";
 const CORES_DINAMICAS: &str = "cores_dinamicas";
 const BANDEJA: &str = "bandeja";
 const NOTIFICAR: &str = "notificar";
+const ALEATORIO: &str = "aleatorio";
+const REPETIR: &str = "repetir";
+const TEMPORIZADOR: &str = "temporizador";
 /// Tema padrão do Skáld (docs/temas.css).
 const TEMA_PADRAO: &str = "brasa";
 /// Crossfade padrão: ligado, 5 s (desligado entre faixas do mesmo álbum).
@@ -65,6 +68,47 @@ pub fn carregar(conn: &Connection) -> rusqlite::Result<Configuracoes> {
     let bandeja = ler(conn, BANDEJA)?.is_some_and(|v| v == "1");
     let notificar = ler(conn, NOTIFICAR)?.is_none_or(|v| v == "1");
     Ok(Configuracoes { crossfade_ms, normalizacao, equalizador, tema, modo_tema, cores_dinamicas, bandeja, notificar })
+}
+
+/// Modos da fila guardados entre execuções.
+pub fn modos_fila(conn: &Connection) -> rusqlite::Result<(bool, crate::queue::Repetir)> {
+    let aleatorio = ler(conn, ALEATORIO)?.is_some_and(|v| v == "1");
+    let repetir = ler(conn, REPETIR)?
+        .and_then(|v| serde_json::from_value(serde_json::Value::String(v)).ok())
+        .unwrap_or_default();
+    Ok((aleatorio, repetir))
+}
+
+pub fn definir_aleatorio(conn: &Connection, ativo: bool) -> rusqlite::Result<()> {
+    gravar(conn, ALEATORIO, if ativo { "1" } else { "0" })
+}
+
+pub fn definir_repetir(conn: &Connection, modo: crate::queue::Repetir) -> rusqlite::Result<()> {
+    let texto = serde_json::to_value(modo).ok().and_then(|v| v.as_str().map(String::from)).unwrap_or_default();
+    gravar(conn, REPETIR, &texto)
+}
+
+/// Temporizador guardado: `Fim` (fim da música) ou o instante final em ms desde 1970.
+#[derive(Debug, PartialEq, Clone, Copy)]
+pub enum TemporizadorSalvo {
+    FimDaFaixa,
+    Ate(i64),
+}
+
+pub fn temporizador(conn: &Connection) -> rusqlite::Result<Option<TemporizadorSalvo>> {
+    Ok(ler(conn, TEMPORIZADOR)?.and_then(|v| match v.as_str() {
+        "fim" => Some(TemporizadorSalvo::FimDaFaixa),
+        n => n.parse().ok().map(TemporizadorSalvo::Ate),
+    }))
+}
+
+pub fn definir_temporizador(conn: &Connection, t: Option<TemporizadorSalvo>) -> rusqlite::Result<()> {
+    let texto = match t {
+        None => String::new(),
+        Some(TemporizadorSalvo::FimDaFaixa) => "fim".into(),
+        Some(TemporizadorSalvo::Ate(ms)) => ms.to_string(),
+    };
+    gravar(conn, TEMPORIZADOR, &texto)
 }
 
 pub fn definir_bandeja(conn: &Connection, ativo: bool) -> rusqlite::Result<()> {
@@ -130,6 +174,23 @@ mod testes {
         assert_eq!(carregar(&conn).unwrap().normalizacao, Modo::Album);
         definir_normalizacao(&conn, Modo::Desligada).unwrap();
         assert_eq!(carregar(&conn).unwrap().normalizacao, Modo::Desligada);
+    }
+
+    #[test]
+    fn modos_e_temporizador_persistem() {
+        use crate::queue::Repetir;
+        let conn = crate::db::open(std::path::Path::new(":memory:")).unwrap();
+        assert_eq!(modos_fila(&conn).unwrap(), (false, Repetir::Desligado));
+        definir_aleatorio(&conn, true).unwrap();
+        definir_repetir(&conn, Repetir::Faixa).unwrap();
+        assert_eq!(modos_fila(&conn).unwrap(), (true, Repetir::Faixa));
+        assert_eq!(temporizador(&conn).unwrap(), None);
+        definir_temporizador(&conn, Some(TemporizadorSalvo::Ate(1_800_000_000_000))).unwrap();
+        assert_eq!(temporizador(&conn).unwrap(), Some(TemporizadorSalvo::Ate(1_800_000_000_000)));
+        definir_temporizador(&conn, Some(TemporizadorSalvo::FimDaFaixa)).unwrap();
+        assert_eq!(temporizador(&conn).unwrap(), Some(TemporizadorSalvo::FimDaFaixa));
+        definir_temporizador(&conn, None).unwrap();
+        assert_eq!(temporizador(&conn).unwrap(), None);
     }
 
     #[test]
