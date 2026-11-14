@@ -1956,3 +1956,13 @@ button.primario {
   border-radius: var(--raio-p);
   background: var(--card-2);
 }
+
+.acoes-dados {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.nota.destaque {
+  color: var(--texto);
+}

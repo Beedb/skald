@@ -78,7 +78,16 @@ function App() {
   const [versaoPlaylists, setVersaoPlaylists] = useState(0);
   const [curtidas, setCurtidas] = useState<Set<number>>(new Set());
   const [versaoHistorico, setVersaoHistorico] = useState(0);
-  const [aviso, setAviso] = useState<string | null>(null);
+  // Aviso deixado antes de recarregar (ex.: backup restaurado).
+  const [aviso, setAviso] = useState<string | null>(() => {
+    try {
+      const a = sessionStorage.getItem("skald-aviso");
+      sessionStorage.removeItem("skald-aviso");
+      return a;
+    } catch {
+      return null;
+    }
+  });
   const [informacoesId, setInformacoesId] = useState<number | null>(null);
 
   // Busca: `busca` é o texto digitado; `buscaAtiva` é aplicada 200 ms depois da última tecla.

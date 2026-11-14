@@ -1,4 +1,5 @@
 mod artistas;
+mod backup;
 mod colecao;
 mod db;
 mod details;
@@ -1064,6 +1065,48 @@ fn set_appearance(db: State<db::Db>, tema: String, modo: String) -> Result<(), S
     settings::definir_aparencia(&conn, &tema, &modo)
 }
 
+#[tauri::command]
+fn backup_export(db: State<db::Db>, destino: String) -> Result<(), String> {
+    let conn = db.0.lock().map_err(erro_db)?;
+    backup::exportar(&conn, std::path::Path::new(&destino))
+}
+
+/// Restaura um backup: a fila é esvaziada (os ids podem ser outros) e a tela recarrega.
+/// O banco anterior fica salvo ao lado do atual; o caminho volta para avisar o usuário.
+#[tauri::command]
+fn backup_restore(app: AppHandle, origem: String) -> Result<String, String> {
+    let pasta = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    let seguranca = backup::copia_de_seguranca(&pasta, unix_agora());
+    encerrar_sessao(&app, false);
+    {
+        let db = app.state::<db::Db>();
+        let mut conn = db.0.lock().map_err(erro_db)?;
+        backup::restaurar(&mut conn, std::path::Path::new(&origem), &seguranca)?;
+    }
+    *app.state::<FilaState>().0.lock().map_err(erro_db)? = queue::Fila::default();
+    definir_origem(&app, None)?;
+    let _ = app.emit(EVENTO_FILA, ());
+    Ok(seguranca.display().to_string())
+}
+
+fn pastas_de_cache(app: &AppHandle) -> Result<Vec<std::path::PathBuf>, String> {
+    let cache = app.path().app_cache_dir().map_err(|e| e.to_string())?;
+    Ok(vec![miniaturas::pasta(cache.clone()), cache.join("mpris")])
+}
+
+#[tauri::command]
+async fn cache_size(app: AppHandle) -> Result<u64, String> {
+    let pastas = pastas_de_cache(&app)?;
+    tauri::async_runtime::spawn_blocking(move || backup::tamanho(&pastas)).await.map_err(|e| e.to_string())
+}
+
+/// Apaga as capas em cache (refeitas quando preciso). Devolve os bytes liberados.
+#[tauri::command]
+async fn cache_clear(app: AppHandle) -> Result<u64, String> {
+    let pastas = pastas_de_cache(&app)?;
+    tauri::async_runtime::spawn_blocking(move || backup::limpar(&pastas)).await.map_err(|e| e.to_string())?
+}
+
 /// Valores atuais da música para a janela de informações.
 #[tauri::command]
 fn metadata_get(db: State<db::Db>, id: i64) -> Result<enriquecer::Atual, String> {
@@ -1437,6 +1480,10 @@ pub fn run() {
             set_appearance,
             set_dynamic_colors,
             set_tray,
+            backup_export,
+            backup_restore,
+            cache_size,
+            cache_clear,
             metadata_get,
             metadata_lookup,
             metadata_apply,

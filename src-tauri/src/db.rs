@@ -126,6 +126,17 @@ fn migrate(conn: &mut Connection) -> rusqlite::Result<()> {
     Ok(())
 }
 
+/// Versão do esquema que este código cria.
+pub fn versao_atual() -> i64 {
+    MIGRATIONS.len() as i64
+}
+
+/// Depois de restaurar um backup: migrações que faltarem e texto de busca pendente.
+pub fn atualizar(conn: &mut Connection) -> rusqlite::Result<()> {
+    migrate(conn)?;
+    crate::search::preencher_pendentes(conn)
+}
+
 pub fn schema_version(conn: &Connection) -> rusqlite::Result<i64> {
     conn.pragma_query_value(None, "user_version", |r| r.get(0))
 }

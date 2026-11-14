@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { ask, open, save } from "@tauri-apps/plugin-dialog";
 import { aplicarTema, ModoTema, temDuasVariantes, TEMAS } from "./tema";
 
 type Normalizacao = "desligada" | "faixa" | "album";
@@ -24,6 +25,11 @@ const PRESETS: [Preset, string][] = [
   ["instrumental", "Instrumental"],
 ];
 
+function tamanho(bytes: number) {
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
+  return `${(bytes / 1024 / 1024).toFixed(1).replace(".", ",")} MB`;
+}
+
 /** Configurações (seção 12): aparência e reprodução. */
 export default function Configuracoes({ onErro }: { onErro: (m: string) => void }) {
   const [crossfade, setCrossfade] = useState<number | null>(null);
@@ -35,6 +41,8 @@ export default function Configuracoes({ onErro }: { onErro: (m: string) => void 
   const [bandeja, setBandeja] = useState(false);
   const [notificar, setNotificar] = useState(true);
   const [autostart, setAutostart] = useState(false);
+  const [cache, setCache] = useState<number | null>(null);
+  const [avisoDados, setAvisoDados] = useState<string | null>(null);
 
   useEffect(() => {
     invoke<Config>("get_settings")
@@ -52,7 +60,58 @@ export default function Configuracoes({ onErro }: { onErro: (m: string) => void 
     invoke<boolean>("autostart_get")
       .then(setAutostart)
       .catch(() => {});
+    invoke<number>("cache_size")
+      .then(setCache)
+      .catch(() => {});
   }, []);
+
+  async function exportarBackup() {
+    const data = new Date().toISOString().slice(0, 10);
+    const destino = await save({
+      title: "Salvar backup do Skáld",
+      defaultPath: `skald-backup-${data}.db`,
+      filters: [{ name: "Banco do Skáld", extensions: ["db"] }],
+    });
+    if (!destino) return;
+    try {
+      await invoke("backup_export", { destino });
+      setAvisoDados(`Backup salvo em ${destino}`);
+    } catch (e) {
+      onErro(String(e));
+    }
+  }
+
+  async function restaurarBackup() {
+    const origem = await open({
+      title: "Escolha o backup do Skáld",
+      multiple: false,
+      filters: [{ name: "Banco do Skáld", extensions: ["db"] }],
+    });
+    if (typeof origem !== "string") return;
+    const ok = await ask(
+      "A biblioteca, playlists, histórico e configurações atuais serão trocados pelos do backup. " +
+        "O banco atual fica guardado numa cópia de segurança. Os arquivos de música não são alterados. Continuar?",
+      { title: "Restaurar backup", kind: "warning", okLabel: "Restaurar", cancelLabel: "Cancelar" },
+    );
+    if (!ok) return;
+    try {
+      const copia = await invoke<string>("backup_restore", { origem });
+      sessionStorage.setItem("skald-aviso", `Backup restaurado. O banco anterior foi guardado em ${copia}`);
+      window.location.reload();
+    } catch (e) {
+      onErro(String(e));
+    }
+  }
+
+  async function limparCache() {
+    try {
+      const liberado = await invoke<number>("cache_clear");
+      setCache(0);
+      setAvisoDados(`Cache de capas limpo (${tamanho(liberado)} liberados). As capas são refeitas quando aparecerem.`);
+    } catch (e) {
+      onErro(String(e));
+    }
+  }
 
   function gravarBandeja(ativo: boolean) {
     setBandeja(ativo);
@@ -206,6 +265,25 @@ export default function Configuracoes({ onErro }: { onErro: (m: string) => void 
         <input type="checkbox" checked={notificar} onChange={(e) => gravarNotificar(e.target.checked)} />
       </label>
       <p className="nota">Só aparece quando a janela do Skáld não está em primeiro plano.</p>
+      <h3>Dados</h3>
+      <div className="acoes-dados">
+        <button onClick={exportarBackup}>Exportar backup…</button>
+        <button onClick={restaurarBackup}>Restaurar backup…</button>
+      </div>
+      <p className="nota">
+        O backup é um arquivo .db com a biblioteca, playlists, curtidas, histórico e configurações. Não inclui as
+        músicas: elas continuam nas suas pastas.
+      </p>
+      <label className="opcao">
+        <span>
+          Cache de capas: <strong>{cache === null ? "…" : tamanho(cache)}</strong>
+        </span>
+        <button onClick={limparCache} disabled={!cache}>
+          Limpar cache de capas
+        </button>
+      </label>
+      <p className="nota">Miniaturas das grades e capas enviadas ao sistema. Nada nos arquivos de música muda.</p>
+      {avisoDados && <p className="nota destaque">{avisoDados}</p>}
     </section>
   );
 }
