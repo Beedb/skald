@@ -5,6 +5,7 @@ use serde::Serialize;
 
 const CROSSFADE: &str = "crossfade_ms";
 const NORMALIZACAO: &str = "normalizacao";
+const EQUALIZADOR: &str = "equalizador";
 /// Crossfade padrão: ligado, 5 s (desligado entre faixas do mesmo álbum).
 const CROSSFADE_PADRAO: u64 = 5000;
 pub const CROSSFADE_MAX: u64 = 12_000;
@@ -14,6 +15,7 @@ pub struct Configuracoes {
     pub crossfade_ms: u64,
     /// ReplayGain: desligada, faixa (padrão) ou álbum.
     pub normalizacao: crate::ganho::Modo,
+    pub equalizador: crate::eq::Preset,
 }
 
 fn ler(conn: &Connection, chave: &str) -> rusqlite::Result<Option<String>> {
@@ -37,7 +39,14 @@ pub fn carregar(conn: &Connection) -> rusqlite::Result<Configuracoes> {
     let normalizacao = ler(conn, NORMALIZACAO)?
         .and_then(|v| crate::ganho::Modo::de_texto(&v))
         .unwrap_or_default();
-    Ok(Configuracoes { crossfade_ms, normalizacao })
+    let equalizador = ler(conn, EQUALIZADOR)?
+        .and_then(|v| crate::eq::Preset::de_texto(&v))
+        .unwrap_or_default();
+    Ok(Configuracoes { crossfade_ms, normalizacao, equalizador })
+}
+
+pub fn definir_equalizador(conn: &Connection, preset: crate::eq::Preset) -> rusqlite::Result<()> {
+    gravar(conn, EQUALIZADOR, &preset.texto())
 }
 
 pub fn definir_normalizacao(conn: &Connection, modo: crate::ganho::Modo) -> rusqlite::Result<()> {
@@ -74,5 +83,14 @@ mod testes {
         assert_eq!(carregar(&conn).unwrap().normalizacao, Modo::Album);
         definir_normalizacao(&conn, Modo::Desligada).unwrap();
         assert_eq!(carregar(&conn).unwrap().normalizacao, Modo::Desligada);
+    }
+
+    #[test]
+    fn equalizador_padrao_e_gravado() {
+        use crate::eq::Preset;
+        let conn = crate::db::open(std::path::Path::new(":memory:")).unwrap();
+        assert_eq!(carregar(&conn).unwrap().equalizador, Preset::Desligado);
+        definir_equalizador(&conn, Preset::Voz).unwrap();
+        assert_eq!(carregar(&conn).unwrap().equalizador, Preset::Voz);
     }
 }

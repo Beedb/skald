@@ -13,6 +13,7 @@ use gstreamer as gst;
 use gstreamer::prelude::*;
 use serde::Serialize;
 
+use crate::eq;
 use crate::ganho::{self, Ganho};
 
 #[derive(Serialize, Clone, Copy, PartialEq, Debug)]
@@ -69,12 +70,14 @@ struct Interno {
     normalizacao: ganho::Modo,
     /// ReplayGain da faixa em cada deck.
     ganhos: [Ganho; 2],
+    /// Compensa o reforço do preset do equalizador.
+    pre_eq: f64,
 }
 
 impl Interno {
     /// Volume final do deck `i`: o do usuário vezes a normalização da faixa.
     fn alvo(&self, i: usize) -> f64 {
-        self.volume * ganho::fator(self.normalizacao, &self.ganhos[i])
+        self.volume * ganho::fator(self.normalizacao, &self.ganhos[i]) * self.pre_eq
     }
 }
 
@@ -82,10 +85,12 @@ type Pedir = dyn Fn() -> Option<Proxima> + Send + Sync;
 
 pub struct Player {
     decks: [gst::Element; 2],
+    /// Equalizador de cada deck (ausente se o plugin não estiver instalado).
+    eqs: [Option<gst::Element>; 2],
     int: Arc<Mutex<Interno>>,
 }
 
-fn criar_deck() -> Result<gst::Element, String> {
+fn criar_deck() -> Result<(gst::Element, Option<gst::Element>), String> {
     let playbin = gst::ElementFactory::make("playbin")
         .build()
         .map_err(|_| "Elemento playbin do GStreamer indisponível.".to_string())?;
@@ -93,7 +98,11 @@ fn criar_deck() -> Result<gst::Element, String> {
     if let Ok(fake) = gst::ElementFactory::make("fakesink").build() {
         playbin.set_property("video-sink", &fake);
     }
-    Ok(playbin)
+    let eq = gst::ElementFactory::make("equalizer-10bands").build().ok();
+    if let Some(eq) = &eq {
+        playbin.set_property("audio-filter", eq);
+    }
+    Ok((playbin, eq))
 }
 
 fn uri_de(path: &str) -> Result<String, String> {
@@ -109,7 +118,8 @@ impl Player {
         pedir_proxima: impl Fn() -> Option<Proxima> + Send + Sync + 'static,
     ) -> Result<Self, String> {
         gst::init().map_err(|e| format!("Falha ao iniciar o GStreamer: {e}"))?;
-        let decks = [criar_deck()?, criar_deck()?];
+        let ((d0, e0), (d1, e1)) = (criar_deck()?, criar_deck()?);
+        let (decks, eqs) = ([d0, d1], [e0, e1]);
         let int = Arc::new(Mutex::new(Interno {
             ativo: 0,
             atual: None,
@@ -120,6 +130,7 @@ impl Player {
             crossfade_ms: 0,
             normalizacao: ganho::Modo::default(),
             ganhos: [Ganho::default(); 2],
+            pre_eq: 1.0,
         }));
         let pedir: Arc<Pedir> = Arc::new(pedir_proxima);
         for (i, deck) in decks.iter().enumerate() {
@@ -152,7 +163,7 @@ impl Player {
             });
         }
         vigiar(avisar, decks.clone(), int.clone(), pedir);
-        Ok(Self { decks, int })
+        Ok(Self { decks, eqs, int })
     }
 
     fn ativo(&self) -> usize {
@@ -219,6 +230,18 @@ impl Player {
     pub fn definir_normalizacao(&self, modo: ganho::Modo) {
         let mut g = self.int.lock().unwrap();
         g.normalizacao = modo;
+        self.aplicar_volume(&g);
+    }
+
+    /// Preset do equalizador; vale na hora, nos dois decks.
+    pub fn definir_equalizador(&self, preset: eq::Preset) {
+        for e in self.eqs.iter().flatten() {
+            for (i, db) in preset.bandas().into_iter().enumerate() {
+                e.set_property(&format!("band{i}"), db);
+            }
+        }
+        let mut g = self.int.lock().unwrap();
+        g.pre_eq = if self.eqs.iter().any(Option::is_some) { preset.pre_atenuacao() } else { 1.0 };
         self.aplicar_volume(&g);
     }
 
@@ -605,5 +628,23 @@ mod testes {
         assert_eq!(t.id, Some(2));
         assert!(!r.parou_antes);
         assert!(quando > Duration::from_millis(3600), "trocou antes do fim: {quando:?}");
+    }
+
+    #[test]
+    fn equalizador_aplica_bandas_nos_dois_decks() {
+        let p = Player::new(|_| {}, || None).unwrap();
+        if p.eqs.iter().any(Option::is_none) {
+            eprintln!("equalizer-10bands indisponível; teste ignorado");
+            return;
+        }
+        p.definir_equalizador(eq::Preset::Grave);
+        for e in p.eqs.iter().flatten() {
+            assert_eq!(e.property::<f64>("band0"), 6.0);
+            assert_eq!(e.property::<f64>("band9"), 0.0);
+        }
+        assert!((p.int.lock().unwrap().pre_eq - eq::Preset::Grave.pre_atenuacao()).abs() < 1e-9);
+        p.definir_equalizador(eq::Preset::Desligado);
+        assert_eq!(p.eqs[1].as_ref().unwrap().property::<f64>("band0"), 0.0);
+        assert_eq!(p.int.lock().unwrap().pre_eq, 1.0);
     }
 }

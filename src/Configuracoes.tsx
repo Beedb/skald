@@ -2,21 +2,38 @@ import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 
 type Normalizacao = "desligada" | "faixa" | "album";
-type Config = { crossfade_ms: number; normalizacao: Normalizacao };
+type Preset = "desligado" | "grave" | "agudo" | "bateria" | "voz" | "instrumental";
+type Config = { crossfade_ms: number; normalizacao: Normalizacao; equalizador: Preset };
+
+const PRESETS: [Preset, string][] = [
+  ["desligado", "Desligado"],
+  ["grave", "Grave"],
+  ["agudo", "Agudo"],
+  ["bateria", "Bateria"],
+  ["voz", "Voz"],
+  ["instrumental", "Instrumental"],
+];
 
 /** Configurações (seção 12). Por enquanto, só a reprodução. */
 export default function Configuracoes({ onErro }: { onErro: (m: string) => void }) {
   const [crossfade, setCrossfade] = useState<number | null>(null);
   const [normalizacao, setNormalizacao] = useState<Normalizacao>("faixa");
+  const [equalizador, setEqualizador] = useState<Preset>("desligado");
 
   useEffect(() => {
     invoke<Config>("get_settings")
       .then((c) => {
         setCrossfade(c.crossfade_ms / 1000);
         setNormalizacao(c.normalizacao);
+        setEqualizador(c.equalizador);
       })
       .catch((e) => onErro(String(e)));
   }, []);
+
+  function gravarEqualizador(preset: Preset) {
+    setEqualizador(preset);
+    invoke("set_equalizer", { preset }).catch((e) => onErro(String(e)));
+  }
 
   function gravarNormalizacao(modo: Normalizacao) {
     setNormalizacao(modo);
@@ -66,6 +83,20 @@ export default function Configuracoes({ onErro }: { onErro: (m: string) => void 
         Usa os valores de ReplayGain gravados nos arquivos para equilibrar o volume. "Por faixa" iguala todas as
         músicas; "por álbum" mantém a diferença de volume entre as faixas de um mesmo álbum. Arquivos sem esses
         valores tocam no volume original.
+      </p>
+      <label className="opcao">
+        <span>Equalizador</span>
+        <select value={equalizador} onChange={(e) => gravarEqualizador(e.target.value as Preset)}>
+          {PRESETS.map(([valor, nome]) => (
+            <option key={valor} value={valor}>
+              {nome}
+            </option>
+          ))}
+        </select>
+      </label>
+      <p className="nota">
+        Grave e agudo reforçam as pontas; bateria destaca o bumbo e a caixa; voz realça os médios; instrumental dá
+        mais clareza e corpo. O volume é compensado para não distorcer. Vale na hora.
       </p>
     </section>
   );

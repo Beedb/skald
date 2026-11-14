@@ -1,5 +1,6 @@
 mod db;
 mod details;
+mod eq;
 mod ganho;
 mod history;
 mod import;
@@ -671,6 +672,16 @@ fn set_normalization(db: State<db::Db>, player: State<player::Player>, modo: gan
 }
 
 #[tauri::command]
+fn set_equalizer(db: State<db::Db>, player: State<player::Player>, preset: eq::Preset) -> Result<(), String> {
+    {
+        let conn = db.0.lock().map_err(erro_db)?;
+        settings::definir_equalizador(&conn, preset).map_err(|e| e.to_string())?;
+    }
+    player.definir_equalizador(preset);
+    Ok(())
+}
+
+#[tauri::command]
 fn seek(player: State<player::Player>, posicao_ms: u64) -> Result<(), String> {
     player.buscar(posicao_ms)
 }
@@ -720,6 +731,7 @@ pub fn run() {
                 let cfg = settings::carregar(&conn)?;
                 app.state::<player::Player>().definir_crossfade(cfg.crossfade_ms);
                 app.state::<player::Player>().definir_normalizacao(cfg.normalizacao);
+                app.state::<player::Player>().definir_equalizador(cfg.equalizador);
             }
             // Sem D-Bus (sessão sem barramento), o app funciona só sem MPRIS.
             match mpris::Mpris::iniciar(app.handle().clone()) {
@@ -769,7 +781,8 @@ pub fn run() {
             seek,
             get_settings,
             set_crossfade,
-            set_normalization
+            set_normalization,
+            set_equalizer
         ])
         .build(tauri::generate_context!())
         .expect("falha ao iniciar o Skáld")
