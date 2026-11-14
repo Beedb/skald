@@ -39,3 +39,7 @@ coverage/
 dist-ssr/
 *.local
 src-tauri/gen/schemas/
+
+# Documentos internos de planejamento (não publicados)
+CLAUDE.md
+docs/skald-v0.3.md
