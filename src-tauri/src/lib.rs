@@ -7,6 +7,7 @@ mod player;
 mod playlists;
 mod mpris;
 mod queue;
+mod settings;
 mod watch;
 mod search;
 
@@ -227,12 +228,12 @@ struct GaplessState(Mutex<Option<Pendente>>);
 
 /// Chamada pelo player pouco antes do fim da faixa: escolhe a seguinte numa cópia da fila
 /// (respeitando fila manual, aleatório e repetir) e pula arquivos ausentes.
-fn preparar_proxima(app: &AppHandle) -> Option<(i64, String)> {
+fn preparar_proxima(app: &AppHandle) -> Option<player::Proxima> {
     let antes = app.state::<FilaState>().0.lock().ok()?.clone();
     let mut depois = antes.clone();
     for tentativa in 0..100 {
         let id = if tentativa == 0 { depois.proxima_automatica() } else { depois.proxima() }?;
-        let path = {
+        let proxima = {
             let db = app.state::<db::Db>();
             let conn = db.0.lock().ok()?;
             let (musica, path) = library::obter(&conn, id).ok()??;
@@ -240,11 +241,12 @@ fn preparar_proxima(app: &AppHandle) -> Option<(i64, String)> {
             if existe == musica.missing {
                 let _ = library::marcar_ausente(&conn, id, !existe);
             }
-            existe.then_some(path)
+            let mesmo_album = antes.atual().is_some_and(|a| library::mesmo_album(&conn, a, id).unwrap_or(false));
+            existe.then_some(player::Proxima { id, path, mesmo_album })
         };
-        if let Some(path) = path {
+        if let Some(p) = proxima {
             *app.state::<GaplessState>().0.lock().ok()? = Some(Pendente { antes, depois, id });
-            return Some((id, path));
+            return Some(p);
         }
     }
     None
@@ -638,6 +640,23 @@ fn set_volume(player: State<player::Player>, volume: f64) {
 }
 
 #[tauri::command]
+fn get_settings(db: State<db::Db>) -> Result<settings::Configuracoes, String> {
+    let conn = db.0.lock().map_err(erro_db)?;
+    settings::carregar(&conn).map_err(|e| e.to_string())
+}
+
+/// Duração do crossfade em ms (0 desliga); vale a partir da próxima troca de faixa.
+#[tauri::command]
+fn set_crossfade(db: State<db::Db>, player: State<player::Player>, ms: u64) -> Result<u64, String> {
+    let ms = {
+        let conn = db.0.lock().map_err(erro_db)?;
+        settings::definir_crossfade(&conn, ms).map_err(|e| e.to_string())?
+    };
+    player.definir_crossfade(ms);
+    Ok(ms)
+}
+
+#[tauri::command]
 fn seek(player: State<player::Player>, posicao_ms: u64) -> Result<(), String> {
     player.buscar(posicao_ms)
 }
@@ -681,6 +700,12 @@ pub fn run() {
                     });
                 }
             }, move || preparar_proxima(&h_proxima))?);
+            {
+                let db = app.state::<db::Db>();
+                let conn = db.0.lock().map_err(erro_db)?;
+                let cfg = settings::carregar(&conn)?;
+                app.state::<player::Player>().definir_crossfade(cfg.crossfade_ms);
+            }
             // Sem D-Bus (sessão sem barramento), o app funciona só sem MPRIS.
             match mpris::Mpris::iniciar(app.handle().clone()) {
                 Ok(m) => {
@@ -726,7 +751,9 @@ pub fn run() {
             stats_summary,
             toggle_pause,
             set_volume,
-            seek
+            seek,
+            get_settings,
+            set_crossfade
         ])
         .build(tauri::generate_context!())
         .expect("falha ao iniciar o Skáld")

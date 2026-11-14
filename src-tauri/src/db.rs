@@ -79,6 +79,11 @@ const MIGRATIONS: &[&str] = &[
         path     TEXT    NOT NULL UNIQUE,
         added_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now'))
     );",
+    // v7: configurações (seção 12), chave/valor.
+    "CREATE TABLE setting (
+        key   TEXT PRIMARY KEY,
+        value TEXT NOT NULL
+    );",
 ];
 
 pub fn open(path: &Path) -> rusqlite::Result<Connection> {

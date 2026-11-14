@@ -83,6 +83,26 @@ pub fn obter(conn: &Connection, id: i64) -> rusqlite::Result<Option<(MediaRow, S
 }
 
 /// Marca (ou desmarca) o arquivo como não encontrado. O registro nunca é apagado.
+/// Faixas consecutivas do mesmo álbum (para não usar crossfade entre elas): mesmo nome de
+/// álbum, sem diferenciar acentos/maiúsculas, e mesmo artista do álbum ou mesma pasta.
+pub fn mesmo_album(conn: &Connection, a: i64, b: i64) -> rusqlite::Result<bool> {
+    let dados = |id: i64| {
+        conn.query_row("SELECT album, album_artist, path FROM media WHERE id = ?1", [id], |r| {
+            Ok((r.get::<_, Option<String>>(0)?, r.get::<_, Option<String>>(1)?, r.get::<_, String>(2)?))
+        })
+    };
+    let (album_a, artista_a, path_a) = dados(a)?;
+    let (album_b, artista_b, path_b) = dados(b)?;
+    let norm = |s: &str| crate::search::normalizar(s.trim());
+    let (Some(album_a), Some(album_b)) = (album_a, album_b) else { return Ok(false) };
+    if norm(&album_a) != norm(&album_b) {
+        return Ok(false);
+    }
+    let mesma_pasta = std::path::Path::new(&path_a).parent() == std::path::Path::new(&path_b).parent();
+    let mesmo_artista = matches!((artista_a, artista_b), (Some(x), Some(y)) if norm(&x) == norm(&y));
+    Ok(mesma_pasta || mesmo_artista)
+}
+
 pub fn marcar_ausente(conn: &Connection, id: i64, ausente: bool) -> rusqlite::Result<()> {
     conn.execute("UPDATE media SET missing = ?2 WHERE id = ?1", rusqlite::params![id, ausente])?;
     Ok(())
@@ -125,5 +145,27 @@ mod testes {
         assert_eq!(contar(&conn, "ani").unwrap(), 2);
         assert_eq!(contar(&conn, "").unwrap(), 4);
         assert_eq!(ids_em_ordem(&conn, "banda").unwrap().len(), 1);
+    }
+
+    #[test]
+    fn regra_do_mesmo_album() {
+        let conn = crate::db::open(std::path::Path::new(":memory:")).unwrap();
+        for (id, album, artista, path) in [
+            (1, Some("Clube da Esquina"), Some("Milton"), "/m/clube/01.flac"),
+            (2, Some("CLUBE DA ESQUINA"), None, "/m/clube/02.flac"),     // mesma pasta
+            (3, Some("Clube da Esquina"), Some("milton"), "/outra/03.flac"), // mesmo artista do álbum
+            (4, Some("Clube da Esquina"), Some("Lô"), "/outra/04.flac"),    // homônimo em outro lugar
+            (5, None, Some("Milton"), "/m/clube/05.flac"),                 // sem álbum
+        ] {
+            conn.execute(
+                "INSERT INTO media (id, path, album, album_artist) VALUES (?1, ?2, ?3, ?4)",
+                rusqlite::params![id, path, album, artista],
+            )
+            .unwrap();
+        }
+        assert!(mesmo_album(&conn, 1, 2).unwrap());
+        assert!(mesmo_album(&conn, 1, 3).unwrap());
+        assert!(!mesmo_album(&conn, 1, 4).unwrap());
+        assert!(!mesmo_album(&conn, 1, 5).unwrap());
     }
 }

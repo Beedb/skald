@@ -11,6 +11,7 @@ import PlaylistView from "./PlaylistView";
 import Historico from "./Historico";
 import Pastas from "./Pastas";
 import Estatisticas from "./Estatisticas";
+import Configuracoes from "./Configuracoes";
 import "./App.css";
 
 type DbStatus = {
@@ -339,6 +340,11 @@ function App() {
         {vista.tipo === "estatisticas" && (
           <div className="area">
             <Estatisticas versao={versaoHistorico} onErro={setErro} />
+          </div>
+        )}
+        {vista.tipo === "configuracoes" && (
+          <div className="area">
+            <Configuracoes onErro={setErro} />
           </div>
         )}
         {playlistAtual && (

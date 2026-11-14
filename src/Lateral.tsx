@@ -15,6 +15,7 @@ export type Vista =
   | { tipo: "biblioteca" }
   | { tipo: "historico" }
   | { tipo: "estatisticas" }
+  | { tipo: "configuracoes" }
   | { tipo: "playlist"; id: number };
 
 type Props = {
@@ -76,6 +77,12 @@ export default function Lateral({ vista, playlists, onVista, onErro }: Props) {
         onClick={() => onVista({ tipo: "estatisticas" })}
       >
         ▤ Estatísticas
+      </button>
+      <button
+        className={"item-lateral" + (vista.tipo === "configuracoes" ? " ativo" : "")}
+        onClick={() => onVista({ tipo: "configuracoes" })}
+      >
+        ⚙ Configurações
       </button>
 
       {playlists

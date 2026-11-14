@@ -796,3 +796,34 @@ body {
   font-size: 0.85rem;
   opacity: 0.65;
 }
+
+.configuracoes {
+  padding: 1rem 1.5rem;
+  overflow-y: auto;
+  max-width: 40rem;
+}
+
+.configuracoes h2 {
+  margin: 0 0 1rem;
+}
+
+.configuracoes h3 {
+  margin: 0 0 0.6rem;
+  font-size: 1rem;
+  opacity: 0.8;
+}
+
+.configuracoes .opcao {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.configuracoes .opcao input {
+  flex: 1;
+}
+
+.configuracoes .nota {
+  font-size: 0.85rem;
+  opacity: 0.65;
+}

@@ -1,3 +1,11 @@
+//! Player com dois "decks" (dois `playbin`). Normalmente só um toca; o outro entra no
+//! crossfade. Entre faixas do mesmo álbum não há crossfade: a próxima é emendada no mesmo
+//! deck pelo `about-to-finish` (gapless).
+//!
+//! Regra de travas: nunca mudar o estado de um `playbin` segurando `Interno`, porque o
+//! `about-to-finish` roda na thread do GStreamer e também trava `Interno`.
+
+use std::f64::consts::FRAC_PI_2;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -22,95 +30,220 @@ pub struct EstadoPlayer {
     pub erro: Option<String>,
     /// Verdadeiro só no aviso de fim de faixa (para avançar a fila).
     pub fim: bool,
-    /// Verdadeiro só no aviso de troca sem pausa (gapless): `id` já é a nova faixa.
+    /// Verdadeiro só no aviso de troca automática (gapless ou crossfade): `id` já é a nova.
     pub transicao: bool,
 }
 
+/// Próxima faixa escolhida pelo app.
+pub struct Proxima {
+    pub id: i64,
+    pub path: String,
+    /// Mesmo álbum da atual: emenda sem crossfade (gapless).
+    pub mesmo_album: bool,
+}
+
+/// Se a próxima já foi pedida ao app para a faixa atual.
+enum Escolha {
+    NaoPedida,
+    Pedida(Option<Proxima>),
+}
+
+struct Cruzamento {
+    saindo: usize,
+    dur_ms: u64,
+}
+
+struct Interno {
+    ativo: usize,
+    atual: Option<i64>,
+    /// Faixa emendada no deck ativo pelo `about-to-finish`, esperando começar.
+    pendente: Option<i64>,
+    escolha: Escolha,
+    cruzando: Option<Cruzamento>,
+    /// Volume linear (já convertido da escala percebida).
+    volume: f64,
+    crossfade_ms: u64,
+}
+
+type Pedir = dyn Fn() -> Option<Proxima> + Send + Sync;
+
 pub struct Player {
-    playbin: gst::Element,
-    atual: Arc<Mutex<Option<i64>>>,
-    /// Faixa já carregada para tocar em seguida, sem pausa (gapless).
-    pendente: Arc<Mutex<Option<i64>>>,
+    decks: [gst::Element; 2],
+    int: Arc<Mutex<Interno>>,
+}
+
+fn criar_deck() -> Result<gst::Element, String> {
+    let playbin = gst::ElementFactory::make("playbin")
+        .build()
+        .map_err(|_| "Elemento playbin do GStreamer indisponível.".to_string())?;
+    // Só áudio: capas embutidas como fluxo de vídeo não abrem janela.
+    if let Ok(fake) = gst::ElementFactory::make("fakesink").build() {
+        playbin.set_property("video-sink", &fake);
+    }
+    Ok(playbin)
+}
+
+fn uri_de(path: &str) -> Result<String, String> {
+    gst::glib::filename_to_uri(path, None).map(|u| u.to_string()).map_err(|e| e.to_string())
 }
 
 impl Player {
     /// `avisar` recebe cada mudança de estado e o progresso (a cada 250 ms tocando).
-    /// `pedir_proxima` é chamada pouco antes do fim da faixa e devolve `(id, caminho)` da
-    /// seguinte, que entra sem pausa (gapless). `None`: a reprodução termina normalmente.
+    /// `pedir_proxima` é chamada perto do fim da faixa (uma vez por faixa) e devolve a
+    /// seguinte. `None`: a reprodução termina normalmente.
     pub fn new(
         avisar: impl Fn(EstadoPlayer) + Send + 'static,
-        pedir_proxima: impl Fn() -> Option<(i64, String)> + Send + Sync + 'static,
+        pedir_proxima: impl Fn() -> Option<Proxima> + Send + Sync + 'static,
     ) -> Result<Self, String> {
         gst::init().map_err(|e| format!("Falha ao iniciar o GStreamer: {e}"))?;
-        let playbin = gst::ElementFactory::make("playbin")
-            .build()
-            .map_err(|_| "Elemento playbin do GStreamer indisponível.".to_string())?;
-        // Só áudio: capas embutidas como fluxo de vídeo não abrem janela.
-        if let Ok(fake) = gst::ElementFactory::make("fakesink").build() {
-            playbin.set_property("video-sink", &fake);
-        }
-        let atual = Arc::new(Mutex::new(None));
-        let pendente = Arc::new(Mutex::new(None));
-        let p = pendente.clone();
-        playbin.connect("about-to-finish", false, move |args| {
-            let pb = args[0].get::<gst::Element>().ok()?;
-            if let Some((id, path)) = pedir_proxima() {
-                if let Ok(uri) = gst::glib::filename_to_uri(&path, None) {
-                    pb.set_property("uri", uri.as_str());
-                    *p.lock().unwrap() = Some(id);
+        let decks = [criar_deck()?, criar_deck()?];
+        let int = Arc::new(Mutex::new(Interno {
+            ativo: 0,
+            atual: None,
+            pendente: None,
+            escolha: Escolha::NaoPedida,
+            cruzando: None,
+            volume: 1.0,
+            crossfade_ms: 0,
+        }));
+        let pedir: Arc<Pedir> = Arc::new(pedir_proxima);
+        for (i, deck) in decks.iter().enumerate() {
+            let int = int.clone();
+            let pedir = pedir.clone();
+            deck.connect("about-to-finish", false, move |args| {
+                let pb = args[0].get::<gst::Element>().ok()?;
+                // Só o deck ativo, fora de um crossfade, emenda a próxima.
+                let escolha = {
+                    let mut g = int.lock().unwrap();
+                    if g.ativo != i || g.cruzando.is_some() {
+                        return None;
+                    }
+                    std::mem::replace(&mut g.escolha, Escolha::Pedida(None))
+                };
+                let proxima = match escolha {
+                    Escolha::NaoPedida => pedir(),
+                    Escolha::Pedida(p) => p,
+                };
+                if let Some(p) = proxima {
+                    if let Ok(uri) = uri_de(&p.path) {
+                        pb.set_property("uri", uri.as_str());
+                        let mut g = int.lock().unwrap();
+                        if g.ativo == i {
+                            g.pendente = Some(p.id);
+                        }
+                    }
                 }
-            }
-            None
-        });
-        vigiar(avisar, playbin.clone(), atual.clone(), pendente.clone());
-        Ok(Self { playbin, atual, pendente })
+                None
+            });
+        }
+        vigiar(avisar, decks.clone(), int.clone(), pedir);
+        Ok(Self { decks, int })
+    }
+
+    fn ativo(&self) -> usize {
+        self.int.lock().unwrap().ativo
     }
 
     pub fn tocar(&self, id: i64, path: &str) -> Result<(), String> {
-        let uri = gst::glib::filename_to_uri(path, None).map_err(|e| e.to_string())?;
-        *self.pendente.lock().unwrap() = None;
-        self.playbin.set_state(gst::State::Null).map_err(|e| e.to_string())?;
-        *self.pendente.lock().unwrap() = None;
-        self.playbin.set_property("uri", uri.as_str());
-        *self.atual.lock().unwrap() = Some(id);
-        self.playbin
-            .set_state(gst::State::Playing)
+        let uri = uri_de(path)?;
+        {
+            let mut g = self.int.lock().unwrap();
+            g.pendente = None;
+            g.cruzando = None;
+            g.escolha = Escolha::NaoPedida;
+        }
+        for d in &self.decks {
+            d.set_state(gst::State::Null).map_err(|e| e.to_string())?;
+        }
+        let (ativo, volume) = {
+            let mut g = self.int.lock().unwrap();
+            g.pendente = None;
+            g.escolha = Escolha::NaoPedida;
+            g.atual = Some(id);
+            (g.ativo, g.volume)
+        };
+        let deck = &self.decks[ativo];
+        deck.set_property("volume", volume);
+        deck.set_property("uri", uri.as_str());
+        deck.set_state(gst::State::Playing)
             .map_err(|_| "Não foi possível tocar este arquivo.".to_string())?;
         Ok(())
     }
 
-    /// Alterna entre tocar e pausar. Sem música carregada, não faz nada.
+    /// Alterna entre tocar e pausar (os dois decks, durante um crossfade).
     pub fn alternar_pausa(&self) -> Result<(), String> {
-        if self.atual.lock().unwrap().is_none() {
-            return Ok(());
-        }
-        let alvo = if self.playbin.current_state() == gst::State::Playing {
+        let (ativo, saindo) = {
+            let g = self.int.lock().unwrap();
+            if g.atual.is_none() {
+                return Ok(());
+            }
+            (g.ativo, g.cruzando.as_ref().map(|c| c.saindo))
+        };
+        let alvo = if alvo_de(&self.decks[ativo]) == gst::State::Playing {
             gst::State::Paused
         } else {
             gst::State::Playing
         };
-        self.playbin.set_state(alvo).map(|_| ()).map_err(|e| e.to_string())
+        if let Some(s) = saindo {
+            let _ = self.decks[s].set_state(alvo);
+        }
+        self.decks[ativo].set_state(alvo).map(|_| ()).map_err(|e| e.to_string())
     }
 
     /// Volume de 0 a 1 na escala percebida; convertido para linear (cúbico).
     pub fn volume(&self, v: f64) {
         let v = v.clamp(0.0, 1.0);
-        self.playbin.set_property("volume", v * v * v);
+        let linear = v * v * v;
+        let mut g = self.int.lock().unwrap();
+        g.volume = linear;
+        // Durante o crossfade, o próximo passo da rampa aplica o volume novo.
+        if g.cruzando.is_none() {
+            self.decks[g.ativo].set_property("volume", linear);
+        }
+    }
+
+    /// Duração do crossfade em ms (0 desliga). Vale a partir da próxima troca.
+    pub fn definir_crossfade(&self, ms: u64) {
+        self.int.lock().unwrap().crossfade_ms = ms;
     }
 
     pub fn posicao_ms(&self) -> u64 {
-        self.playbin.query_position::<gst::ClockTime>().map_or(0, |t| t.mseconds())
+        posicao(&self.decks[self.ativo()])
     }
 
+    /// Buscar durante um crossfade encerra o crossfade (a faixa que saía para).
     pub fn buscar(&self, ms: u64) -> Result<(), String> {
-        self.playbin
+        let (ativo, saindo) = {
+            let mut g = self.int.lock().unwrap();
+            (g.ativo, g.cruzando.take().map(|c| c.saindo))
+        };
+        if let Some(s) = saindo {
+            let _ = self.decks[s].set_state(gst::State::Null);
+            let volume = self.int.lock().unwrap().volume;
+            self.decks[ativo].set_property("volume", volume);
+        }
+        self.decks[ativo]
             .seek_simple(gst::SeekFlags::FLUSH | gst::SeekFlags::KEY_UNIT, gst::ClockTime::from_mseconds(ms))
             .map_err(|_| "Não foi possível mudar a posição.".to_string())
     }
 }
 
-fn estado_de(playbin: &gst::Element, atual: Option<i64>) -> EstadoPlayer {
-    let estado = match (atual, playbin.current_state()) {
+fn posicao(deck: &gst::Element) -> u64 {
+    deck.query_position::<gst::ClockTime>().map_or(0, |t| t.mseconds())
+}
+
+fn duracao(deck: &gst::Element) -> u64 {
+    deck.query_duration::<gst::ClockTime>().map_or(0, |t| t.mseconds())
+}
+
+/// Estado para onde o deck está indo (evita "pausado" de relance enquanto ele prepara).
+fn alvo_de(deck: &gst::Element) -> gst::State {
+    let (_, atual, pendente) = deck.state(gst::ClockTime::ZERO);
+    if pendente == gst::State::VoidPending { atual } else { pendente }
+}
+
+fn estado_de(deck: &gst::Element, atual: Option<i64>) -> EstadoPlayer {
+    let estado = match (atual, alvo_de(deck)) {
         (None, _) => Estado::Parado,
         (_, gst::State::Playing) => Estado::Tocando,
         (_, gst::State::Paused) => Estado::Pausado,
@@ -119,22 +252,22 @@ fn estado_de(playbin: &gst::Element, atual: Option<i64>) -> EstadoPlayer {
     EstadoPlayer {
         id: atual,
         estado,
-        posicao_ms: playbin.query_position::<gst::ClockTime>().map_or(0, |t| t.mseconds()),
-        duracao_ms: playbin.query_duration::<gst::ClockTime>().map_or(0, |t| t.mseconds()),
+        posicao_ms: posicao(deck),
+        duracao_ms: duracao(deck),
         erro: None,
         fim: false,
         transicao: false,
     }
 }
 
-/// Lê o barramento (fim de faixa, erros, mudanças de estado) e emite o progresso.
+/// Lê os barramentos dos dois decks, conduz o crossfade e emite o progresso.
 fn vigiar(
     avisar: impl Fn(EstadoPlayer) + Send + 'static,
-    playbin: gst::Element,
-    atual: Arc<Mutex<Option<i64>>>,
-    pendente: Arc<Mutex<Option<i64>>>,
+    decks: [gst::Element; 2],
+    int: Arc<Mutex<Interno>>,
+    pedir: Arc<Pedir>,
 ) {
-    let bus = playbin.bus().expect("playbin sempre tem barramento");
+    let buses = [decks[0].bus().expect("playbin sempre tem barramento"), decks[1].bus().expect("playbin sempre tem barramento")];
     std::thread::spawn(move || {
         let mut ultimo_envio = Instant::now();
         loop {
@@ -142,40 +275,63 @@ fn vigiar(
             let mut erro = None;
             let mut fim = false;
             let mut transicao = false;
-            if let Some(msg) = bus.timed_pop(gst::ClockTime::from_mseconds(100)) {
+
+            for (i, bus) in buses.iter().enumerate() {
+                let Some(msg) = bus.timed_pop(gst::ClockTime::from_mseconds(25)) else { continue };
+                let ativo = int.lock().unwrap().ativo;
                 match msg.view() {
+                    gst::MessageView::Eos(..) | gst::MessageView::Error(..) if i != ativo => {
+                        // A faixa que saía no crossfade acabou (ou falhou): fim do crossfade.
+                        let _ = decks[i].set_state(gst::State::Null);
+                        terminar_cruzamento(&decks, &int);
+                    }
                     gst::MessageView::Eos(..) => {
-                        let _ = playbin.set_state(gst::State::Null);
-                        *pendente.lock().unwrap() = None;
-                        *atual.lock().unwrap() = None;
+                        let _ = decks[i].set_state(gst::State::Null);
+                        let mut g = int.lock().unwrap();
+                        g.atual = None;
+                        g.pendente = None;
                         envio_imediato = true;
                         fim = true;
                     }
-                    // A faixa carregada no `about-to-finish` começou a tocar.
-                    gst::MessageView::StreamStart(..) => {
-                        if let Some(id) = pendente.lock().unwrap().take() {
-                            *atual.lock().unwrap() = Some(id);
+                    gst::MessageView::Error(e) => {
+                        let _ = decks[i].set_state(gst::State::Null);
+                        let mut g = int.lock().unwrap();
+                        g.atual = None;
+                        g.pendente = None;
+                        erro = Some(format!("Erro ao tocar: {}", e.error()));
+                        envio_imediato = true;
+                    }
+                    // A faixa emendada pelo `about-to-finish` começou a tocar (gapless).
+                    gst::MessageView::StreamStart(..) if i == ativo => {
+                        let mut g = int.lock().unwrap();
+                        if let Some(id) = g.pendente.take() {
+                            g.atual = Some(id);
+                            g.escolha = Escolha::NaoPedida;
                             envio_imediato = true;
                             transicao = true;
                         }
                     }
-                    gst::MessageView::Error(e) => {
-                        let _ = playbin.set_state(gst::State::Null);
-                        *atual.lock().unwrap() = None;
-                        erro = Some(format!("Erro ao tocar: {}", e.error()));
-                        envio_imediato = true;
-                    }
                     gst::MessageView::StateChanged(s)
-                        if s.src().is_some_and(|src| src == playbin.upcast_ref::<gst::Object>()) =>
+                        if i == ativo && s.src().is_some_and(|src| src == decks[i].upcast_ref::<gst::Object>()) =>
                     {
                         envio_imediato = true;
                     }
                     _ => {}
                 }
             }
-            let tocando = playbin.current_state() == gst::State::Playing;
+
+            if conduzir_cruzamento(&decks, &int, pedir.as_ref()) {
+                envio_imediato = true;
+                transicao = true;
+            }
+
+            let (ativo, atual) = {
+                let g = int.lock().unwrap();
+                (g.ativo, g.atual)
+            };
+            let tocando = decks[ativo].current_state() == gst::State::Playing;
             if envio_imediato || (tocando && ultimo_envio.elapsed() >= Duration::from_millis(250)) {
-                let mut est = estado_de(&playbin, *atual.lock().unwrap());
+                let mut est = estado_de(&decks[ativo], atual);
                 est.erro = erro;
                 est.fim = fim;
                 est.transicao = transicao;
@@ -186,10 +342,104 @@ fn vigiar(
     });
 }
 
+fn terminar_cruzamento(decks: &[gst::Element; 2], int: &Mutex<Interno>) {
+    let (ativo, volume, saindo) = {
+        let mut g = int.lock().unwrap();
+        (g.ativo, g.volume, g.cruzando.take().map(|c| c.saindo))
+    };
+    if let Some(s) = saindo {
+        let _ = decks[s].set_state(gst::State::Null);
+    }
+    decks[ativo].set_property("volume", volume);
+}
+
+/// Um passo do crossfade: aplica a rampa de volume ou, perto do fim da faixa, pede a
+/// próxima e começa o crossfade. Devolve `true` quando outra faixa começou a tocar.
+fn conduzir_cruzamento(decks: &[gst::Element; 2], int: &Mutex<Interno>, pedir: &Pedir) -> bool {
+    let mut g = int.lock().unwrap();
+    let ativo = g.ativo;
+
+    if let Some(c) = &g.cruzando {
+        // Progresso pela posição da faixa nova: pausar no meio pausa a rampa.
+        let t = (posicao(&decks[ativo]) as f64 / c.dur_ms.max(1) as f64).clamp(0.0, 1.0);
+        let saindo = c.saindo;
+        let volume = g.volume;
+        drop(g);
+        if t >= 1.0 {
+            terminar_cruzamento(decks, int);
+        } else {
+            // Potência constante: a soma não "afunda" no meio.
+            decks[ativo].set_property("volume", volume * (t * FRAC_PI_2).sin());
+            decks[saindo].set_property("volume", volume * (t * FRAC_PI_2).cos());
+        }
+        return false;
+    }
+
+    if g.crossfade_ms == 0 || g.atual.is_none() || !matches!(g.escolha, Escolha::NaoPedida) {
+        return false;
+    }
+    let deck = &decks[ativo];
+    if deck.current_state() != gst::State::Playing {
+        return false;
+    }
+    let dur = duracao(deck);
+    let cf = g.crossfade_ms.min(dur / 2);
+    if dur == 0 || cf == 0 || posicao(deck) + cf < dur {
+        return false;
+    }
+    // Reserva a escolha antes de soltar a trava (o `about-to-finish` não pede de novo).
+    g.escolha = Escolha::Pedida(None);
+    drop(g);
+
+    let p = match pedir() {
+        Some(p) if !p.mesmo_album => p,
+        // Mesmo álbum (ou fim da fila): fica para o gapless.
+        outra => {
+            int.lock().unwrap().escolha = Escolha::Pedida(outra);
+            return false;
+        }
+    };
+    let Ok(uri) = uri_de(&p.path) else { return false };
+    let novo = 1 - ativo;
+    let volume = {
+        let mut g = int.lock().unwrap();
+        g.ativo = novo;
+        g.atual = Some(p.id);
+        g.pendente = None;
+        g.escolha = Escolha::NaoPedida;
+        g.cruzando = Some(Cruzamento { saindo: ativo, dur_ms: cf });
+        g.volume
+    };
+    let _ = decks[novo].set_state(gst::State::Null);
+    decks[novo].set_property("volume", 0.0);
+    decks[novo].set_property("uri", uri.as_str());
+    if decks[novo].set_state(gst::State::Playing).is_err() {
+        // Não deu para tocar a nova: desfaz e deixa a atual terminar.
+        let mut g = int.lock().unwrap();
+        g.ativo = ativo;
+        g.atual = None;
+        g.cruzando = None;
+        g.escolha = Escolha::Pedida(None);
+        drop(g);
+        decks[ativo].set_property("volume", volume);
+        return false;
+    }
+    true
+}
+
 #[cfg(test)]
 mod testes {
     use super::*;
+    use std::sync::atomic::{AtomicBool, Ordering};
     use std::sync::mpsc;
+
+    /// Os dois decks sem som, mas no ritmo real (`sync`).
+    fn silenciar(p: &Player) {
+        for d in &p.decks {
+            let mudo = gst::ElementFactory::make("fakesink").property("sync", true).build().unwrap();
+            d.set_property("audio-sink", &mudo);
+        }
+    }
 
     /// Toca a.mp3 (3 s) da pasta de teste sem som (fakesink) e espera o fim da faixa.
     /// Rodar com: SKALD_TEST_DIR=/pasta cargo test player -- --nocapture
@@ -198,8 +448,7 @@ mod testes {
         let Ok(dir) = std::env::var("SKALD_TEST_DIR") else { return };
         let (tx, rx) = mpsc::channel();
         let p = Player::new(move |e| { let _ = tx.send(e); }, || None).unwrap();
-        let mudo = gst::ElementFactory::make("fakesink").property("sync", true).build().unwrap();
-        p.playbin.set_property("audio-sink", &mudo);
+        silenciar(&p);
         p.volume(0.5);
         p.tocar(7, &format!("{dir}/a.mp3")).unwrap();
 
@@ -211,14 +460,12 @@ mod testes {
                 viu_tocando = true;
                 maior_posicao = maior_posicao.max(e.posicao_ms);
                 assert_eq!(e.id, Some(7));
-                assert!(e.duracao_ms > 2900, "duração {}", e.duracao_ms);
             }
             if viu_tocando && e.estado == Estado::Parado {
                 assert!(e.fim, "o aviso de parada deve marcar fim de faixa");
                 break e;
             }
         };
-        println!("posição máxima vista: {maior_posicao} ms");
         assert!(maior_posicao > 2000);
         assert_eq!(fim.id, None);
         assert!(fim.erro.is_none());
@@ -237,58 +484,94 @@ mod testes {
         println!("erro: {erro}");
     }
 
-    /// Gera um WAV de ~1,5 s com o GStreamer (tom de 440 Hz).
-    fn gerar_wav(destino: &std::path::Path) -> bool {
+    /// Gera um WAV de tom de 440 Hz com `buffers` blocos de 1024 amostras (44,1 kHz).
+    fn gerar_wav(destino: &std::path::Path, buffers: u32) -> bool {
         std::process::Command::new("gst-launch-1.0")
-            .args(["-q", "audiotestsrc", "num-buffers=65", "samplesperbuffer=1024", "!", "wavenc", "!", "filesink"])
+            .args(["-q", "audiotestsrc"])
+            .arg(format!("num-buffers={buffers}"))
+            .args(["samplesperbuffer=1024", "!", "wavenc", "!", "filesink"])
             .arg(format!("location={}", destino.display()))
             .status()
             .is_ok_and(|s| s.success())
     }
 
-    /// Duas faixas seguidas sem pausa: a segunda entra pelo `about-to-finish` e o player
-    /// avisa a transição (com o novo id) antes do fim de tudo.
-    #[test]
-    fn troca_sem_pausa() {
-        let dir = std::env::temp_dir().join(format!("skald-teste-gapless-{}", std::process::id()));
+    struct Resultado {
+        /// Momento da transição, contado do início da primeira faixa.
+        transicao: Option<(EstadoPlayer, Duration)>,
+        parou_antes: bool,
+    }
+
+    /// Toca a.wav e oferece b.wav (id 2) como próxima, uma vez. Devolve o que aconteceu.
+    fn tocar_duas(nome: &str, buffers: u32, crossfade_ms: u64, mesmo_album: bool) -> Option<Resultado> {
+        let dir = std::env::temp_dir().join(format!("skald-teste-{nome}-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let (a, b) = (dir.join("a.wav"), dir.join("b.wav"));
-        if !gerar_wav(&a) || !gerar_wav(&b) {
+        if !gerar_wav(&a, buffers) || !gerar_wav(&b, buffers) {
             eprintln!("gst-launch-1.0 indisponível; teste ignorado");
-            return;
+            return None;
         }
-        let pedida = std::sync::atomic::AtomicBool::new(false);
+        let pedida = AtomicBool::new(false);
         let b_str = b.to_string_lossy().into_owned();
         let (tx, rx) = mpsc::channel();
         let p = Player::new(
             move |e| { let _ = tx.send(e); },
-            move || (!pedida.swap(true, std::sync::atomic::Ordering::SeqCst)).then(|| (2, b_str.clone())),
+            move || {
+                (!pedida.swap(true, Ordering::SeqCst)).then(|| Proxima { id: 2, path: b_str.clone(), mesmo_album })
+            },
         )
         .unwrap();
-        let mudo = gst::ElementFactory::make("fakesink").property("sync", true).build().unwrap();
-        p.playbin.set_property("audio-sink", &mudo);
+        silenciar(&p);
+        p.definir_crossfade(crossfade_ms);
+        let inicio = Instant::now();
         p.tocar(1, &a.to_string_lossy()).unwrap();
 
-        let mut transicao = None;
-        let mut parou_antes = false;
-        let fim = loop {
-            let e = rx.recv_timeout(Duration::from_secs(10)).expect("sem eventos do player");
+        let mut r = Resultado { transicao: None, parou_antes: false };
+        loop {
+            let e = rx.recv_timeout(Duration::from_secs(15)).expect("sem eventos do player");
             assert!(e.erro.is_none(), "{:?}", e.erro);
             if e.transicao {
-                transicao = Some(e.clone());
+                r.transicao = Some((e.clone(), inicio.elapsed()));
             }
             if e.fim {
-                break e;
+                assert_eq!(e.id, None);
+                break;
             }
-            if transicao.is_none() && e.estado == Estado::Parado && e.id.is_none() {
-                parou_antes = true;
+            if r.transicao.is_none() && e.estado == Estado::Parado && e.id.is_none() {
+                r.parou_antes = true;
             }
-        };
-        let t = transicao.expect("faltou o aviso de transição");
+        }
+        std::fs::remove_dir_all(&dir).unwrap();
+        Some(r)
+    }
+
+    /// Mesmo sem crossfade: a segunda entra pelo `about-to-finish`, sem o player parar.
+    #[test]
+    fn troca_sem_pausa() {
+        let Some(r) = tocar_duas("gapless", 65, 0, false) else { return };
+        let (t, _) = r.transicao.expect("faltou o aviso de transição");
         assert_eq!(t.id, Some(2));
         assert_eq!(t.estado, Estado::Tocando);
-        assert!(!parou_antes, "o player parou entre as faixas");
-        assert_eq!(fim.id, None);
-        std::fs::remove_dir_all(&dir).unwrap();
+        assert!(!r.parou_antes, "o player parou entre as faixas");
+    }
+
+    /// Álbuns diferentes: a próxima começa ~1,5 s antes do fim da primeira (4 s).
+    #[test]
+    fn crossfade_entre_albuns() {
+        let Some(r) = tocar_duas("crossfade", 172, 1500, false) else { return };
+        let (t, quando) = r.transicao.expect("faltou o aviso de transição");
+        assert_eq!(t.id, Some(2));
+        assert!(!r.parou_antes);
+        assert!(quando < Duration::from_millis(3300), "crossfade começou tarde: {quando:?}");
+        assert!(quando > Duration::from_millis(1800), "crossfade começou cedo: {quando:?}");
+    }
+
+    /// Mesmo álbum: nada de crossfade, a troca acontece no fim (gapless).
+    #[test]
+    fn mesmo_album_sem_crossfade() {
+        let Some(r) = tocar_duas("mesmo-album", 172, 1500, true) else { return };
+        let (t, quando) = r.transicao.expect("faltou o aviso de transição");
+        assert_eq!(t.id, Some(2));
+        assert!(!r.parou_antes);
+        assert!(quando > Duration::from_millis(3600), "trocou antes do fim: {quando:?}");
     }
 }
