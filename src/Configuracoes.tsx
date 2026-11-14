@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { ask, open, save } from "@tauri-apps/plugin-dialog";
+import { listen } from "@tauri-apps/api/event";
 import { aplicarTema, ModoTema, temDuasVariantes, TEMAS } from "./tema";
 
 type Normalizacao = "desligada" | "faixa" | "album";
@@ -42,6 +43,7 @@ export default function Configuracoes({ onErro }: { onErro: (m: string) => void 
   const [notificar, setNotificar] = useState(true);
   const [autostart, setAutostart] = useState(false);
   const [cache, setCache] = useState<number | null>(null);
+  const [mpris, setMpris] = useState<string | null | undefined>(undefined);
   const [avisoDados, setAvisoDados] = useState<string | null>(null);
 
   useEffect(() => {
@@ -63,6 +65,15 @@ export default function Configuracoes({ onErro }: { onErro: (m: string) => void 
     invoke<number>("cache_size")
       .then(setCache)
       .catch(() => {});
+    const lerMpris = () =>
+      invoke<string | null>("mpris_status")
+        .then(setMpris)
+        .catch(() => {});
+    lerMpris();
+    const parar = listen("mpris-mudou", lerMpris);
+    return () => {
+      parar.then((f) => f());
+    };
   }, []);
 
   async function exportarBackup() {
@@ -265,6 +276,15 @@ export default function Configuracoes({ onErro }: { onErro: (m: string) => void 
         <input type="checkbox" checked={notificar} onChange={(e) => gravarNotificar(e.target.checked)} />
       </label>
       <p className="nota">Só aparece quando a janela do Skáld não está em primeiro plano.</p>
+      <p className="opcao">
+        <span>Teclas de mídia e controles do sistema (MPRIS)</span>
+        <strong>{mpris === undefined ? "…" : mpris === null ? "ativos" : "indisponíveis"}</strong>
+      </p>
+      {mpris && (
+        <p className="nota">
+          {mpris} Sem o barramento D-Bus da sessão não há como o sistema controlar o Skáld; o resto funciona normalmente.
+        </p>
+      )}
       <h3>Dados</h3>
       <div className="acoes-dados">
         <button onClick={exportarBackup}>Exportar backup…</button>

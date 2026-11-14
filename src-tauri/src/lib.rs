@@ -1255,6 +1255,47 @@ async fn metadata_apply(
     Ok(())
 }
 
+/// Erro do MPRIS (`None`: ativo). Mostrado em Configurações.
+struct MprisStatus(Mutex<Option<String>>);
+
+/// Tenta registrar o MPRIS; se falhar, tenta de novo a cada 15 s por até 10 minutos.
+fn iniciar_mpris(app: AppHandle) {
+    const TENTATIVAS: u32 = 40;
+    std::thread::spawn(move || {
+        for tentativa in 1..=TENTATIVAS {
+            let status = app.state::<MprisStatus>();
+            match mpris::Mpris::iniciar(app.clone()) {
+                Ok(m) => {
+                    app.manage(m);
+                    if let Ok(mut s) = status.0.lock() {
+                        *s = None;
+                    }
+                    let _ = app.emit("mpris-mudou", ());
+                    return;
+                }
+                Err(e) => {
+                    eprintln!("{e} (tentativa {tentativa})");
+                    if let Ok(mut s) = status.0.lock() {
+                        *s = Some(if tentativa < TENTATIVAS {
+                            format!("{e}. Tentando de novo…")
+                        } else {
+                            format!("{e}. Reabra o Skáld depois que a sessão estiver pronta.")
+                        });
+                    }
+                    let _ = app.emit("mpris-mudou", ());
+                }
+            }
+            std::thread::sleep(std::time::Duration::from_secs(15));
+        }
+    });
+}
+
+/// `None` quando o MPRIS está ativo; senão o motivo.
+#[tauri::command]
+fn mpris_status(estado: State<MprisStatus>) -> Result<Option<String>, String> {
+    Ok(estado.0.lock().map_err(erro_db)?.clone())
+}
+
 const ID_BANDEJA: &str = "principal";
 
 fn mostrar_janela(app: &AppHandle) {
@@ -1493,13 +1534,9 @@ pub fn run() {
                 f.definir_aleatorio(aleatorio);
                 f.definir_repetir(repetir);
             }
-            // Sem D-Bus (sessão sem barramento), o app funciona só sem MPRIS.
-            match mpris::Mpris::iniciar(app.handle().clone()) {
-                Ok(m) => {
-                    app.manage(m);
-                }
-                Err(e) => eprintln!("{e}"),
-            }
+            // Sem D-Bus o app segue sem MPRIS e tenta de novo (o barramento pode subir depois).
+            app.manage(MprisStatus(Mutex::new(Some("Conectando…".into()))));
+            iniciar_mpris(app.handle().clone());
             retomar_temporizador(app.handle());
             // Bandeja ligada: cria o ícone; iniciado com o sistema, abre só nela.
             let bandeja = {
@@ -1597,6 +1634,7 @@ pub fn run() {
             set_appearance,
             set_dynamic_colors,
             set_tray,
+            mpris_status,
             backup_export,
             aliases_list,
             alias_add,
