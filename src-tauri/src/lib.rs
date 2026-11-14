@@ -214,6 +214,70 @@ fn acompanhar_sessao(app: &AppHandle, estado: &player::EstadoPlayer) {
     }
 }
 
+/// Próxima faixa já entregue ao player para tocar sem pausa (gapless). A fila só avança de
+/// verdade quando ela começa a tocar: `antes` é a fila no momento do pedido, `depois` é a
+/// cópia já avançada.
+struct Pendente {
+    antes: queue::Fila,
+    depois: queue::Fila,
+    id: i64,
+}
+
+struct GaplessState(Mutex<Option<Pendente>>);
+
+/// Chamada pelo player pouco antes do fim da faixa: escolhe a seguinte numa cópia da fila
+/// (respeitando fila manual, aleatório e repetir) e pula arquivos ausentes.
+fn preparar_proxima(app: &AppHandle) -> Option<(i64, String)> {
+    let antes = app.state::<FilaState>().0.lock().ok()?.clone();
+    let mut depois = antes.clone();
+    for tentativa in 0..100 {
+        let id = if tentativa == 0 { depois.proxima_automatica() } else { depois.proxima() }?;
+        let path = {
+            let db = app.state::<db::Db>();
+            let conn = db.0.lock().ok()?;
+            let (musica, path) = library::obter(&conn, id).ok()??;
+            let existe = std::path::Path::new(&path).is_file();
+            if existe == musica.missing {
+                let _ = library::marcar_ausente(&conn, id, !existe);
+            }
+            existe.then_some(path)
+        };
+        if let Some(path) = path {
+            *app.state::<GaplessState>().0.lock().ok()? = Some(Pendente { antes, depois, id });
+            return Some((id, path));
+        }
+    }
+    None
+}
+
+/// A faixa preparada começou a tocar: avança a fila e troca a sessão do histórico.
+fn concluir_transicao(app: &AppHandle, id: i64) {
+    let pendente = app.state::<GaplessState>().0.lock().ok().and_then(|mut p| p.take());
+    let corrigir = {
+        let fila = app.state::<FilaState>();
+        let Ok(mut f) = fila.0.lock() else { return };
+        match pendente {
+            Some(p) if p.id == id && *f == p.antes => {
+                *f = p.depois;
+                None
+            }
+            // A fila mudou nesses segundos (ex.: música adicionada): vale a fila atual.
+            _ => f.proxima_automatica().filter(|&real| real != id),
+        }
+    };
+    encerrar_sessao(app, true);
+    iniciar_sessao(app, id);
+    let _ = app.emit(EVENTO_FILA, ());
+    if let Some(real) = corrigir {
+        let h = app.clone();
+        std::thread::spawn(move || {
+            if let Err(e) = tocar_id(&h, real) {
+                let _ = h.emit("player-erro", e);
+            }
+        });
+    }
+}
+
 /// Toca `id` no player. Arquivo ausente é marcado como não encontrado (registro mantido).
 fn tocar_id(app: &AppHandle, id: i64) -> Result<(), String> {
     let path = {
@@ -590,11 +654,18 @@ pub fn run() {
             app.manage(FilaState(Mutex::new(queue::Fila::default())));
             app.manage(HistoricoState(Mutex::new(None)));
             app.manage(OrigemState(Mutex::new(None)));
+            app.manage(GaplessState(Mutex::new(None)));
             app.manage(watch::Vigia::iniciar(app.handle().clone())?);
             watch::Vigia::retomar(app.handle().clone());
             let handle = app.handle().clone();
+            let h_proxima = app.handle().clone();
             app.manage(player::Player::new(move |estado| {
                 let fim = estado.fim;
+                if estado.transicao {
+                    if let Some(id) = estado.id {
+                        concluir_transicao(&handle, id);
+                    }
+                }
                 acompanhar_sessao(&handle, &estado);
                 if let Some(m) = handle.try_state::<mpris::Mpris>() {
                     m.atualizar(&handle, &estado);
@@ -609,7 +680,7 @@ pub fn run() {
                         }
                     });
                 }
-            })?);
+            }, move || preparar_proxima(&h_proxima))?);
             // Sem D-Bus (sessão sem barramento), o app funciona só sem MPRIS.
             match mpris::Mpris::iniciar(app.handle().clone()) {
                 Ok(m) => {

@@ -22,16 +22,25 @@ pub struct EstadoPlayer {
     pub erro: Option<String>,
     /// Verdadeiro só no aviso de fim de faixa (para avançar a fila).
     pub fim: bool,
+    /// Verdadeiro só no aviso de troca sem pausa (gapless): `id` já é a nova faixa.
+    pub transicao: bool,
 }
 
 pub struct Player {
     playbin: gst::Element,
     atual: Arc<Mutex<Option<i64>>>,
+    /// Faixa já carregada para tocar em seguida, sem pausa (gapless).
+    pendente: Arc<Mutex<Option<i64>>>,
 }
 
 impl Player {
     /// `avisar` recebe cada mudança de estado e o progresso (a cada 250 ms tocando).
-    pub fn new(avisar: impl Fn(EstadoPlayer) + Send + 'static) -> Result<Self, String> {
+    /// `pedir_proxima` é chamada pouco antes do fim da faixa e devolve `(id, caminho)` da
+    /// seguinte, que entra sem pausa (gapless). `None`: a reprodução termina normalmente.
+    pub fn new(
+        avisar: impl Fn(EstadoPlayer) + Send + 'static,
+        pedir_proxima: impl Fn() -> Option<(i64, String)> + Send + Sync + 'static,
+    ) -> Result<Self, String> {
         gst::init().map_err(|e| format!("Falha ao iniciar o GStreamer: {e}"))?;
         let playbin = gst::ElementFactory::make("playbin")
             .build()
@@ -41,13 +50,27 @@ impl Player {
             playbin.set_property("video-sink", &fake);
         }
         let atual = Arc::new(Mutex::new(None));
-        vigiar(avisar, playbin.clone(), atual.clone());
-        Ok(Self { playbin, atual })
+        let pendente = Arc::new(Mutex::new(None));
+        let p = pendente.clone();
+        playbin.connect("about-to-finish", false, move |args| {
+            let pb = args[0].get::<gst::Element>().ok()?;
+            if let Some((id, path)) = pedir_proxima() {
+                if let Ok(uri) = gst::glib::filename_to_uri(&path, None) {
+                    pb.set_property("uri", uri.as_str());
+                    *p.lock().unwrap() = Some(id);
+                }
+            }
+            None
+        });
+        vigiar(avisar, playbin.clone(), atual.clone(), pendente.clone());
+        Ok(Self { playbin, atual, pendente })
     }
 
     pub fn tocar(&self, id: i64, path: &str) -> Result<(), String> {
         let uri = gst::glib::filename_to_uri(path, None).map_err(|e| e.to_string())?;
+        *self.pendente.lock().unwrap() = None;
         self.playbin.set_state(gst::State::Null).map_err(|e| e.to_string())?;
+        *self.pendente.lock().unwrap() = None;
         self.playbin.set_property("uri", uri.as_str());
         *self.atual.lock().unwrap() = Some(id);
         self.playbin
@@ -100,11 +123,17 @@ fn estado_de(playbin: &gst::Element, atual: Option<i64>) -> EstadoPlayer {
         duracao_ms: playbin.query_duration::<gst::ClockTime>().map_or(0, |t| t.mseconds()),
         erro: None,
         fim: false,
+        transicao: false,
     }
 }
 
 /// Lê o barramento (fim de faixa, erros, mudanças de estado) e emite o progresso.
-fn vigiar(avisar: impl Fn(EstadoPlayer) + Send + 'static, playbin: gst::Element, atual: Arc<Mutex<Option<i64>>>) {
+fn vigiar(
+    avisar: impl Fn(EstadoPlayer) + Send + 'static,
+    playbin: gst::Element,
+    atual: Arc<Mutex<Option<i64>>>,
+    pendente: Arc<Mutex<Option<i64>>>,
+) {
     let bus = playbin.bus().expect("playbin sempre tem barramento");
     std::thread::spawn(move || {
         let mut ultimo_envio = Instant::now();
@@ -112,13 +141,23 @@ fn vigiar(avisar: impl Fn(EstadoPlayer) + Send + 'static, playbin: gst::Element,
             let mut envio_imediato = false;
             let mut erro = None;
             let mut fim = false;
+            let mut transicao = false;
             if let Some(msg) = bus.timed_pop(gst::ClockTime::from_mseconds(100)) {
                 match msg.view() {
                     gst::MessageView::Eos(..) => {
                         let _ = playbin.set_state(gst::State::Null);
+                        *pendente.lock().unwrap() = None;
                         *atual.lock().unwrap() = None;
                         envio_imediato = true;
                         fim = true;
+                    }
+                    // A faixa carregada no `about-to-finish` começou a tocar.
+                    gst::MessageView::StreamStart(..) => {
+                        if let Some(id) = pendente.lock().unwrap().take() {
+                            *atual.lock().unwrap() = Some(id);
+                            envio_imediato = true;
+                            transicao = true;
+                        }
                     }
                     gst::MessageView::Error(e) => {
                         let _ = playbin.set_state(gst::State::Null);
@@ -139,6 +178,7 @@ fn vigiar(avisar: impl Fn(EstadoPlayer) + Send + 'static, playbin: gst::Element,
                 let mut est = estado_de(&playbin, *atual.lock().unwrap());
                 est.erro = erro;
                 est.fim = fim;
+                est.transicao = transicao;
                 avisar(est);
                 ultimo_envio = Instant::now();
             }
@@ -157,7 +197,7 @@ mod testes {
     fn toca_ate_o_fim() {
         let Ok(dir) = std::env::var("SKALD_TEST_DIR") else { return };
         let (tx, rx) = mpsc::channel();
-        let p = Player::new(move |e| { let _ = tx.send(e); }).unwrap();
+        let p = Player::new(move |e| { let _ = tx.send(e); }, || None).unwrap();
         let mudo = gst::ElementFactory::make("fakesink").property("sync", true).build().unwrap();
         p.playbin.set_property("audio-sink", &mudo);
         p.volume(0.5);
@@ -188,12 +228,67 @@ mod testes {
     fn arquivo_invalido_gera_erro() {
         let Ok(dir) = std::env::var("SKALD_TEST_DIR") else { return };
         let (tx, rx) = mpsc::channel();
-        let p = Player::new(move |e| { let _ = tx.send(e); }).unwrap();
+        let p = Player::new(move |e| { let _ = tx.send(e); }, || None).unwrap();
         let _ = p.tocar(1, &format!("{dir}/sub/quebrado.ogg"));
         let erro = loop {
             let e = rx.recv_timeout(Duration::from_secs(10)).expect("sem eventos do player");
             if let Some(m) = e.erro { break m; }
         };
         println!("erro: {erro}");
+    }
+
+    /// Gera um WAV de ~1,5 s com o GStreamer (tom de 440 Hz).
+    fn gerar_wav(destino: &std::path::Path) -> bool {
+        std::process::Command::new("gst-launch-1.0")
+            .args(["-q", "audiotestsrc", "num-buffers=65", "samplesperbuffer=1024", "!", "wavenc", "!", "filesink"])
+            .arg(format!("location={}", destino.display()))
+            .status()
+            .is_ok_and(|s| s.success())
+    }
+
+    /// Duas faixas seguidas sem pausa: a segunda entra pelo `about-to-finish` e o player
+    /// avisa a transição (com o novo id) antes do fim de tudo.
+    #[test]
+    fn troca_sem_pausa() {
+        let dir = std::env::temp_dir().join(format!("skald-teste-gapless-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let (a, b) = (dir.join("a.wav"), dir.join("b.wav"));
+        if !gerar_wav(&a) || !gerar_wav(&b) {
+            eprintln!("gst-launch-1.0 indisponível; teste ignorado");
+            return;
+        }
+        let pedida = std::sync::atomic::AtomicBool::new(false);
+        let b_str = b.to_string_lossy().into_owned();
+        let (tx, rx) = mpsc::channel();
+        let p = Player::new(
+            move |e| { let _ = tx.send(e); },
+            move || (!pedida.swap(true, std::sync::atomic::Ordering::SeqCst)).then(|| (2, b_str.clone())),
+        )
+        .unwrap();
+        let mudo = gst::ElementFactory::make("fakesink").property("sync", true).build().unwrap();
+        p.playbin.set_property("audio-sink", &mudo);
+        p.tocar(1, &a.to_string_lossy()).unwrap();
+
+        let mut transicao = None;
+        let mut parou_antes = false;
+        let fim = loop {
+            let e = rx.recv_timeout(Duration::from_secs(10)).expect("sem eventos do player");
+            assert!(e.erro.is_none(), "{:?}", e.erro);
+            if e.transicao {
+                transicao = Some(e.clone());
+            }
+            if e.fim {
+                break e;
+            }
+            if transicao.is_none() && e.estado == Estado::Parado && e.id.is_none() {
+                parou_antes = true;
+            }
+        };
+        let t = transicao.expect("faltou o aviso de transição");
+        assert_eq!(t.id, Some(2));
+        assert_eq!(t.estado, Estado::Tocando);
+        assert!(!parou_antes, "o player parou entre as faixas");
+        assert_eq!(fim.id, None);
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 }

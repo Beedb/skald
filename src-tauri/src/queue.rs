@@ -17,7 +17,7 @@ pub enum Repetir {
 /// - `ordem`: a sequência de posições do contexto a tocar. Em ordem normal é 0..n;
 ///   com aleatório é um Shuffle Bag: cada música uma vez por ciclo, a primeira protegida.
 /// - `indice`: posição atual em `ordem`; continua de onde parou depois da fila manual.
-#[derive(Default, Debug)]
+#[derive(Default, Debug, Clone, PartialEq)]
 pub struct Fila {
     manual: VecDeque<i64>,
     contexto: Vec<i64>,
