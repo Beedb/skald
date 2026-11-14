@@ -14,7 +14,8 @@ import Duplicados from "./Duplicados";
 import Categorias from "./Categorias";
 import { Albuns, AlbumView, Artistas, ArtistaView } from "./Colecao";
 import Inicio from "./Inicio";
-import { miniatura } from "./Capa";
+import { esquecerMiniatura, miniatura } from "./Capa";
+import Informacoes from "./Informacoes";
 import { aplicarCorCapa, corDaImagem, reaplicarCorCapa } from "./coresCapa";
 import { aplicarTema, ModoTema } from "./tema";
 import Estatisticas from "./Estatisticas";
@@ -77,6 +78,7 @@ function App() {
   const [curtidas, setCurtidas] = useState<Set<number>>(new Set());
   const [versaoHistorico, setVersaoHistorico] = useState(0);
   const [aviso, setAviso] = useState<string | null>(null);
+  const [informacoesId, setInformacoesId] = useState<number | null>(null);
 
   // Busca: `busca` é o texto digitado; `buscaAtiva` é aplicada 200 ms depois da última tecla.
   const [busca, setBusca] = useState("");
@@ -401,6 +403,7 @@ function App() {
               curtidas={curtidas}
               onCurtir={curtir}
               onRemover={removerDaBiblioteca}
+              onInformacoes={setInformacoesId}
               visivel={tela === "biblioteca" && vista.tipo === "biblioteca"}
             />
           )}
@@ -496,6 +499,20 @@ function App() {
           filaAberta={filaAberta}
           onAlternarFila={() => setFilaAberta((a) => !a)}
           onAbrirPlayer={() => setTela("player")}
+        />
+      )}
+      {informacoesId !== null && (
+        <Informacoes
+          id={informacoesId}
+          onFechar={() => setInformacoesId(null)}
+          onSalvo={() => {
+            esquecerMiniatura(informacoesId);
+            setInformacoesId(null);
+            setAviso("Informações salvas.");
+            carregarStatus();
+            setVersao((v) => v + 1);
+          }}
+          onErro={setErro}
         />
       )}
     </main>

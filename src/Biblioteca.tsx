@@ -40,6 +40,7 @@ type Props = {
   onCurtir: (mediaId: number) => void;
   /** Exclui da biblioteca (só o registro; o arquivo fica no disco). */
   onRemover: (mediaId: number) => void;
+  onInformacoes: (mediaId: number) => void;
   /** Falso enquanto o player completo ocupa a tela; a lista fica montada e guarda a rolagem. */
   visivel: boolean;
 };
@@ -74,6 +75,7 @@ export default function Biblioteca({
   curtidas,
   onCurtir,
   onRemover,
+  onInformacoes,
   visivel,
 }: Props) {
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -236,6 +238,9 @@ export default function Biblioteca({
             + Nova playlist com esta música
           </li>
           <li role="separator" className="separador" />
+          <li role="menuitem" onClick={() => onInformacoes(menu.id)}>
+            Informações e sugestões…
+          </li>
           {menu.confirmar ? (
             <li role="menuitem" className="perigo" onClick={() => onRemover(menu.id)}>
               Confirmar: remover (o arquivo fica no disco)

@@ -2,6 +2,7 @@ mod artistas;
 mod colecao;
 mod db;
 mod details;
+mod enriquecer;
 mod eq;
 mod ganho;
 mod history;
@@ -1063,6 +1064,44 @@ fn set_appearance(db: State<db::Db>, tema: String, modo: String) -> Result<(), S
     settings::definir_aparencia(&conn, &tema, &modo)
 }
 
+/// Valores atuais da música para a janela de informações.
+#[tauri::command]
+fn metadata_get(db: State<db::Db>, id: i64) -> Result<enriquecer::Atual, String> {
+    let conn = db.0.lock().map_err(erro_db)?;
+    enriquecer::atual(&conn, id)
+}
+
+/// Sugestões do MusicBrainz (rede, fora da thread principal).
+#[tauri::command]
+async fn metadata_lookup(
+    titulo: String,
+    artista: Option<String>,
+    duracao_ms: Option<i64>,
+) -> Result<Vec<enriquecer::Candidato>, String> {
+    tauri::async_runtime::spawn_blocking(move || enriquecer::buscar(&titulo, artista.as_deref(), duracao_ms))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+/// Grava os campos escolhidos (banco, e arquivo se pedido, com a capa opcional).
+#[tauri::command]
+async fn metadata_apply(
+    app: AppHandle,
+    id: i64,
+    campos: enriquecer::Campos,
+    no_arquivo: bool,
+    release_capa: Option<String>,
+) -> Result<(), String> {
+    let h = app.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        enriquecer::aplicar(&h.state::<db::Db>().0, id, &campos, no_arquivo, release_capa.as_deref())
+    })
+    .await
+    .map_err(|e| e.to_string())??;
+    let _ = app.emit(EVENTO_FILA, ());
+    Ok(())
+}
+
 const ID_BANDEJA: &str = "principal";
 
 fn mostrar_janela(app: &AppHandle) {
@@ -1398,6 +1437,9 @@ pub fn run() {
             set_appearance,
             set_dynamic_colors,
             set_tray,
+            metadata_get,
+            metadata_lookup,
+            metadata_apply,
             set_notifications,
             autostart_get,
             set_autostart,

@@ -5,6 +5,11 @@ import { invoke } from "@tauri-apps/api/core";
 const cache = new Map<number, string | null>();
 const pendentes = new Map<number, Promise<string | null>>();
 
+/** Esquece a miniatura (a capa da música mudou). */
+export function esquecerMiniatura(id: number) {
+  cache.delete(id);
+}
+
 export function miniatura(id: number): Promise<string | null> {
   if (cache.has(id)) return Promise.resolve(cache.get(id)!);
   let p = pendentes.get(id);
