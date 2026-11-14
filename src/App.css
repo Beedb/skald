@@ -2018,3 +2018,57 @@ button.primario {
 .biblioteca .lista {
   user-select: none;
 }
+
+.barra-completar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.6rem;
+  margin: 0.4rem 0 0.8rem;
+}
+
+.linha-completar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  display: grid;
+  grid-template-columns: minmax(12rem, 1fr) 2fr;
+  align-items: center;
+  gap: 1rem;
+  padding: 0 0.4rem;
+  border-bottom: 1px solid var(--linha);
+}
+
+.linha-completar .quem {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.linha-completar .quem > * {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.linha-completar .sugestao {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  min-width: 0;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.1rem 0.5rem;
+  border: 1px solid var(--linha);
+  border-radius: 999px;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+
+.chip.marcado {
+  border-color: var(--acento);
+}

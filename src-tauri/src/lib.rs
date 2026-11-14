@@ -1142,6 +1142,12 @@ fn media_ids_range(db: State<db::Db>, busca: Option<String>, de: usize, ate: usi
 }
 
 #[tauri::command]
+fn incomplete_list(db: State<db::Db>) -> Result<Vec<enriquecer::Incompleta>, String> {
+    let conn = db.0.lock().map_err(erro_db)?;
+    enriquecer::incompletas(&conn).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 fn batch_values(db: State<db::Db>, ids: Vec<i64>) -> Result<enriquecer::Lote, String> {
     let conn = db.0.lock().map_err(erro_db)?;
     enriquecer::lote_valores(&conn, &ids)
@@ -1549,6 +1555,7 @@ pub fn run() {
             metadata_get,
             media_ids_range,
             batch_values,
+            incomplete_list,
             batch_edit,
             metadata_lookup,
             metadata_apply,

@@ -17,6 +17,7 @@ import Inicio from "./Inicio";
 import { esquecerMiniatura, miniatura } from "./Capa";
 import Informacoes from "./Informacoes";
 import EdicaoLote from "./EdicaoLote";
+import Completar from "./Completar";
 import { MenuMusicaProvider } from "./MenuMusica";
 import { aplicarCorCapa, corDaImagem, reaplicarCorCapa } from "./coresCapa";
 import { aplicarTema, ModoTema } from "./tema";
@@ -425,6 +426,18 @@ function App() {
             />
           )}
         </div>
+        {vista.tipo === "completar" && (
+          <div className="area">
+            <Completar
+              versao={versao}
+              onMudou={(mensagem) => {
+                setAviso(mensagem);
+                setVersao((v) => v + 1);
+              }}
+              onErro={setErro}
+            />
+          </div>
+        )}
         {vista.tipo === "historico" && (
           <div className="area">
             <Historico

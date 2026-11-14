@@ -19,6 +19,7 @@ export type Vista =
   | { tipo: "biblioteca" }
   | { tipo: "historico" }
   | { tipo: "estatisticas" }
+  | { tipo: "completar" }
   | { tipo: "configuracoes" }
   | { tipo: "artistas" }
   | { tipo: "artista"; nome: string | null }
@@ -125,6 +126,7 @@ export default function Lateral({ vista, playlists, onVista, onErro }: Props) {
       {item(vista.tipo === "albuns" || vista.tipo === "album", "◉", "Álbuns", () => onVista({ tipo: "albuns" }))}
       {item(vista.tipo === "historico", "⟲", "Histórico", () => onVista({ tipo: "historico" }))}
       {item(vista.tipo === "estatisticas", "▤", "Estatísticas", () => onVista({ tipo: "estatisticas" }))}
+      {item(vista.tipo === "completar", "✎", "Completar informações", () => onVista({ tipo: "completar" }))}
       {item(vista.tipo === "configuracoes", "⚙", "Configurações", () => onVista({ tipo: "configuracoes" }))}
 
       {playlists

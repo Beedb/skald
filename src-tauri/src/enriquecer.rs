@@ -342,6 +342,41 @@ fn gravar_no_banco(conn: &Connection, id: i64, c: &Campos) -> rusqlite::Result<(
     Ok(())
 }
 
+/// Música com informações faltando (lista para completar em lote).
+#[derive(Serialize, Debug, PartialEq)]
+pub struct Incompleta {
+    pub id: i64,
+    pub title: Option<String>,
+    pub artist: Option<String>,
+    pub album: Option<String>,
+    pub duration_ms: Option<i64>,
+    /// Campos vazios entre artista, álbum, ano e gênero.
+    pub faltando: Vec<String>,
+}
+
+/// Músicas presentes (arquivo encontrado) sem artista, álbum, ano ou gênero.
+pub fn incompletas(conn: &Connection) -> rusqlite::Result<Vec<Incompleta>> {
+    let mut stmt = conn.prepare(
+        "SELECT id, title, artist, album, duration_ms, year, genre FROM media
+         WHERE category = 'music' AND missing = 0
+           AND (artist IS NULL OR album IS NULL OR year IS NULL OR genre IS NULL)
+         ORDER BY artist IS NULL DESC, artist COLLATE NOCASE, album COLLATE NOCASE, title COLLATE NOCASE",
+    )?;
+    let linhas = stmt.query_map([], |r| {
+        let artist: Option<String> = r.get(2)?;
+        let album: Option<String> = r.get(3)?;
+        let year: Option<i64> = r.get(5)?;
+        let genre: Option<String> = r.get(6)?;
+        let faltando = [("artist", artist.is_none()), ("album", album.is_none()), ("year", year.is_none()), ("genre", genre.is_none())]
+            .into_iter()
+            .filter(|(_, f)| *f)
+            .map(|(n, _)| n.to_string())
+            .collect();
+        Ok(Incompleta { id: r.get(0)?, title: r.get(1)?, artist, album, duration_ms: r.get(4)?, faltando })
+    })?;
+    linhas.collect()
+}
+
 /// Valor de um campo numa seleção: o comum a todas, ou `varios`.
 #[derive(Serialize, Debug, PartialEq)]
 pub struct ValorLote<T> {
@@ -416,6 +451,21 @@ pub fn lote_aplicar(conn_db: &std::sync::Mutex<Connection>, ids: &[i64], campos:
 #[cfg(test)]
 mod testes {
     use super::*;
+
+    #[test]
+    fn lista_incompletas() {
+        let conn = crate::db::open(Path::new(":memory:")).unwrap();
+        conn.execute_batch(
+            "INSERT INTO media (id, path, title, artist, album, year, genre, missing) VALUES
+               (1, '/a.mp3', 'A', 'X', 'D', 2020, 'Rap', 0),
+               (2, '/b.mp3', 'B', NULL, 'D', NULL, 'Rap', 0),
+               (3, '/c.mp3', 'C', NULL, NULL, NULL, NULL, 1);",
+        )
+        .unwrap();
+        let l = incompletas(&conn).unwrap();
+        assert_eq!(l.len(), 1);
+        assert_eq!((l[0].id, l[0].faltando.clone()), (2, vec!["artist".to_string(), "year".to_string()]));
+    }
 
     #[test]
     fn edicao_em_lote() {
