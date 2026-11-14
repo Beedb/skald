@@ -10,6 +10,7 @@ import Lateral, { type PlaylistResumo, type Vista } from "./Lateral";
 import PlaylistView from "./PlaylistView";
 import Historico from "./Historico";
 import Pastas from "./Pastas";
+import Estatisticas from "./Estatisticas";
 import "./App.css";
 
 type DbStatus = {
@@ -333,6 +334,11 @@ function App() {
               visivel={tela === "biblioteca"}
               onTocar={(id) => invoke("play_media", { id, busca: "" }).catch((e) => mostrarErro(String(e)))}
             />
+          </div>
+        )}
+        {vista.tipo === "estatisticas" && (
+          <div className="area">
+            <Estatisticas versao={versaoHistorico} onErro={setErro} />
           </div>
         )}
         {playlistAtual && (

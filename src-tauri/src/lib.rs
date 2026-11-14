@@ -457,6 +457,12 @@ fn history_list(db: State<db::Db>, offset: u32, limit: u32) -> Result<Vec<histor
 }
 
 #[tauri::command]
+fn stats_summary(db: State<db::Db>) -> Result<history::Estatisticas, String> {
+    let conn = db.0.lock().map_err(erro_db)?;
+    history::estatisticas(&conn).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 fn history_count(db: State<db::Db>) -> Result<i64, String> {
     let conn = db.0.lock().map_err(erro_db)?;
     history::contar(&conn).map_err(|e| e.to_string())
@@ -646,6 +652,7 @@ pub fn run() {
             playlist_export_m3u,
             history_list,
             history_count,
+            stats_summary,
             toggle_pause,
             set_volume,
             seek

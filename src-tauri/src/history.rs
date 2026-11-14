@@ -122,6 +122,32 @@ pub fn contar(conn: &Connection) -> rusqlite::Result<i64> {
     conn.query_row("SELECT COUNT(*) FROM play_history", [], |r| r.get(0))
 }
 
+/// Painel permanente (seção 11.2). Usa todo o histórico, inclusive músicas que já saíram
+/// da biblioteca; nunca é zerado e não depende das retrospectivas.
+#[derive(Serialize, Debug, PartialEq)]
+pub struct Estatisticas {
+    /// Tempo efetivamente ouvido, somando todas as reproduções.
+    pub tempo_total_ms: i64,
+    /// Reproduções que contaram como escutadas (mais de 60% e no mínimo 20 s).
+    pub musicas_escutadas: i64,
+    /// Artistas distintos entre as escutadas, sem diferenciar acentos nem maiúsculas.
+    pub artistas_distintos: i64,
+}
+
+pub fn estatisticas(conn: &Connection) -> rusqlite::Result<Estatisticas> {
+    conn.query_row(
+        "SELECT
+            (SELECT COALESCE(SUM(listened_ms), 0) FROM play_history WHERE category = 'music'),
+            (SELECT COUNT(*) FROM play_history WHERE category = 'music' AND counted = 1),
+            (SELECT COUNT(*) FROM (
+                SELECT 1 FROM play_history
+                WHERE category = 'music' AND counted = 1 AND artist IS NOT NULL
+                GROUP BY TRIM(artist) COLLATE SEMACENTO))",
+        [],
+        |r| Ok(Estatisticas { tempo_total_ms: r.get(0)?, musicas_escutadas: r.get(1)?, artistas_distintos: r.get(2)? }),
+    )
+}
+
 #[cfg(test)]
 mod testes {
     use super::*;
@@ -181,5 +207,31 @@ mod testes {
         let categoria: String = conn.query_row("SELECT category FROM play_history", [], |r| r.get(0)).unwrap();
         assert_eq!(categoria, "music");
         assert_eq!(contar(&conn).unwrap(), 1);
+    }
+
+    #[test]
+    fn painel_soma_tudo_e_une_grafias_de_artista() {
+        let conn = crate::db::open(std::path::Path::new(":memory:")).unwrap();
+        assert_eq!(
+            estatisticas(&conn).unwrap(),
+            Estatisticas { tempo_total_ms: 0, musicas_escutadas: 0, artistas_distintos: 0 }
+        );
+        for (artista, ouvido, contou) in [
+            (Some("Anavitória"), 100_000, 1),
+            (Some("ANAVITORIA"), 90_000, 1),
+            (Some("Djavan"), 5_000, 0), // não escutada: soma tempo, não conta artista
+            (None, 60_000, 1),          // sem artista: conta música, não artista
+            (Some("Rodrigo Zin"), 40_000, 1),
+        ] {
+            conn.execute(
+                "INSERT INTO play_history (artist, started_at, listened_ms, counted) VALUES (?1, 0, ?2, ?3)",
+                rusqlite::params![artista, ouvido, contou],
+            )
+            .unwrap();
+        }
+        assert_eq!(
+            estatisticas(&conn).unwrap(),
+            Estatisticas { tempo_total_ms: 295_000, musicas_escutadas: 4, artistas_distintos: 2 }
+        );
     }
 }

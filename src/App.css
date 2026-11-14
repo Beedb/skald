@@ -758,3 +758,41 @@ body {
   cursor: pointer;
   color: inherit;
 }
+
+.estatisticas {
+  padding: 1rem 1.5rem;
+  overflow-y: auto;
+}
+
+.estatisticas h2 {
+  margin: 0 0 1rem;
+}
+
+.indicadores {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
+  gap: 1rem;
+}
+
+.indicador {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding: 1rem 1.2rem;
+  border-radius: 8px;
+  background: rgba(128, 128, 128, 0.12);
+}
+
+.indicador strong {
+  font-size: 1.8rem;
+}
+
+.indicador span {
+  opacity: 0.75;
+}
+
+.estatisticas .nota {
+  margin-top: 1rem;
+  font-size: 0.85rem;
+  opacity: 0.65;
+}
