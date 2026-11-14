@@ -108,9 +108,47 @@ pub fn marcar_ausente(conn: &Connection, id: i64, ausente: bool) -> rusqlite::Re
     Ok(())
 }
 
+/// Exclui da biblioteca: apaga só o registro, nunca o arquivo (seção 5). O histórico fica
+/// (com a cópia dos dados e `media_id` nulo); os itens de playlist saem junto. O caminho é
+/// lembrado para a importação e o monitoramento não o trazerem de volta.
+pub fn excluir(conn: &mut Connection, ids: &[i64]) -> rusqlite::Result<usize> {
+    let tx = conn.transaction()?;
+    let mut n = 0;
+    {
+        let mut lembrar = tx.prepare(
+            "INSERT OR REPLACE INTO excluded_path (path) SELECT path FROM media WHERE id = ?1",
+        )?;
+        let mut apagar = tx.prepare("DELETE FROM media WHERE id = ?1")?;
+        for &id in ids {
+            lembrar.execute([id])?;
+            n += apagar.execute([id])?;
+        }
+    }
+    tx.commit()?;
+    Ok(n)
+}
+
 #[cfg(test)]
 mod testes {
     use super::*;
+
+    #[test]
+    fn excluir_mantem_historico_e_lembra_o_caminho() {
+        let mut conn = crate::db::open(std::path::Path::new(":memory:")).unwrap();
+        conn.execute_batch(
+            "INSERT INTO media (id, path, title) VALUES (1, '/a.mp3', 'A'), (2, '/b.mp3', 'B');
+             INSERT INTO playlist (id, name) VALUES (9, 'P');
+             INSERT INTO playlist_item (playlist_id, media_id, position) VALUES (9, 1, 0), (9, 2, 1);
+             INSERT INTO play_history (media_id, title, started_at) VALUES (1, 'A', 0);",
+        )
+        .unwrap();
+        assert_eq!(excluir(&mut conn, &[1]).unwrap(), 1);
+        let conta = |sql: &str| conn.query_row(sql, [], |r| r.get::<_, i64>(0)).unwrap();
+        assert_eq!(conta("SELECT COUNT(*) FROM media"), 1);
+        assert_eq!(conta("SELECT COUNT(*) FROM playlist_item"), 1);
+        assert_eq!(conta("SELECT COUNT(*) FROM play_history WHERE media_id IS NULL AND title = 'A'"), 1);
+        assert_eq!(conta("SELECT COUNT(*) FROM excluded_path WHERE path = '/a.mp3'"), 1);
+    }
 
     #[test]
     fn pagina_e_ordena() {

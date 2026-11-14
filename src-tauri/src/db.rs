@@ -88,6 +88,12 @@ const MIGRATIONS: &[&str] = &[
     "CREATE TABLE duplicate_ignored (
         file_hash TEXT PRIMARY KEY
     );",
+    // v9: caminhos excluídos da biblioteca (seção 5). O arquivo continua no disco; a importação
+    // e o monitoramento não o trazem de volta sozinhos.
+    "CREATE TABLE excluded_path (
+        path        TEXT PRIMARY KEY,
+        excluded_at INTEGER NOT NULL DEFAULT (unixepoch())
+    );",
 ];
 
 pub fn open(path: &Path) -> rusqlite::Result<Connection> {

@@ -177,6 +177,31 @@ impl Fila {
         }
     }
 
+    /// Tira as músicas da fila (excluídas da biblioteca). A ordem do contexto e a posição
+    /// atual são mantidas para as que ficam. A música atual não muda aqui.
+    pub fn remover_ids(&mut self, ids: &std::collections::HashSet<i64>) {
+        self.manual.retain(|id| !ids.contains(id));
+        // Posição antiga no contexto → nova (None: removida).
+        let mut nova = Vec::with_capacity(self.contexto.len());
+        let mut n = 0;
+        for id in &self.contexto {
+            if ids.contains(id) {
+                nova.push(None);
+            } else {
+                nova.push(Some(n));
+                n += 1;
+            }
+        }
+        if let Some(i) = self.indice.filter(|&i| i < self.ordem.len()) {
+            // Removidas até a posição atual (inclusive) recuam o índice; se a atual saiu,
+            // o índice fica na anterior e `proxima` segue para a seguinte.
+            let antes = self.ordem[..=i].iter().filter(|&&p| nova[p].is_none()).count();
+            self.indice = (i + 1).checked_sub(antes).and_then(|x| x.checked_sub(1));
+        }
+        self.ordem = self.ordem.iter().filter_map(|&p| nova[p]).collect();
+        self.contexto.retain(|id| !ids.contains(id));
+    }
+
     pub fn adicionar(&mut self, id: i64) {
         self.manual.push_back(id);
     }
@@ -203,6 +228,22 @@ impl Fila {
 #[cfg(test)]
 mod testes {
     use super::*;
+
+    #[test]
+    fn remover_ids_mantem_a_posicao() {
+        let mut f = Fila::default();
+        f.tocar_do_contexto(vec![10, 20, 30, 40, 50], 30);
+        f.adicionar(20);
+        f.adicionar(60);
+        f.remover_ids(&[20, 40].into_iter().collect());
+        assert_eq!(f.manual().collect::<Vec<_>>(), [60]);
+        assert_eq!(f.proximas_do_contexto(5), [50]);
+        // A atual (30) saiu: a próxima é a seguinte do contexto.
+        f.remover_ids(&[30].into_iter().collect());
+        assert_eq!(f.proxima(), Some(60));
+        assert_eq!(f.proxima(), Some(50));
+        assert_eq!(f.anterior(), Some(10));
+    }
 
     #[test]
     fn contexto_avanca_e_volta() {

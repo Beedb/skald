@@ -38,11 +38,13 @@ type Props = {
   onNovaPlaylistCom: (mediaId: number) => void;
   curtidas: Set<number>;
   onCurtir: (mediaId: number) => void;
+  /** Exclui da biblioteca (só o registro; o arquivo fica no disco). */
+  onRemover: (mediaId: number) => void;
   /** Falso enquanto o player completo ocupa a tela; a lista fica montada e guarda a rolagem. */
   visivel: boolean;
 };
 
-type Menu = { x: number; y: number; id: number };
+type Menu = { x: number; y: number; id: number; confirmar?: boolean };
 
 export function BotaoCurtir({ curtida, onClick }: { curtida: boolean; onClick: () => void }) {
   return (
@@ -71,6 +73,7 @@ export default function Biblioteca({
   onNovaPlaylistCom,
   curtidas,
   onCurtir,
+  onRemover,
   visivel,
 }: Props) {
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -186,7 +189,7 @@ export default function Biblioteca({
                   if (m)
                     setMenu({
                       x: Math.min(e.clientX, window.innerWidth - 200),
-                      y: Math.min(e.clientY, window.innerHeight - 330),
+                      y: Math.min(e.clientY, window.innerHeight - 370),
                       id: m.id,
                     });
                 }}
@@ -232,6 +235,23 @@ export default function Biblioteca({
           <li role="menuitem" className="recuado" onClick={() => onNovaPlaylistCom(menu.id)}>
             + Nova playlist com esta música
           </li>
+          <li role="separator" className="separador" />
+          {menu.confirmar ? (
+            <li role="menuitem" className="perigo" onClick={() => onRemover(menu.id)}>
+              Confirmar: remover (o arquivo fica no disco)
+            </li>
+          ) : (
+            <li
+              role="menuitem"
+              onClick={(e) => {
+                e.stopPropagation();
+                setMenu({ ...menu, confirmar: true });
+              }}
+              title="Tira a música da biblioteca e das playlists; o arquivo não é apagado e o histórico fica"
+            >
+              Remover da biblioteca…
+            </li>
+          )}
         </ul>
       )}
     </div>

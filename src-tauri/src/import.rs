@@ -127,6 +127,7 @@ fn gravar(conn: &mut Connection, faixas: &[Faixa], resumo: &mut ImportResumo) ->
               track_number, disc_number, duration_ms, file_size, file_mtime, search_text)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
         )?;
+        let mut excluido = tx.prepare("SELECT 1 FROM excluded_path WHERE path = ?1")?;
         let mut reencontrar = tx.prepare("UPDATE media SET missing = 0 WHERE path = ?1 AND missing = 1")?;
         // Arquivo alterado no mesmo caminho: o hash fica para recalcular (as tags não mudam).
         let mut alterado = tx.prepare(
@@ -134,6 +135,10 @@ fn gravar(conn: &mut Connection, faixas: &[Faixa], resumo: &mut ImportResumo) ->
              WHERE path = ?1 AND file_mtime IS NOT ?3",
         )?;
         for f in faixas {
+            // Excluída da biblioteca pelo usuário: o arquivo existe, mas não volta sozinho.
+            if excluido.exists([&f.path])? {
+                continue;
+            }
             let n = stmt.execute(params![
                 f.path, f.title, f.artist, f.album, f.album_artist, f.genre, f.year,
                 f.track_number, f.disc_number, f.duration_ms, f.file_size, f.file_mtime,
@@ -435,6 +440,22 @@ mod testes {
         assert_eq!(conta("SELECT COUNT(*) FROM media"), 8);
         assert_eq!(conta("SELECT COUNT(*) FROM media WHERE missing = 1"), 3); // Lilás (2) e Velha
         assert_eq!(reconciliar_movidos(&mut conn).unwrap(), []);
+    }
+
+    #[test]
+    fn excluida_nao_volta_na_importacao() {
+        let mut conn = crate::db::open(Path::new(":memory:")).unwrap();
+        let faixa = |path: &str| Faixa {
+            path: path.into(), title: None, artist: None, album: None, album_artist: None, genre: None,
+            year: None, track_number: None, disc_number: None, duration_ms: 1000, file_size: 1, file_mtime: None,
+        };
+        conn.execute("INSERT INTO excluded_path (path) VALUES ('/fora.mp3')", []).unwrap();
+        let mut resumo = ImportResumo::default();
+        gravar(&mut conn, &[faixa("/fora.mp3"), faixa("/dentro.mp3")], &mut resumo).unwrap();
+        assert_eq!((resumo.adicionados, resumo.existentes), (1, 0));
+        let paths: Vec<String> = conn.prepare("SELECT path FROM media").unwrap()
+            .query_map([], |r| r.get(0)).unwrap().map(Result::unwrap).collect();
+        assert_eq!(paths, ["/dentro.mp3"]);
     }
 
     #[test]

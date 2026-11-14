@@ -222,6 +222,17 @@ function App() {
     }
   }
 
+  async function removerDaBiblioteca(id: number) {
+    try {
+      await invoke("remove_from_library", { ids: [id] });
+      setAviso("Música removida da biblioteca. O arquivo continua no disco.");
+      carregarStatus();
+      setVersao((v) => v + 1);
+    } catch (e) {
+      setErro(String(e));
+    }
+  }
+
   function enfileirar(id: number, aSeguir: boolean) {
     invoke("queue_add", { id, aSeguir }).catch((e) => setErro(String(e)));
   }
@@ -332,6 +343,7 @@ function App() {
               onNovaPlaylistCom={novaPlaylistCom}
               curtidas={curtidas}
               onCurtir={curtir}
+              onRemover={removerDaBiblioteca}
               visivel={tela === "biblioteca" && vista.tipo === "biblioteca"}
             />
           )}

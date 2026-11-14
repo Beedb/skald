@@ -114,6 +114,31 @@ fn reconciliar_movidos(app: &AppHandle, resumo: &mut import::ImportResumo) -> Re
     Ok(())
 }
 
+/// Exclui músicas da biblioteca (só o registro; o arquivo fica no disco). Se a atual saiu,
+/// o player segue para a próxima da fila.
+#[tauri::command]
+fn remove_from_library(app: AppHandle, ids: Vec<i64>) -> Result<usize, String> {
+    let n = {
+        let db = app.state::<db::Db>();
+        let mut conn = db.0.lock().map_err(erro_db)?;
+        library::excluir(&mut conn, &ids).map_err(|e| e.to_string())?
+    };
+    let atual_saiu = {
+        let estado_fila = app.state::<FilaState>();
+        let mut fila = estado_fila.0.lock().map_err(erro_db)?;
+        let conjunto = ids.iter().copied().collect();
+        fila.remover_ids(&conjunto);
+        fila.atual().is_some_and(|a| conjunto.contains(&a))
+    };
+    if atual_saiu {
+        avancar(&app, false)?;
+    }
+    let _ = app.emit(EVENTO_FILA, ());
+    let _ = app.emit(EVENTO_PLAYLISTS, ());
+    let _ = app.emit(EVENTO_HISTORICO, ());
+    Ok(n)
+}
+
 /// Arquivos idênticos na biblioteca (só aviso; nada é apagado).
 #[tauri::command]
 fn duplicates_list(db: State<db::Db>) -> Result<Vec<import::GrupoDuplicados>, String> {
@@ -878,6 +903,7 @@ pub fn run() {
             db_status,
             import_folder,
             duplicates_list,
+            remove_from_library,
             duplicate_ignore,
             watched_folders,
             unwatch_folder,
