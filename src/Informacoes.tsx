@@ -116,7 +116,6 @@ export default function Informacoes({
     setMarcados(marcar);
     setEscolhido(i);
     setUsarCapa(!atual.tem_capa && !!candidatos[i].release_id);
-    if (!atual.tem_capa && candidatos[i].release_id) setNoArquivo(true);
   }
 
   function editar(k: Chave, v: string) {
@@ -132,7 +131,7 @@ export default function Informacoes({
   }
 
   const release = escolhido !== null ? candidatos?.[escolhido]?.release_id ?? null : null;
-  const capaValida = usarCapa && release !== null && noArquivo;
+  const capaValida = usarCapa && release !== null;
 
   async function salvar() {
     const campos = Object.fromEntries(
@@ -277,7 +276,11 @@ export default function Informacoes({
             <img src={capaUrl(release)} alt="" onError={(e) => (e.currentTarget.style.visibility = "hidden")} />
             <span>
               {atual.tem_capa ? "Trocar a capa pela do Cover Art Archive" : "Usar esta capa (Cover Art Archive)"}
-              {usarCapa && !noArquivo && <span className="detalhe"> — a capa só pode ser gravada no arquivo</span>}
+              {usarCapa && (
+                <span className="detalhe">
+                  {noArquivo ? " — embutida no arquivo" : " — guardada só no Skáld, o arquivo não muda"}
+                </span>
+              )}
             </span>
           </label>
         )}

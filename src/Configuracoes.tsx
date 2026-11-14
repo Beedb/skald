@@ -292,7 +292,7 @@ export default function Configuracoes({ onErro }: { onErro: (m: string) => void 
       </div>
       <p className="nota">
         O backup é um arquivo .db com a biblioteca, playlists, curtidas, histórico e configurações. Não inclui as
-        músicas: elas continuam nas suas pastas.
+        músicas (elas continuam nas suas pastas) nem as capas guardadas só no Skáld.
       </p>
       <label className="opcao">
         <span>

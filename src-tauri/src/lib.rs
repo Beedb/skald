@@ -162,6 +162,10 @@ fn remove_from_library(app: AppHandle, ids: Vec<i64>) -> Result<usize, String> {
         let mut conn = db.0.lock().map_err(erro_db)?;
         library::excluir(&mut conn, &ids).map_err(|e| e.to_string())?
     };
+    // A capa guardada no Skáld era só deste registro.
+    for &id in &ids {
+        details::remover_capa_salva(id);
+    }
     let atual_saiu = {
         let estado_fila = app.state::<FilaState>();
         let mut fila = estado_fila.0.lock().map_err(erro_db)?;
@@ -1485,6 +1489,7 @@ pub fn run() {
             std::fs::create_dir_all(&dir)?;
             let conn = db::open(&dir.join("skald.db"))?;
             app.manage(db::Db(Mutex::new(conn)));
+            details::definir_pasta_capas(dir.join("capas"));
             app.manage(FilaState(Mutex::new(queue::Fila::default())));
             app.manage(HistoricoState(Mutex::new(None)));
             app.manage(OrigemState(Mutex::new(None)));

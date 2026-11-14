@@ -76,7 +76,8 @@ pub fn atual(conn: &Connection, id: i64) -> Result<Atual, String> {
         .optional()
         .map_err(|e| e.to_string())?
         .ok_or("Música não encontrada na biblioteca.")?;
-    let tem_capa = !missing && crate::details::capa_bruta(Path::new(&path)).is_some();
+    let tem_capa = crate::details::capa_salva(id).is_some()
+        || (!missing && crate::details::capa_bruta(Path::new(&path)).is_some());
     Ok(Atual { campos, tem_capa, missing, duracao_ms })
 }
 
@@ -300,14 +301,20 @@ pub fn aplicar(
             .map_err(|e| e.to_string())?
             .ok_or("Música não encontrada na biblioteca.")?
     };
+    let capa = release_capa.map(baixar_capa).transpose()?;
     if no_arquivo {
         if !Path::new(&path).is_file() {
             return Err("Arquivo não encontrado: as informações não podem ser gravadas nele.".into());
         }
-        let capa = release_capa.map(baixar_capa).transpose()?;
+        let embutiu = capa.is_some();
         gravar_no_arquivo(Path::new(&path), &c, capa)?;
-    } else if release_capa.is_some() {
-        return Err("A capa só pode ser gravada no arquivo.".into());
+        // A capa agora está no arquivo: a guardada no Skáld não precisa mais valer por cima.
+        if embutiu {
+            crate::details::remover_capa_salva(id);
+        }
+    } else if let Some(bytes) = capa {
+        // Só no Skáld: a capa fica na pasta de dados do app e vale por cima da do arquivo.
+        crate::details::salvar_capa(id, &bytes)?;
     }
     let mut conn = conn_db.lock().map_err(|_| "Banco de dados indisponível.".to_string())?;
     gravar_no_banco(&conn, id, &c).map_err(|e| e.to_string())?;
@@ -531,7 +538,6 @@ mod testes {
         assert!(busca.contains("invasao"));
         drop(conn);
         assert!(aplicar(&db, 1, &Campos { year: Some(20), ..Default::default() }, false, None).is_err());
-        assert!(aplicar(&db, 1, &Campos::default(), false, Some("5b11f4ce-a62d-471e-81fc-a69a8278c7da")).is_err());
         assert!(!release_valido("../../etc"));
     }
 

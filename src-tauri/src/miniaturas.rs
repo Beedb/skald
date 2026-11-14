@@ -26,7 +26,14 @@ pub fn arquivo(conn_db: &std::sync::Mutex<Connection>, pasta_cache: &Path, id: i
             Err(e) => return Err(e.to_string()),
         }
     };
-    let base = pasta_cache.join(format!("{id}-{}", mtime.unwrap_or(0)));
+    // Capa guardada no Skáld: a data dela entra na chave, para trocar a miniatura junto.
+    let salva = crate::details::capa_salva(id);
+    let marca = salva
+        .as_ref()
+        .and_then(|(p, _)| std::fs::metadata(p).ok()?.modified().ok())
+        .and_then(|m| m.duration_since(std::time::UNIX_EPOCH).ok())
+        .map_or(String::new(), |d| format!("-s{}", d.as_secs()));
+    let base = pasta_cache.join(format!("{id}-{}{marca}", mtime.unwrap_or(0)));
     let jpg = base.with_extension("jpg");
     let sem = base.with_extension("sem");
     if jpg.is_file() {
@@ -36,7 +43,11 @@ pub fn arquivo(conn_db: &std::sync::Mutex<Connection>, pasta_cache: &Path, id: i
         return Ok(None);
     }
     let _ = std::fs::create_dir_all(pasta_cache);
-    match gerar(Path::new(&path)) {
+    let gerada = match &salva {
+        Some((p, _)) => std::fs::read(p).ok().and_then(|b| reduzir(&b)),
+        None => gerar(Path::new(&path)),
+    };
+    match gerada {
         Some(bytes) => {
             std::fs::write(&jpg, &bytes).map_err(|e| e.to_string())?;
             Ok(Some(jpg))
@@ -57,7 +68,11 @@ fn data_url(jpg: &[u8]) -> String {
 
 fn gerar(musica: &Path) -> Option<Vec<u8>> {
     let (_, bytes) = crate::details::capa_bruta(musica)?;
-    let img = image::load_from_memory(&bytes).ok()?;
+    reduzir(&bytes)
+}
+
+fn reduzir(bytes: &[u8]) -> Option<Vec<u8>> {
+    let img = image::load_from_memory(bytes).ok()?;
     let mini = img.thumbnail(LADO, LADO).to_rgb8();
     let mut saida = Vec::new();
     image::codecs::jpeg::JpegEncoder::new_with_quality(&mut saida, 85).encode_image(&mini).ok()?;
