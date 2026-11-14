@@ -10,9 +10,12 @@ export type PlaylistResumo = {
   primeira_media_id: number | null;
   kind: "user" | "curtidas";
   capa_escolhida: boolean;
+  /** Última vez que foi tocada (segundos Unix). */
+  tocada_em: number | null;
 };
 
 export type Vista =
+  | { tipo: "inicio" }
   | { tipo: "biblioteca" }
   | { tipo: "historico" }
   | { tipo: "estatisticas" }
@@ -116,6 +119,7 @@ export default function Lateral({ vista, playlists, onVista, onErro }: Props) {
         </span>
         <span className="nome">Recolher</span>
       </button>
+      {item(vista.tipo === "inicio", "⌂", "Início", () => onVista({ tipo: "inicio" }))}
       {item(vista.tipo === "biblioteca", "♫", "Músicas", () => onVista({ tipo: "biblioteca" }))}
       {item(vista.tipo === "artistas" || vista.tipo === "artista", "☻", "Artistas", () => onVista({ tipo: "artistas" }))}
       {item(vista.tipo === "albuns" || vista.tipo === "album", "◉", "Álbuns", () => onVista({ tipo: "albuns" }))}

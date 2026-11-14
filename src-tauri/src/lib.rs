@@ -628,9 +628,32 @@ fn play_playlist(app: AppHandle, fila: State<FilaState>, id: i64, ordem: playlis
         .map_err(erro_db)?
         .tocar_do_contexto_em(ids, indice)
         .ok_or("A playlist está vazia.")?;
+    {
+        let db = app.state::<db::Db>();
+        let conn = db.0.lock().map_err(erro_db)?;
+        playlists::marcar_tocada(&conn, id)?;
+    }
+    let _ = app.emit(EVENTO_PLAYLISTS, ());
     definir_origem(&app, Some(Origem::Playlist(id, ordem)))?;
     let _ = app.emit(EVENTO_FILA, ());
     tocar_id(&app, musica)
+}
+
+#[derive(serde::Serialize)]
+struct Inicio {
+    albuns_recentes: Vec<colecao::Album>,
+    tocadas_recentes: Vec<library::MediaRow>,
+}
+
+/// Prévia da biblioteca para a tela inicial (seção 4.2). As playlists recentes vêm de
+/// `playlists_list` (`tocada_em`).
+#[tauri::command]
+fn home_data(db: State<db::Db>) -> Result<Inicio, String> {
+    let conn = db.0.lock().map_err(erro_db)?;
+    Ok(Inicio {
+        albuns_recentes: colecao::albuns_recentes(&conn, 12).map_err(|e| e.to_string())?,
+        tocadas_recentes: colecao::tocadas_recentes(&conn, 8).map_err(|e| e.to_string())?,
+    })
 }
 
 #[tauri::command]
@@ -1029,6 +1052,7 @@ pub fn run() {
             playlist_move_item,
             play_playlist,
             artists_list,
+            home_data,
             albums_list,
             album_tracks,
             play_album,

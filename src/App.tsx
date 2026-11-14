@@ -13,6 +13,7 @@ import Pastas from "./Pastas";
 import Duplicados from "./Duplicados";
 import Categorias from "./Categorias";
 import { Albuns, AlbumView, Artistas, ArtistaView } from "./Colecao";
+import Inicio from "./Inicio";
 import { aplicarTema, ModoTema } from "./tema";
 import Estatisticas from "./Estatisticas";
 import Configuracoes from "./Configuracoes";
@@ -65,7 +66,7 @@ function App() {
   const [tela, setTela] = useState<"biblioteca" | "player">("biblioteca");
   const [volume, setVolume] = useState(1);
   const [detalhes, setDetalhes] = useState<Detalhes | null>(null);
-  const [vista, setVista] = useState<Vista>({ tipo: "biblioteca" });
+  const [vista, setVista] = useState<Vista>({ tipo: "inicio" });
   const [playlists, setPlaylists] = useState<PlaylistResumo[]>([]);
   const [versaoPlaylists, setVersaoPlaylists] = useState(0);
   const [curtidas, setCurtidas] = useState<Set<number>>(new Set());
@@ -389,6 +390,20 @@ function App() {
               versao={versaoHistorico}
               onErro={setErro}
               onTocar={(id) => invoke("play_media", { id, busca: "" }).catch((e) => mostrarErro(String(e)))}
+            />
+          </div>
+        )}
+        {vista.tipo === "inicio" && (
+          <div className="area">
+            <Inicio
+              versao={versao + versaoHistorico}
+              playlists={playlists}
+              totalMusicas={status?.media_count ?? 0}
+              onPlaylist={(id) => setVista({ tipo: "playlist", id })}
+              onAlbum={(chave) => setVista({ tipo: "album", chave, de: vista })}
+              onBiblioteca={() => setVista({ tipo: "biblioteca" })}
+              onTocarMusica={(id) => invoke("play_media", { id, busca: "" }).catch((e) => mostrarErro(String(e)))}
+              onErro={setErro}
             />
           </div>
         )}

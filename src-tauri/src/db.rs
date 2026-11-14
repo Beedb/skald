@@ -97,6 +97,8 @@ const MIGRATIONS: &[&str] = &[
     // v10: cada pasta monitorada guarda a categoria do conteúdo (seção 10); por ora só música.
     "ALTER TABLE watched_folder ADD COLUMN category TEXT NOT NULL DEFAULT 'music'
         CHECK (category IN ('music', 'podcast', 'audiobook', 'other'));",
+    // v11: quando a playlist foi tocada pela última vez (tela inicial, seção 4.2).
+    "ALTER TABLE playlist ADD COLUMN played_at INTEGER;",
 ];
 
 pub fn open(path: &Path) -> rusqlite::Result<Connection> {

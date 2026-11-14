@@ -8,13 +8,14 @@ import { formatarDuracao } from "./Biblioteca";
 
 export type ChaveAlbum = { album: string | null; grupo: string };
 type Artista = { nome: string | null; albuns: number; musicas: number; capa_id: number };
-type Album = {
+export type Album = {
   chave: ChaveAlbum;
   artista: string | null;
   ano: number | null;
   musicas: number;
   duracao_ms: number;
   capa_id: number;
+  adicionado_em: number;
 };
 type Faixa = {
   id: number;
@@ -92,6 +93,32 @@ export function Artistas({
 const LARGURA_CARTAO = 176;
 const ALTURA_CARTAO = 236;
 
+export function CartaoAlbum({
+  album: a,
+  largura,
+  onAbrir,
+}: {
+  album: Album;
+  largura: number;
+  onAbrir: (a: Album) => void;
+}) {
+  return (
+    <button
+      className="cartao-album"
+      style={{ width: largura }}
+      onClick={() => onAbrir(a)}
+      title={`${nomeAlbum(a.chave.album)} · ${a.artista ?? "Vários artistas"}`}
+    >
+      <Capa id={a.capa_id} />
+      <span className="nome">{nomeAlbum(a.chave.album)}</span>
+      <span className="detalhe">
+        {a.artista ?? "Vários artistas"}
+        {a.ano ? ` · ${a.ano}` : ""}
+      </span>
+    </button>
+  );
+}
+
 /** Grade de álbuns virtualizada por linhas (o número de colunas segue a largura). */
 function GradeAlbuns({ albuns, onAbrir }: { albuns: Album[]; onAbrir: (a: Album) => void }) {
   const rolagem = useRef<HTMLDivElement>(null);
@@ -125,20 +152,12 @@ function GradeAlbuns({ albuns, onAbrir }: { albuns: Album[]; onAbrir: (a: Album)
             style={{ height: ALTURA_CARTAO, transform: `translateY(${linha.start}px)` }}
           >
             {albuns.slice(linha.index * colunas, (linha.index + 1) * colunas).map((a) => (
-              <button
+              <CartaoAlbum
                 key={a.chave.grupo + "\u0000" + (a.chave.album ?? "")}
-                className="cartao-album"
-                style={{ width: LARGURA_CARTAO - 16 }}
-                onClick={() => onAbrir(a)}
-                title={`${nomeAlbum(a.chave.album)} · ${a.artista ?? "Vários artistas"}`}
-              >
-                <Capa id={a.capa_id} />
-                <span className="nome">{nomeAlbum(a.chave.album)}</span>
-                <span className="detalhe">
-                  {a.artista ?? "Vários artistas"}
-                  {a.ano ? ` · ${a.ano}` : ""}
-                </span>
-              </button>
+                album={a}
+                largura={LARGURA_CARTAO - 16}
+                onAbrir={onAbrir}
+              />
             ))}
           </div>
         ))}

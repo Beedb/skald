@@ -36,6 +36,8 @@ pub struct Album {
     pub musicas: i64,
     pub duracao_ms: i64,
     pub capa_id: i64,
+    /// Quando a música mais recente do álbum entrou na biblioteca (segundos Unix).
+    pub adicionado_em: i64,
 }
 
 #[derive(Serialize, Debug)]
@@ -79,11 +81,12 @@ pub fn albuns(conn: &Connection, artista: Option<Option<&str>>) -> rusqlite::Res
         duracao_ms: i64,
         capa: (i64, i64, i64), // (disco, faixa, id) da primeira faixa
         do_artista: bool,
+        adicionado_em: i64,
     }
     let alvo = artista.map(|a| a.map(normalizar));
     let mut stmt = conn.prepare_cached(&format!(
         "SELECT id, album, album_artist, artist, COALESCE(album_artist, {PASTA}), year, duration_ms,
-                disc_number, track_number
+                disc_number, track_number, added_at
          FROM media WHERE category = 'music' ORDER BY album, id"
     ))?;
     let mut grupos: HashMap<(Option<String>, String), Acum> = HashMap::new();
@@ -99,6 +102,7 @@ pub fn albuns(conn: &Connection, artista: Option<Option<&str>>) -> rusqlite::Res
         let dur: Option<i64> = r.get(6)?;
         let disco: Option<i64> = r.get(7)?;
         let faixa: Option<i64> = r.get(8)?;
+        let adicionado: i64 = r.get(9)?;
         let chave = (album.as_deref().map(normalizar), normalizar(&grupo));
         let a = grupos.entry(chave.clone()).or_insert_with(|| {
             ordem.push(chave);
@@ -112,8 +116,10 @@ pub fn albuns(conn: &Connection, artista: Option<Option<&str>>) -> rusqlite::Res
                 duracao_ms: 0,
                 capa: (i64::MAX, i64::MAX, i64::MAX),
                 do_artista: false,
+                adicionado_em: 0,
             }
         });
+        a.adicionado_em = a.adicionado_em.max(adicionado);
         a.album_artist = a.album_artist.take().or(album_artist);
         if let Some(alvo) = &alvo {
             a.do_artista |= artist.as_deref().map(normalizar) == *alvo;
@@ -140,6 +146,7 @@ pub fn albuns(conn: &Connection, artista: Option<Option<&str>>) -> rusqlite::Res
                 musicas: a.musicas,
                 duracao_ms: a.duracao_ms,
                 capa_id: a.capa.2,
+                adicionado_em: a.adicionado_em,
             }
         })
         .collect();
@@ -152,6 +159,26 @@ pub fn albuns(conn: &Connection, artista: Option<Option<&str>>) -> rusqlite::Res
     };
     lista.sort_by_cached_key(chave_ordem);
     Ok(lista)
+}
+
+/// Álbuns adicionados por último à biblioteca (tela inicial).
+pub fn albuns_recentes(conn: &Connection, n: usize) -> rusqlite::Result<Vec<Album>> {
+    let mut lista = albuns(conn, None)?;
+    lista.sort_by_key(|a| std::cmp::Reverse(a.adicionado_em));
+    lista.truncate(n);
+    Ok(lista)
+}
+
+/// Músicas tocadas por último, sem repetir (tela inicial).
+pub fn tocadas_recentes(conn: &Connection, n: usize) -> rusqlite::Result<Vec<MediaRow>> {
+    let ids: Vec<i64> = conn
+        .prepare_cached(
+            "SELECT media_id FROM play_history WHERE media_id IS NOT NULL AND category = 'music'
+             GROUP BY media_id ORDER BY MAX(started_at) DESC LIMIT ?1",
+        )?
+        .query_map([n as i64], |r| r.get(0))?
+        .collect::<rusqlite::Result<_>>()?;
+    crate::library::obter_varios(conn, &ids)
 }
 
 /// Faixas do álbum em ordem de disco e faixa.
@@ -232,6 +259,17 @@ mod testes {
         assert_eq!(sem.len(), 1);
         assert_eq!(faixas_do_album(&conn, &sem[0].chave).unwrap().len(), 1);
         assert_eq!(ids_do_artista(&conn, Some("Anirap")).unwrap(), [2, 1, 4]);
+
+        conn.execute_batch(
+            "UPDATE media SET added_at = 100; UPDATE media SET added_at = 900 WHERE id = 6;
+             INSERT INTO play_history (media_id, started_at) VALUES (3, 10), (1, 20), (3, 30);",
+        )
+        .unwrap();
+        let rec = albuns_recentes(&conn, 2).unwrap();
+        assert_eq!(rec[0].artista.as_deref(), Some("Lia"));
+        assert_eq!(rec.len(), 2);
+        let tocadas: Vec<_> = tocadas_recentes(&conn, 5).unwrap().iter().map(|m| m.id).collect();
+        assert_eq!(tocadas, [3, 1]);
     }
 }
 

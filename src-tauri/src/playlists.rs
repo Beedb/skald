@@ -15,6 +15,8 @@ pub struct Resumo {
     pub kind: String,
     /// Capa escolhida pelo usuário (senão, a automática).
     pub capa_escolhida: bool,
+    /// Última vez que foi tocada (segundos Unix), se já foi.
+    pub tocada_em: Option<i64>,
 }
 
 #[derive(Serialize, Debug)]
@@ -58,12 +60,18 @@ fn sql(e: rusqlite::Error) -> String {
     e.to_string()
 }
 
+/// Registra que a playlist começou a tocar agora (tela inicial).
+pub fn marcar_tocada(conn: &Connection, id: i64) -> Result<(), String> {
+    conn.execute("UPDATE playlist SET played_at = unixepoch() WHERE id = ?1", [id]).map_err(sql)?;
+    Ok(())
+}
+
 pub fn listar(conn: &Connection) -> Result<Vec<Resumo>, String> {
     let mut stmt = conn
         .prepare_cached(
             "SELECT p.id, p.name, COUNT(pi.id), COALESCE(SUM(m.duration_ms), 0),
                     (SELECT media_id FROM playlist_item WHERE playlist_id = p.id ORDER BY position, id LIMIT 1),
-                    p.kind, p.cover_path IS NOT NULL
+                    p.kind, p.cover_path IS NOT NULL, p.played_at
              FROM playlist p
              LEFT JOIN playlist_item pi ON pi.playlist_id = p.id
              LEFT JOIN media m ON m.id = pi.media_id
@@ -81,6 +89,7 @@ pub fn listar(conn: &Connection) -> Result<Vec<Resumo>, String> {
                 primeira_media_id: r.get(4)?,
                 kind: r.get(5)?,
                 capa_escolhida: r.get(6)?,
+                tocada_em: r.get(7)?,
             })
         })
         .map_err(sql)?;
