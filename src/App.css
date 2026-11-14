@@ -1046,10 +1046,25 @@ body {
   padding: 2rem 1rem;
 }
 
-.rt-fechar {
+.rt-acoes {
   position: fixed;
   top: 1rem;
   right: 1rem;
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+}
+
+.rt-salvo {
+  font-size: 0.85rem;
+  color: #b9c0cf;
+  max-width: 40vw;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rt-fechar {
   background: none;
   border: none;
   color: inherit;
@@ -1157,4 +1172,46 @@ body {
 .rt-vezes {
   color: #b9c0cf;
   font-variant-numeric: tabular-nums;
+}
+
+.rt-capa {
+  width: 44px;
+  height: 44px;
+  flex: none;
+  border-radius: 6px;
+  object-fit: cover;
+  align-self: center;
+}
+
+.rt-sem-capa {
+  display: grid;
+  place-items: center;
+  background: #2a3040;
+  color: #9aa3b5;
+}
+
+.rt-com-capa {
+  flex-direction: row;
+  align-items: center;
+  gap: 1rem;
+}
+
+.rt-com-capa > .rt-capa {
+  width: 96px;
+  height: 96px;
+}
+
+.rt-com-capa > div {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  min-width: 0;
+}
+
+.rt-com-capa strong {
+  font-size: 1.4rem;
+}
+
+.rt-com-capa span {
+  color: #b9c0cf;
 }

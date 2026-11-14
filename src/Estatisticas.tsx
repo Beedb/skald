@@ -20,7 +20,15 @@ export function formatarTempoLongo(ms: number) {
 
 export const numero = (n: number) => n.toLocaleString("pt-BR");
 
-export type Item = { nome: string; detalhe: string | null; media_id: number | null; escutadas: number; ms: number };
+export type Item = {
+  nome: string;
+  detalhe: string | null;
+  media_id: number | null;
+  escutadas: number;
+  ms: number;
+  /** Só nas retrospectivas. */
+  capa?: string | null;
+};
 type Ponto = { periodo: string; ms: number; escutadas: number };
 type Painel = {
   periodo: string;

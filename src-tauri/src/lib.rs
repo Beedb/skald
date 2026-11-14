@@ -583,15 +583,46 @@ fn retrospective_list(db: State<db::Db>) -> Result<Vec<String>, String> {
     stats::retrospectivas_disponiveis(&conn, &mes).map_err(|e| e.to_string())
 }
 
+/// Retrospectiva com capas dos álbuns e "imagens" dos artistas (capa de uma música deles),
+/// lidas dos arquivos fora da thread principal.
 #[tauri::command]
-fn retrospective_get(db: State<db::Db>, periodo: String) -> Result<stats::Retrospectiva, String> {
-    let conn = db.0.lock().map_err(erro_db)?;
-    let mes = stats::mes_atual(&conn).map_err(|e| e.to_string())?;
-    // Só períodos encerrados (seção 11.5: disponível no 1º dia do período seguinte).
-    if periodo.as_str() >= mes.as_str() || (periodo.len() == 4 && periodo.as_str() >= &mes[..4]) {
-        return Err("Esta retrospectiva ainda não está disponível.".into());
-    }
-    stats::retrospectiva(&conn, &periodo)
+async fn retrospective_get(app: AppHandle, periodo: String) -> Result<stats::Retrospectiva, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let mut r = {
+            let db = app.state::<db::Db>();
+            let conn = db.0.lock().map_err(erro_db)?;
+            let mes = stats::mes_atual(&conn).map_err(|e| e.to_string())?;
+            // Só períodos encerrados (seção 11.5: disponível no 1º dia do período seguinte).
+            if periodo.as_str() >= mes.as_str() || (periodo.len() == 4 && periodo.as_str() >= &mes[..4]) {
+                return Err("Esta retrospectiva ainda não está disponível.".into());
+            }
+            stats::retrospectiva(&conn, &periodo)?
+        };
+        for item in r.albuns.iter_mut().chain(r.artistas.iter_mut()) {
+            let Some(id) = item.media_id else { continue };
+            let base = {
+                let db = app.state::<db::Db>();
+                let conn = db.0.lock().map_err(erro_db)?;
+                details::do_banco(&conn, id)?
+            };
+            item.capa = base.map(details::completar_do_arquivo).and_then(|d| d.capa);
+        }
+        Ok(r)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+/// Grava o PNG (base64) em `<Música>/Skáld/Retrospectivas/<período>/` e devolve o caminho.
+#[tauri::command]
+fn retrospective_save_png(app: AppHandle, periodo: String, png_base64: String) -> Result<String, String> {
+    use base64::Engine;
+    let png = base64::engine::general_purpose::STANDARD
+        .decode(png_base64.trim_start_matches("data:image/png;base64,"))
+        .map_err(|_| "A imagem gerada é inválida.".to_string())?;
+    let musica = app.path().audio_dir().map_err(|_| "Pasta de música do sistema não encontrada.".to_string())?;
+    let base = musica.join("Skáld").join("Retrospectivas");
+    stats::salvar_png(&base, &periodo, &png).map(|p| p.display().to_string())
 }
 
 #[tauri::command]
@@ -863,6 +894,7 @@ pub fn run() {
             stats_months,
             retrospective_list,
             retrospective_get,
+            retrospective_save_png,
             toggle_pause,
             set_volume,
             seek,

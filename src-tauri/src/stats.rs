@@ -16,6 +16,9 @@ pub struct Item {
     pub media_id: Option<i64>,
     pub escutadas: i64,
     pub ms: i64,
+    /// Capa (data URL), preenchida só nas retrospectivas.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub capa: Option<String>,
 }
 
 #[derive(Serialize, Debug, PartialEq)]
@@ -43,7 +46,7 @@ const NO_PERIODO: &str = "h.category = 'music'
     AND (?1 = '' OR strftime(CASE length(?1) WHEN 4 THEN '%Y' ELSE '%Y-%m' END,
                              h.started_at, 'unixepoch', 'localtime') = ?1)";
 
-fn periodo_valido(p: &str) -> bool {
+pub fn periodo_valido(p: &str) -> bool {
     let b = p.as_bytes();
     let digitos = |r: std::ops::Range<usize>| b[r].iter().all(u8::is_ascii_digit);
     match b.len() {
@@ -73,6 +76,7 @@ fn ranking(conn: &Connection, periodo: &str, nome: &str, detalhe: &str, chave: &
             media_id: r.get(2)?,
             escutadas: r.get(3)?,
             ms: r.get(4)?,
+            capa: None,
         })
     })?;
     itens.collect()
@@ -240,6 +244,22 @@ pub fn retrospectivas_disponiveis(conn: &Connection, mes_atual: &str) -> rusqlit
     lista.collect()
 }
 
+/// Grava o PNG da retrospectiva em `base/AAAA-MM/retrospectiva-AAAA-MM.png` (ou `base/AAAA/...`).
+/// Sobrescreve só o próprio arquivo da retrospectiva, nunca outro.
+pub fn salvar_png(base: &std::path::Path, periodo: &str, png: &[u8]) -> Result<std::path::PathBuf, String> {
+    if periodo.is_empty() || !periodo_valido(periodo) {
+        return Err("Período inválido.".into());
+    }
+    if !png.starts_with(b"\x89PNG\r\n\x1a\n") {
+        return Err("A imagem gerada não é um PNG válido.".into());
+    }
+    let pasta = base.join(periodo);
+    std::fs::create_dir_all(&pasta).map_err(|e| format!("Não foi possível criar {}: {e}", pasta.display()))?;
+    let arquivo = pasta.join(format!("retrospectiva-{periodo}.png"));
+    std::fs::write(&arquivo, png).map_err(|e| format!("Não foi possível gravar {}: {e}", arquivo.display()))?;
+    Ok(arquivo)
+}
+
 /// Mês atual em horário local ("AAAA-MM").
 pub fn mes_atual(conn: &Connection) -> rusqlite::Result<String> {
     conn.query_row("SELECT strftime('%Y-%m', 'now', 'localtime')", [], |r| r.get(0))
@@ -333,5 +353,18 @@ mod testes {
             retrospectivas_disponiveis(&conn, "2027-01").unwrap(),
             ["2026", "2026-11", "2026-10", "2025", "2025-12"]
         );
+    }
+
+    #[test]
+    fn salva_png_na_pasta_do_periodo() {
+        let base = std::env::temp_dir().join(format!("skald-teste-png-{}", std::process::id()));
+        let png = b"\x89PNG\r\n\x1a\nresto";
+        let arquivo = salvar_png(&base, "2026-10", png).unwrap();
+        assert_eq!(arquivo, base.join("2026-10/retrospectiva-2026-10.png"));
+        assert_eq!(std::fs::read(&arquivo).unwrap(), png);
+        assert!(salvar_png(&base, "2026", png).unwrap().ends_with("2026/retrospectiva-2026.png"));
+        assert!(salvar_png(&base, "../x", png).is_err());
+        assert!(salvar_png(&base, "2026-10", b"GIF89a").is_err());
+        std::fs::remove_dir_all(&base).unwrap();
     }
 }

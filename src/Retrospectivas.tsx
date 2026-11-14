@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { formatarTempoLongo, nomeMes, numero, type Item } from "./Estatisticas";
+import { gerarPng, type DadosRetro } from "./retroCanvas";
 
 type Retrospectiva = {
   periodo: string;
@@ -25,7 +26,11 @@ function dataCurta(dia: string) {
   return new Date(Number(a), Number(m) - 1, Number(d)).toLocaleDateString("pt-BR", { day: "numeric", month: "long" });
 }
 
-function Lista({ titulo, itens }: { titulo: string; itens: Item[] }) {
+function Miniatura({ src }: { src: string | null | undefined }) {
+  return src ? <img className="rt-capa" src={src} alt="" /> : <span className="rt-capa rt-sem-capa">♪</span>;
+}
+
+function Lista({ titulo, itens, capas }: { titulo: string; itens: Item[]; capas?: boolean }) {
   return (
     <div className="rt-bloco">
       <h3>{titulo}</h3>
@@ -33,6 +38,7 @@ function Lista({ titulo, itens }: { titulo: string; itens: Item[] }) {
         {itens.map((it, i) => (
           <li key={i}>
             <span className="rt-pos">{i + 1}</span>
+            {capas && <Miniatura src={it.capa} />}
             <span className="rt-nome">
               {it.nome}
               {it.detalhe && <small>{it.detalhe}</small>}
@@ -46,7 +52,47 @@ function Lista({ titulo, itens }: { titulo: string; itens: Item[] }) {
 }
 
 /** Composição única da retrospectiva (seção 11.7), sobre fundo escuro. */
-function Composicao({ r, onFechar }: { r: Retrospectiva; onFechar: () => void }) {
+/** Textos da composição, usados na tela e no PNG. */
+function dados(r: Retrospectiva): DadosRetro {
+  const dominanteCapa = r.artistas.find((a) => a.nome === r.dominante?.nome)?.capa ?? null;
+  return {
+    titulo: nomePeriodo(r.periodo).replace(/^./, (c) => c.toUpperCase()),
+    tempo: formatarTempoLongo(r.tempo_ms),
+    escutadas: numero(r.escutadas),
+    dominante: r.dominante && {
+      nome: r.dominante.nome,
+      detalhe: `${Math.round(r.dominante.percentual)}% do tempo ouvido`,
+      capa: dominanteCapa,
+    },
+    repetida: r.mais_repetida && {
+      titulo: r.mais_repetida.titulo,
+      detalhe: `${r.mais_repetida.artista ? `${r.mais_repetida.artista} · ` : ""}${r.mais_repetida.vezes}× em ${dataCurta(r.mais_repetida.dia)}`,
+    },
+    genero: r.genero && { nome: r.genero.nome, detalhe: `${numero(r.genero.escutadas)} escutadas` },
+    artistas: r.artistas,
+    musicas: r.musicas,
+    albuns: r.albuns,
+  };
+}
+
+function Composicao({ r, onFechar, onErro }: { r: Retrospectiva; onFechar: () => void; onErro: (m: string) => void }) {
+  const d = dados(r);
+  const [exportando, setExportando] = useState(false);
+  const [salvo, setSalvo] = useState<string | null>(null);
+
+  async function exportar() {
+    setExportando(true);
+    setSalvo(null);
+    try {
+      const png = await gerarPng(d);
+      setSalvo(await invoke<string>("retrospective_save_png", { periodo: r.periodo, pngBase64: png }));
+    } catch (e) {
+      onErro(String(e));
+    } finally {
+      setExportando(false);
+    }
+  }
+
   useEffect(() => {
     const tecla = (e: KeyboardEvent) => e.key === "Escape" && onFechar();
     window.addEventListener("keydown", tecla);
@@ -55,9 +101,15 @@ function Composicao({ r, onFechar }: { r: Retrospectiva; onFechar: () => void })
 
   return (
     <div className="rt-fundo" role="dialog" aria-modal="true" aria-label={`Retrospectiva de ${nomePeriodo(r.periodo)}`}>
-      <button className="rt-fechar" onClick={onFechar} aria-label="Fechar" title="Fechar (Esc)">
-        ✕
-      </button>
+      <div className="rt-acoes">
+        {salvo && <span className="rt-salvo">Salvo em {salvo}</span>}
+        <button onClick={exportar} disabled={exportando}>
+          {exportando ? "Exportando…" : "Exportar PNG"}
+        </button>
+        <button className="rt-fechar" onClick={onFechar} aria-label="Fechar" title="Fechar (Esc)">
+          ✕
+        </button>
+      </div>
       <article className="rt-composicao">
         <header>
           <span className="rt-marca">Skáld · Retrospectiva</span>
@@ -69,11 +121,14 @@ function Composicao({ r, onFechar }: { r: Retrospectiva; onFechar: () => void })
             <strong>{formatarTempoLongo(r.tempo_ms)}</strong>
             <span>de música · {numero(r.escutadas)} escutadas</span>
           </div>
-          {r.dominante && (
-            <div className="rt-bloco">
-              <h3>Artista dominante</h3>
-              <strong>{r.dominante.nome}</strong>
-              <span>{Math.round(r.dominante.percentual)}% do tempo ouvido</span>
+          {d.dominante && (
+            <div className="rt-bloco rt-com-capa">
+              <Miniatura src={d.dominante.capa} />
+              <div>
+                <h3>Artista dominante</h3>
+                <strong>{d.dominante.nome}</strong>
+                <span>{d.dominante.detalhe}</span>
+              </div>
             </div>
           )}
           {r.mais_repetida && (
@@ -96,9 +151,9 @@ function Composicao({ r, onFechar }: { r: Retrospectiva; onFechar: () => void })
         </div>
 
         <div className="rt-listas">
-          <Lista titulo="Top 5 artistas" itens={r.artistas} />
+          <Lista titulo="Top 5 artistas" itens={r.artistas} capas />
           <Lista titulo="Top 10 músicas" itens={r.musicas} />
-          <Lista titulo="Top 5 álbuns" itens={r.albuns} />
+          <Lista titulo="Top 5 álbuns" itens={r.albuns} capas />
         </div>
       </article>
     </div>
@@ -139,7 +194,7 @@ export default function Retrospectivas({ versao, onErro }: { versao: number; onE
           ))}
         </div>
       )}
-      {aberta && <Composicao r={aberta} onFechar={() => setAberta(null)} />}
+      {aberta && <Composicao r={aberta} onFechar={() => setAberta(null)} onErro={onErro} />}
     </section>
   );
 }
