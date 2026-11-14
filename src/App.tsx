@@ -11,6 +11,7 @@ import PlaylistView from "./PlaylistView";
 import Historico from "./Historico";
 import Pastas from "./Pastas";
 import Duplicados from "./Duplicados";
+import Categorias from "./Categorias";
 import Estatisticas from "./Estatisticas";
 import Configuracoes from "./Configuracoes";
 import "./App.css";
@@ -348,6 +349,7 @@ function App() {
           onErro={setErro}
         />
         <div className="area" hidden={vista.tipo !== "biblioteca"}>
+          <Categorias />
           {status && (
             <Biblioteca
               total={total}

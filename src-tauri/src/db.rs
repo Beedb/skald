@@ -94,6 +94,9 @@ const MIGRATIONS: &[&str] = &[
         path        TEXT PRIMARY KEY,
         excluded_at INTEGER NOT NULL DEFAULT (unixepoch())
     );",
+    // v10: cada pasta monitorada guarda a categoria do conteúdo (seção 10); por ora só música.
+    "ALTER TABLE watched_folder ADD COLUMN category TEXT NOT NULL DEFAULT 'music'
+        CHECK (category IN ('music', 'podcast', 'audiobook', 'other'));",
 ];
 
 pub fn open(path: &Path) -> rusqlite::Result<Connection> {

@@ -124,8 +124,12 @@ fn gravar(conn: &mut Connection, faixas: &[Faixa], resumo: &mut ImportResumo) ->
         let mut stmt = tx.prepare(
             "INSERT OR IGNORE INTO media
              (path, title, artist, album, album_artist, genre, year,
-              track_number, disc_number, duration_ms, file_size, file_mtime, search_text)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
+              track_number, disc_number, duration_ms, file_size, file_mtime, search_text, category)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13,
+                 -- Categoria da pasta monitorada mais interna que contém o arquivo (seção 10).
+                 COALESCE((SELECT category FROM watched_folder
+                           WHERE substr(?1, 1, length(path) + 1) = path || '/'
+                           ORDER BY length(path) DESC LIMIT 1), 'music'))",
         )?;
         let mut excluido = tx.prepare("SELECT 1 FROM excluded_path WHERE path = ?1")?;
         let mut reencontrar = tx.prepare("UPDATE media SET missing = 0 WHERE path = ?1 AND missing = 1")?;
@@ -470,6 +474,15 @@ mod testes {
         let mut resumo = ImportResumo::default();
         gravar(&mut conn, &[faixa("/fora.mp3")], &mut resumo).unwrap();
         assert_eq!(resumo.adicionados, 1);
+        // Categoria vem da pasta monitorada mais interna.
+        conn.execute_batch(
+            "INSERT INTO watched_folder (path, category) VALUES ('/p', 'podcast'), ('/p/m', 'music');",
+        )
+        .unwrap();
+        let mut resumo = ImportResumo::default();
+        gravar(&mut conn, &[faixa("/p/ep.mp3"), faixa("/p/m/x.mp3"), faixa("/px/y.mp3")], &mut resumo).unwrap();
+        let cat = |p: &str| conn.query_row("SELECT category FROM media WHERE path = ?1", [p], |r| r.get::<_, String>(0)).unwrap();
+        assert_eq!((cat("/p/ep.mp3").as_str(), cat("/p/m/x.mp3").as_str(), cat("/px/y.mp3").as_str()), ("podcast", "music", "music"));
     }
 
     #[test]

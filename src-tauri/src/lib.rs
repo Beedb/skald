@@ -46,11 +46,19 @@ fn db_status(app: tauri::AppHandle, db: State<db::Db>) -> Result<DbStatus, Strin
 async fn import_folder(app: tauri::AppHandle, path: String) -> Result<import::ImportResumo, String> {
     tauri::async_runtime::spawn_blocking(move || {
         let pasta = std::path::Path::new(&path);
-        let mut resumo = import::importar(&app.state::<db::Db>().0, pasta)?;
+        if !pasta.is_dir() {
+            return Err("A pasta selecionada não existe.".into());
+        }
+        // Registrada antes de importar: a categoria da pasta já vale para as músicas dela.
         {
             let db = app.state::<db::Db>();
             let conn = db.0.lock().map_err(erro_db)?;
             watch::adicionar(&conn, &path).map_err(|e| e.to_string())?;
+        }
+        let mut resumo = import::importar(&app.state::<db::Db>().0, pasta)?;
+        {
+            let db = app.state::<db::Db>();
+            let conn = db.0.lock().map_err(erro_db)?;
             resumo.ausentes += import::marcar_sumidos(&conn, pasta).map_err(|e| e.to_string())?;
         }
         app.state::<watch::Vigia>().vigiar(pasta);

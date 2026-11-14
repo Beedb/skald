@@ -121,8 +121,9 @@ pub fn listar(conn: &Connection) -> rusqlite::Result<Vec<String>> {
     pastas.collect()
 }
 
+/// Pasta nova entra como música (única categoria ativa; seção 10).
 pub fn adicionar(conn: &Connection, pasta: &str) -> rusqlite::Result<()> {
-    conn.execute("INSERT OR IGNORE INTO watched_folder (path) VALUES (?1)", [pasta])?;
+    conn.execute("INSERT OR IGNORE INTO watched_folder (path, category) VALUES (?1, 'music')", [pasta])?;
     Ok(())
 }
 

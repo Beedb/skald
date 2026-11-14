@@ -80,6 +80,27 @@ body {
   display: none;
 }
 
+.categorias {
+  display: flex;
+  gap: 0.4rem;
+  margin-bottom: 0.6rem;
+}
+
+.categorias button {
+  border-radius: 999px;
+  padding: 0.25rem 0.8rem;
+}
+
+.categorias button.ativa {
+  background: var(--acento, Highlight);
+  color: var(--acento-txt, HighlightText);
+}
+
+.categorias button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
 .biblioteca {
   flex: 1;
   min-height: 0;
