@@ -898,3 +898,121 @@ body {
   font-size: 0.85rem;
   opacity: 0.6;
 }
+
+.maquina {
+  margin-top: 2rem;
+}
+
+.maquina-topo {
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+  flex-wrap: wrap;
+}
+
+.maquina-topo h2 {
+  margin: 0;
+  margin-right: auto;
+}
+
+.resumo-periodo {
+  margin: 1rem 0;
+}
+
+.evolucao {
+  display: flex;
+  align-items: flex-end;
+  gap: 4px;
+  height: 160px;
+  padding: 0.5rem 0;
+  overflow-x: auto;
+}
+
+.evolucao .coluna {
+  flex: 1 0 22px;
+  max-width: 56px;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 4px;
+}
+
+.evolucao .barra {
+  width: 100%;
+  border-radius: 3px 3px 0 0;
+  background: #4f8ef7;
+}
+
+.evolucao span {
+  font-size: 0.7rem;
+  opacity: 0.7;
+  white-space: nowrap;
+}
+
+.rankings {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+  gap: 1rem 2rem;
+  margin-top: 1rem;
+}
+
+.ranking h3 {
+  margin: 0 0 0.5rem;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  opacity: 0.6;
+}
+
+.ranking ol {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.ranking li {
+  display: flex;
+  align-items: baseline;
+  gap: 0.6rem;
+  padding: 0.25rem 0;
+}
+
+.ranking .pos {
+  width: 1.5rem;
+  text-align: right;
+  opacity: 0.5;
+  font-variant-numeric: tabular-nums;
+}
+
+.ranking .nome-item {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.ranking .nome-item small {
+  opacity: 0.65;
+}
+
+.ranking .vezes {
+  opacity: 0.75;
+  font-variant-numeric: tabular-nums;
+}
+
+.ranking .link {
+  background: none;
+  border: none;
+  padding: 0;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.ranking .link:hover {
+  text-decoration: underline;
+}

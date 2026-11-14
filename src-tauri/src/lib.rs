@@ -11,6 +11,7 @@ mod playlists;
 mod mpris;
 mod queue;
 mod settings;
+mod stats;
 mod watch;
 mod search;
 
@@ -534,6 +535,19 @@ fn stats_summary(db: State<db::Db>) -> Result<history::Estatisticas, String> {
     history::estatisticas(&conn).map_err(|e| e.to_string())
 }
 
+/// Máquina do Tempo: período "" (sempre), "AAAA" ou "AAAA-MM".
+#[tauri::command]
+fn stats_period(db: State<db::Db>, periodo: String) -> Result<stats::Painel, String> {
+    let conn = db.0.lock().map_err(erro_db)?;
+    stats::painel(&conn, &periodo)
+}
+
+#[tauri::command]
+fn stats_months(db: State<db::Db>) -> Result<Vec<String>, String> {
+    let conn = db.0.lock().map_err(erro_db)?;
+    stats::meses(&conn).map_err(|e| e.to_string())
+}
+
 #[tauri::command]
 fn history_count(db: State<db::Db>) -> Result<i64, String> {
     let conn = db.0.lock().map_err(erro_db)?;
@@ -793,6 +807,8 @@ pub fn run() {
             history_list,
             history_count,
             stats_summary,
+            stats_period,
+            stats_months,
             toggle_pause,
             set_volume,
             seek,

@@ -339,7 +339,11 @@ function App() {
         )}
         {vista.tipo === "estatisticas" && (
           <div className="area">
-            <Estatisticas versao={versaoHistorico} onErro={setErro} />
+            <Estatisticas
+              versao={versaoHistorico}
+              onErro={setErro}
+              onTocar={(id) => invoke("play_media", { id, busca: "" }).catch((e) => mostrarErro(String(e)))}
+            />
           </div>
         )}
         {vista.tipo === "configuracoes" && (

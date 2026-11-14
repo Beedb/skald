@@ -19,14 +19,172 @@ export function formatarTempoLongo(ms: number) {
 
 const numero = (n: number) => n.toLocaleString("pt-BR");
 
+type Item = { nome: string; detalhe: string | null; media_id: number | null; escutadas: number; ms: number };
+type Ponto = { periodo: string; ms: number; escutadas: number };
+type Painel = {
+  periodo: string;
+  tempo_ms: number;
+  escutadas: number;
+  artistas: Item[];
+  musicas: Item[];
+  albuns: Item[];
+  generos: Item[];
+  evolucao: Ponto[];
+};
+
+const nomeMes = (ano: string, mes: string, formato: "long" | "short") =>
+  new Date(Number(ano), Number(mes) - 1, 1).toLocaleDateString("pt-BR", { month: formato });
+
+/** "2026-10" → "out/26"; "2026-10-05" → "5". */
+function rotuloPonto(p: string) {
+  const [ano, mes, dia] = p.split("-");
+  if (dia) return String(Number(dia));
+  return `${nomeMes(ano, mes, "short").replace(".", "")}/${ano.slice(2)}`;
+}
+
+function descricaoPeriodo(p: string) {
+  if (!p) return "desde o início";
+  const [ano, mes] = p.split("-");
+  return mes ? `em ${nomeMes(ano, mes, "long")} de ${ano}` : `em ${ano}`;
+}
+
+function Evolucao({ pontos }: { pontos: Ponto[] }) {
+  if (pontos.length === 0) return null;
+  const maior = Math.max(...pontos.map((p) => p.ms), 1);
+  return (
+    <div className="evolucao" role="img" aria-label="Tempo ouvido ao longo do período">
+      {pontos.map((p) => (
+        <div
+          key={p.periodo}
+          className="coluna"
+          title={`${p.periodo}: ${formatarTempoLongo(p.ms)}, ${numero(p.escutadas)} escutada(s)`}
+        >
+          <div className="barra" style={{ height: `${Math.max(2, (p.ms / maior) * 100)}%` }} />
+          <span>{rotuloPonto(p.periodo)}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function Ranking({ titulo, itens, onTocar }: { titulo: string; itens: Item[]; onTocar?: (id: number) => void }) {
+  return (
+    <section className="ranking">
+      <h3>{titulo}</h3>
+      {itens.length === 0 ? (
+        <p className="nota">Nada escutado neste período.</p>
+      ) : (
+        <ol>
+          {itens.map((it, i) => {
+            const tocavel = onTocar && it.media_id !== null;
+            return (
+              <li key={i}>
+                <span className="pos">{i + 1}</span>
+                <span className="nome-item">
+                  {tocavel ? (
+                    <button className="link" onClick={() => onTocar(it.media_id!)} title="Tocar">
+                      {it.nome}
+                    </button>
+                  ) : (
+                    it.nome
+                  )}
+                  {it.detalhe && <small>{it.detalhe}</small>}
+                </span>
+                <span className="vezes" title={formatarTempoLongo(it.ms)}>
+                  {numero(it.escutadas)}×
+                </span>
+              </li>
+            );
+          })}
+        </ol>
+      )}
+    </section>
+  );
+}
+
+/** Máquina do Tempo (seção 11.4): os mais escutados e a evolução em um período. */
+function MaquinaDoTempo({ versao, onErro, onTocar }: Props) {
+  const [meses, setMeses] = useState<string[]>([]);
+  const [ano, setAno] = useState("");
+  const [mes, setMes] = useState("");
+  const [painel, setPainel] = useState<Painel | null>(null);
+  const periodo = ano && mes ? `${ano}-${mes}` : ano;
+
+  useEffect(() => {
+    invoke<string[]>("stats_months")
+      .then(setMeses)
+      .catch((e) => onErro(String(e)));
+  }, [versao]);
+
+  useEffect(() => {
+    invoke<Painel>("stats_period", { periodo })
+      .then(setPainel)
+      .catch((e) => onErro(String(e)));
+  }, [periodo, versao]);
+
+  const anos = [...new Set(meses.map((m) => m.slice(0, 4)))];
+  const mesesDoAno = meses.filter((m) => m.startsWith(ano)).map((m) => m.slice(5)).sort();
+
+  return (
+    <section className="maquina">
+      <div className="maquina-topo">
+        <h2>Máquina do Tempo</h2>
+        <select
+          value={ano}
+          aria-label="Ano"
+          onChange={(e) => {
+            setAno(e.target.value);
+            setMes("");
+          }}
+        >
+          <option value="">Desde o início</option>
+          {anos.map((a) => (
+            <option key={a} value={a}>
+              {a}
+            </option>
+          ))}
+        </select>
+        {ano && (
+          <select value={mes} aria-label="Mês" onChange={(e) => setMes(e.target.value)}>
+            <option value="">Ano inteiro</option>
+            {mesesDoAno.map((m) => (
+              <option key={m} value={m}>
+                {nomeMes(ano, m, "long")}
+              </option>
+            ))}
+          </select>
+        )}
+      </div>
+      {painel && (
+        <>
+          <p className="resumo-periodo">
+            <strong>{formatarTempoLongo(painel.tempo_ms)}</strong> de música e{" "}
+            <strong>{numero(painel.escutadas)}</strong> {painel.escutadas === 1 ? "música escutada" : "músicas escutadas"}{" "}
+            {descricaoPeriodo(painel.periodo)}.
+          </p>
+          <Evolucao pontos={painel.evolucao} />
+          <div className="rankings">
+            <Ranking titulo="Artistas" itens={painel.artistas} />
+            <Ranking titulo="Músicas" itens={painel.musicas} onTocar={onTocar} />
+            <Ranking titulo="Álbuns" itens={painel.albuns} />
+            <Ranking titulo="Gêneros" itens={painel.generos} />
+          </div>
+        </>
+      )}
+    </section>
+  );
+}
+
 type Props = {
   /** Muda quando o histórico recebe uma reprodução nova ou atualizada. */
   versao: number;
   onErro: (mensagem: string) => void;
+  onTocar: (mediaId: number) => void;
 };
 
 /** Painel permanente (seção 11.2): acumula desde o primeiro uso, nunca é zerado. */
-export default function Estatisticas({ versao, onErro }: Props) {
+export default function Estatisticas(props: Props) {
+  const { versao, onErro } = props;
   const [resumo, setResumo] = useState<Resumo | null>(null);
 
   useEffect(() => {
@@ -54,6 +212,7 @@ export default function Estatisticas({ versao, onErro }: Props) {
         </div>
       </div>
       <p className="nota">Contado desde o primeiro uso, inclusive músicas que já saíram da biblioteca.</p>
+      <MaquinaDoTempo {...props} />
     </section>
   );
 }
