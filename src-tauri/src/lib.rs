@@ -5,6 +5,7 @@ mod import;
 mod library;
 mod player;
 mod playlists;
+mod mpris;
 mod queue;
 mod watch;
 mod search;
@@ -480,16 +481,22 @@ fn set_repeat(app: AppHandle, fila: State<FilaState>, modo: queue::Repetir) -> R
     Ok(())
 }
 
-/// Depois de 3 s volta ao início da faixa; antes disso, vai para a anterior.
 #[tauri::command]
-fn previous_track(app: AppHandle, fila: State<FilaState>, player: State<player::Player>) -> Result<(), String> {
+fn previous_track(app: AppHandle) -> Result<(), String> {
+    voltar(&app)
+}
+
+/// Depois de 3 s volta ao início da faixa; antes disso, vai para a anterior.
+fn voltar(app: &AppHandle) -> Result<(), String> {
+    let fila = app.state::<FilaState>();
+    let player = app.state::<player::Player>();
     if player.posicao_ms() > 3000 {
         return player.buscar(0);
     }
     let anterior = fila.0.lock().map_err(erro_db)?.anterior();
     let _ = app.emit(EVENTO_FILA, ());
     match anterior {
-        Some(id) => tocar_id(&app, id),
+        Some(id) => tocar_id(app, id),
         None => player.buscar(0),
     }
 }
@@ -583,6 +590,9 @@ pub fn run() {
             app.manage(player::Player::new(move |estado| {
                 let fim = estado.fim;
                 acompanhar_sessao(&handle, &estado);
+                if let Some(m) = handle.try_state::<mpris::Mpris>() {
+                    m.atualizar(&handle, &estado);
+                }
                 let _ = handle.emit("player-estado", estado);
                 if fim {
                     // Fora da thread do barramento, para não bloqueá-la.
@@ -594,6 +604,13 @@ pub fn run() {
                     });
                 }
             })?);
+            // Sem D-Bus (sessão sem barramento), o app funciona só sem MPRIS.
+            match mpris::Mpris::iniciar(app.handle().clone()) {
+                Ok(m) => {
+                    app.manage(m);
+                }
+                Err(e) => eprintln!("{e}"),
+            }
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
