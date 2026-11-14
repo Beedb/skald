@@ -1,4 +1,20 @@
+/* Cores animáveis: a troca de acento pela capa é gradual (seção 3.2). */
+@property --acento {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: transparent;
+}
+
+@property --capa {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: transparent;
+}
+
 :root {
+  transition:
+    --acento 0.8s ease,
+    --capa 0.8s ease;
   font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   font-size: 16px;
   line-height: 1.5;
@@ -493,6 +509,10 @@ body {
 }
 
 .player-completo {
+  /* Sem capa (ou cores dinâmicas desligadas), --capa é transparente: fica o fundo do tema. */
+  background: linear-gradient(180deg, color-mix(in srgb, var(--capa) 28%, transparent), transparent 70%);
+  border-radius: var(--raio);
+  padding-inline: 1rem;
   flex: 1;
   min-height: 0;
   display: flex;

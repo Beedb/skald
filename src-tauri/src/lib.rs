@@ -931,6 +931,12 @@ fn set_appearance(db: State<db::Db>, tema: String, modo: String) -> Result<(), S
 }
 
 #[tauri::command]
+fn set_dynamic_colors(db: State<db::Db>, ativo: bool) -> Result<(), String> {
+    let conn = db.0.lock().map_err(erro_db)?;
+    settings::definir_cores_dinamicas(&conn, ativo).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 fn set_crossfade(db: State<db::Db>, player: State<player::Player>, ms: u64) -> Result<u64, String> {
     let ms = {
         let conn = db.0.lock().map_err(erro_db)?;
@@ -1077,6 +1083,7 @@ pub fn run() {
             seek,
             get_settings,
             set_appearance,
+            set_dynamic_colors,
             set_crossfade,
             set_normalization,
             set_equalizer

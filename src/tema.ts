@@ -64,6 +64,8 @@ let atual: { tema: string; modo: ModoTema } = { tema: TEMA_PADRAO, modo: "sistem
 export function aplicarTema(tema: string, modo: ModoTema) {
   atual = { tema, modo };
   document.documentElement.dataset.tema = resolverTema(tema, modo);
+  // As cores dinâmicas da capa recalculam o contraste com o novo fundo.
+  window.dispatchEvent(new Event("tema-mudou"));
   try {
     localStorage.setItem(CHAVE, JSON.stringify(atual));
   } catch {

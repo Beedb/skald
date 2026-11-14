@@ -8,6 +8,7 @@ const NORMALIZACAO: &str = "normalizacao";
 const EQUALIZADOR: &str = "equalizador";
 const TEMA: &str = "tema";
 const MODO_TEMA: &str = "modo_tema";
+const CORES_DINAMICAS: &str = "cores_dinamicas";
 /// Tema padrão do Skáld (docs/temas.css).
 const TEMA_PADRAO: &str = "brasa";
 /// Crossfade padrão: ligado, 5 s (desligado entre faixas do mesmo álbum).
@@ -24,6 +25,8 @@ pub struct Configuracoes {
     pub tema: String,
     /// "claro", "escuro" ou "sistema" (padrão).
     pub modo_tema: String,
+    /// Acento e fundo do player tirados da capa atual (padrão: ligado).
+    pub cores_dinamicas: bool,
 }
 
 fn ler(conn: &Connection, chave: &str) -> rusqlite::Result<Option<String>> {
@@ -52,7 +55,12 @@ pub fn carregar(conn: &Connection) -> rusqlite::Result<Configuracoes> {
         .unwrap_or_default();
     let tema = ler(conn, TEMA)?.unwrap_or_else(|| TEMA_PADRAO.into());
     let modo_tema = ler(conn, MODO_TEMA)?.unwrap_or_else(|| "sistema".into());
-    Ok(Configuracoes { crossfade_ms, normalizacao, equalizador, tema, modo_tema })
+    let cores_dinamicas = ler(conn, CORES_DINAMICAS)?.is_none_or(|v| v == "1");
+    Ok(Configuracoes { crossfade_ms, normalizacao, equalizador, tema, modo_tema, cores_dinamicas })
+}
+
+pub fn definir_cores_dinamicas(conn: &Connection, ativo: bool) -> rusqlite::Result<()> {
+    gravar(conn, CORES_DINAMICAS, if ativo { "1" } else { "0" })
 }
 
 /// Aparência (seção 12). O tema vira o atributo `data-tema`, então só aceita letras e hífen.
@@ -113,6 +121,9 @@ mod testes {
         let conn = crate::db::open(std::path::Path::new(":memory:")).unwrap();
         let c = carregar(&conn).unwrap();
         assert_eq!((c.tema.as_str(), c.modo_tema.as_str()), ("brasa", "sistema"));
+        assert!(c.cores_dinamicas);
+        definir_cores_dinamicas(&conn, false).unwrap();
+        assert!(!carregar(&conn).unwrap().cores_dinamicas);
         definir_aparencia(&conn, "nord", "claro").unwrap();
         let c = carregar(&conn).unwrap();
         assert_eq!((c.tema.as_str(), c.modo_tema.as_str()), ("nord", "claro"));

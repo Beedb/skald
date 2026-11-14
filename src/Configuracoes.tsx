@@ -10,6 +10,7 @@ type Config = {
   equalizador: Preset;
   tema: string;
   modo_tema: ModoTema;
+  cores_dinamicas: boolean;
 };
 
 const PRESETS: [Preset, string][] = [
@@ -28,6 +29,7 @@ export default function Configuracoes({ onErro }: { onErro: (m: string) => void 
   const [equalizador, setEqualizador] = useState<Preset>("desligado");
   const [tema, setTema] = useState("brasa");
   const [modo, setModo] = useState<ModoTema>("sistema");
+  const [coresDinamicas, setCoresDinamicas] = useState(true);
 
   useEffect(() => {
     invoke<Config>("get_settings")
@@ -37,6 +39,7 @@ export default function Configuracoes({ onErro }: { onErro: (m: string) => void 
         setEqualizador(c.equalizador);
         setTema(c.tema);
         setModo(c.modo_tema);
+        setCoresDinamicas(c.cores_dinamicas);
       })
       .catch((e) => onErro(String(e)));
   }, []);
@@ -46,6 +49,12 @@ export default function Configuracoes({ onErro }: { onErro: (m: string) => void 
     setModo(novoModo);
     aplicarTema(novoTema, novoModo);
     invoke("set_appearance", { tema: novoTema, modo: novoModo }).catch((e) => onErro(String(e)));
+  }
+
+  function gravarCoresDinamicas(ativo: boolean) {
+    setCoresDinamicas(ativo);
+    window.dispatchEvent(new CustomEvent("cores-dinamicas", { detail: ativo }));
+    invoke("set_dynamic_colors", { ativo }).catch((e) => onErro(String(e)));
   }
 
   function gravarEqualizador(preset: Preset) {
@@ -92,6 +101,13 @@ export default function Configuracoes({ onErro }: { onErro: (m: string) => void 
         </select>
       </label>
       {!temDuasVariantes(tema) && <p className="nota">Este tema tem uma variante só.</p>}
+      <label className="opcao">
+        <span>Cores da capa</span>
+        <input type="checkbox" checked={coresDinamicas} onChange={(e) => gravarCoresDinamicas(e.target.checked)} />
+      </label>
+      <p className="nota">
+        O destaque da interface e o fundo do player acompanham a capa da música atual, sempre com contraste legível.
+      </p>
       <h3>Reprodução</h3>
       <label className="opcao">
         <span>

@@ -14,6 +14,8 @@ import Duplicados from "./Duplicados";
 import Categorias from "./Categorias";
 import { Albuns, AlbumView, Artistas, ArtistaView } from "./Colecao";
 import Inicio from "./Inicio";
+import { miniatura } from "./Capa";
+import { aplicarCorCapa, corDaImagem, reaplicarCorCapa } from "./coresCapa";
 import { aplicarTema, ModoTema } from "./tema";
 import Estatisticas from "./Estatisticas";
 import Configuracoes from "./Configuracoes";
@@ -67,6 +69,7 @@ function App() {
   const [volume, setVolume] = useState(1);
   const [detalhes, setDetalhes] = useState<Detalhes | null>(null);
   const [vista, setVista] = useState<Vista>({ tipo: "inicio" });
+  const [coresDinamicas, setCoresDinamicas] = useState(false);
   const [playlists, setPlaylists] = useState<PlaylistResumo[]>([]);
   const [versaoPlaylists, setVersaoPlaylists] = useState(0);
   const [curtidas, setCurtidas] = useState<Set<number>>(new Set());
@@ -135,8 +138,11 @@ function App() {
     carregarPlaylists();
     carregarCurtidas();
     // O tema salvo no banco vale sobre a cópia local usada no primeiro desenho.
-    invoke<{ tema: string; modo_tema: ModoTema }>("get_settings")
-      .then((c) => aplicarTema(c.tema, c.modo_tema))
+    invoke<{ tema: string; modo_tema: ModoTema; cores_dinamicas: boolean }>("get_settings")
+      .then((c) => {
+        aplicarTema(c.tema, c.modo_tema);
+        setCoresDinamicas(c.cores_dinamicas);
+      })
       .catch(() => {});
     const ouvintes = [
       listen<EstadoPlayer>("player-estado", (e) => {
@@ -162,6 +168,28 @@ function App() {
       ouvintes.forEach((o) => o.then((parar) => parar()));
     };
   }, []);
+
+  // Cores dinâmicas (seção 3.2): acento tirado da miniatura da capa atual.
+  useEffect(() => {
+    const ligar = (e: Event) => setCoresDinamicas((e as CustomEvent<boolean>).detail);
+    window.addEventListener("cores-dinamicas", ligar);
+    window.addEventListener("tema-mudou", reaplicarCorCapa);
+    return () => {
+      window.removeEventListener("cores-dinamicas", ligar);
+      window.removeEventListener("tema-mudou", reaplicarCorCapa);
+    };
+  }, []);
+  const idCor = fila?.atual?.id ?? null;
+  useEffect(() => {
+    if (!coresDinamicas || idCor === null) return aplicarCorCapa(null);
+    let valido = true;
+    miniatura(idCor)
+      .then((url) => (url ? corDaImagem(url) : null))
+      .then((cor) => valido && aplicarCorCapa(cor));
+    return () => {
+      valido = false;
+    };
+  }, [idCor, coresDinamicas]);
 
   // Capa e informações da música atual (lidas do arquivo só quando ela muda).
   const idAtual = fila?.atual?.id ?? null;
