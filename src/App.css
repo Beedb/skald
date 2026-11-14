@@ -702,3 +702,59 @@ body {
   text-align: center;
   color: #3fa66b;
 }
+
+.pastas {
+  position: relative;
+}
+
+.pastas summary {
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.pastas-lista {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 0.4rem);
+  z-index: 10;
+  width: min(32rem, 80vw);
+  padding: 0.6rem;
+  border-radius: 6px;
+  background: Canvas;
+  border: 1px solid rgba(128, 128, 128, 0.3);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+}
+
+.pastas-lista ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.pastas-lista li {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.25rem 0;
+}
+
+.pastas-lista .caminho {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.aviso {
+  margin: 0.4rem 1rem;
+  padding: 0.4rem 0.6rem;
+  border-radius: 6px;
+  background: rgba(79, 142, 247, 0.15);
+}
+
+.fechar-aviso {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: inherit;
+}

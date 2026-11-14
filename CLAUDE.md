@@ -65,7 +65,7 @@ Depois do MVP: monitoramento de pastas, shuffle, repetir, estatísticas, MPRIS, 
 
 ## Fase 2
 
-- [ ] 10. Monitoramento de pastas (`notify`)
+- [x] 10. Monitoramento de pastas (`notify`)
 - [x] 11. Shuffle Bag e modo repetir
 - [ ] 12. MPRIS e teclas de mídia
 - [ ] 13. Estatísticas (painel e critério de 60%)
@@ -78,4 +78,4 @@ Depois do MVP: monitoramento de pastas, shuffle, repetir, estatísticas, MPRIS, 
 
 ## Estado atual
 
-**MVP concluído; etapa 11 feita.** `queue.rs`: `ordem` (posições do contexto) vira Shuffle Bag com aleatório (atual protegida no início, novo ciclo sem repetir a última); `Repetir` desligado/fila/faixa (faixa só no fim natural: `proxima_automatica`). `incluir` põe música nova entre as restantes; `lib.rs` guarda `OrigemState` (biblioteca sem busca ou playlist) e chama `incluir_novas` após importar/`playlist_add`. Comandos `set_shuffle`/`set_repeat`; modos vêm em `get_queue`; botões em `Controles`. Modos não persistem entre execuções. Histórico (etapa 9): `history.rs`, `play_history` (migração v5). Próximo: etapa 10 (monitoramento) ou 13 (estatísticas, dados já existem).
+**MVP concluído; etapas 10 e 11 feitas.** Etapa 10: migração v6 cria `watched_folder`; `import_folder` grava a pasta e a vigia. `watch.rs`: `Vigia` (notify, espera 2 s para agrupar) importa arquivos/pastas novos e marca sumidos (`import::marcar_sumidos`); `Vigia::retomar` sincroniza ao abrir. Reaparecer desmarca `missing` sem tocar metadados. Evento `biblioteca-mudou` (resumo) → aviso na tela e `incluir_novas`. Comandos `watched_folders`/`unwatch_folder`; tela `src/Pastas.tsx`. Arquivo movido ainda vira ausente + novo (falta preencher `file_hash`). Etapa 11: `queue.rs`: `ordem` (posições do contexto) vira Shuffle Bag com aleatório (atual protegida no início, novo ciclo sem repetir a última); `Repetir` desligado/fila/faixa (faixa só no fim natural: `proxima_automatica`). `incluir` põe música nova entre as restantes; `lib.rs` guarda `OrigemState` (biblioteca sem busca ou playlist) e chama `incluir_novas` após importar/`playlist_add`. Comandos `set_shuffle`/`set_repeat`; modos vêm em `get_queue`; botões em `Controles`. Modos não persistem entre execuções. Histórico (etapa 9): `history.rs`, `play_history` (migração v5). Próximo: etapa 12 (MPRIS) ou 13 (estatísticas, dados já existem).

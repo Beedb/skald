@@ -15,6 +15,25 @@ pub struct ImportResumo {
     pub adicionados: u32,
     pub existentes: u32,
     pub falhas: Vec<String>,
+    /// Músicas que reapareceram (estavam marcadas como não encontradas).
+    pub reencontrados: u32,
+    /// Músicas cujo arquivo sumiu e foram marcadas como não encontradas.
+    pub ausentes: u32,
+}
+
+impl ImportResumo {
+    pub fn somar(&mut self, outro: ImportResumo) {
+        self.encontrados += outro.encontrados;
+        self.adicionados += outro.adicionados;
+        self.existentes += outro.existentes;
+        self.reencontrados += outro.reencontrados;
+        self.ausentes += outro.ausentes;
+        self.falhas.extend(outro.falhas);
+    }
+
+    pub fn mudou_algo(&self) -> bool {
+        self.adicionados + self.reencontrados + self.ausentes > 0
+    }
 }
 
 struct Faixa {
@@ -32,7 +51,7 @@ struct Faixa {
     file_mtime: Option<i64>,
 }
 
-fn eh_audio(path: &Path) -> bool {
+pub fn eh_audio(path: &Path) -> bool {
     path.extension()
         .and_then(|e| e.to_str())
         .is_some_and(|e| EXTENSOES.contains(&e.to_ascii_lowercase().as_str()))
@@ -102,6 +121,7 @@ fn gravar(conn: &mut Connection, faixas: &[Faixa], resumo: &mut ImportResumo) ->
               track_number, disc_number, duration_ms, file_size, file_mtime, search_text)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
         )?;
+        let mut reencontrar = tx.prepare("UPDATE media SET missing = 0 WHERE path = ?1 AND missing = 1")?;
         for f in faixas {
             let n = stmt.execute(params![
                 f.path, f.title, f.artist, f.album, f.album_artist, f.genre, f.year,
@@ -115,6 +135,8 @@ fn gravar(conn: &mut Connection, faixas: &[Faixa], resumo: &mut ImportResumo) ->
                 resumo.adicionados += 1;
             } else {
                 resumo.existentes += 1;
+                // Só desmarca "não encontrado"; os metadados gravados ficam como estão.
+                resumo.reencontrados += reencontrar.execute([&f.path])? as u32;
             }
         }
     }
@@ -131,6 +153,38 @@ pub fn importar(conn_db: &std::sync::Mutex<Connection>, raiz: &Path) -> Result<I
     let mut conn = conn_db.lock().map_err(|_| "Banco de dados indisponível.".to_string())?;
     gravar(&mut conn, &faixas, &mut resumo).map_err(|e| e.to_string())?;
     Ok(resumo)
+}
+
+/// Importa arquivos soltos (avisados pelo monitoramento).
+pub fn importar_arquivos(conn_db: &std::sync::Mutex<Connection>, arquivos: &[std::path::PathBuf]) -> Result<ImportResumo, String> {
+    let mut resumo = ImportResumo::default();
+    let mut faixas = Vec::new();
+    for path in arquivos.iter().filter(|p| p.is_file() && eh_audio(p)) {
+        resumo.encontrados += 1;
+        match ler_faixa(path) {
+            Ok(f) => faixas.push(f),
+            Err(e) => resumo.falhas.push(format!("{}: {e}", path.display())),
+        }
+    }
+    let mut conn = conn_db.lock().map_err(|_| "Banco de dados indisponível.".to_string())?;
+    gravar(&mut conn, &faixas, &mut resumo).map_err(|e| e.to_string())?;
+    Ok(resumo)
+}
+
+/// Marca como não encontradas as músicas em `raiz` (arquivo ou pasta) cujo arquivo sumiu.
+/// O registro, as playlists e o histórico são mantidos. Devolve quantas foram marcadas.
+pub fn marcar_sumidos(conn: &Connection, raiz: &Path) -> rusqlite::Result<u32> {
+    let mut stmt = conn.prepare_cached("SELECT id, path FROM media WHERE missing = 0")?;
+    let sumidos: Vec<i64> = stmt
+        .query_map([], |r| Ok((r.get::<_, i64>(0)?, r.get::<_, String>(1)?)))?
+        .filter_map(Result::ok)
+        .filter(|(_, p)| Path::new(p).starts_with(raiz) && !Path::new(p).is_file())
+        .map(|(id, _)| id)
+        .collect();
+    for &id in &sumidos {
+        crate::library::marcar_ausente(conn, id, true)?;
+    }
+    Ok(sumidos.len() as u32)
 }
 
 #[cfg(test)]
@@ -154,5 +208,26 @@ mod testes {
         let r2 = importar(&db, Path::new(&dir)).unwrap();
         assert_eq!(r2.adicionados, 0);
         assert_eq!(r2.existentes, r.adicionados);
+    }
+
+    #[test]
+    fn arquivo_sumido_fica_marcado_e_registro_mantido() {
+        let dir = std::env::temp_dir().join(format!("skald-teste-sumidos-{}", std::process::id()));
+        std::fs::create_dir_all(dir.join("sub")).unwrap();
+        let fica = dir.join("fica.mp3");
+        let some = dir.join("sub/some.mp3");
+        std::fs::write(&fica, b"").unwrap();
+        let conn = crate::db::open(Path::new(":memory:")).unwrap();
+        for p in [&fica, &some, &std::path::PathBuf::from("/fora/outra.mp3")] {
+            conn.execute("INSERT INTO media (path) VALUES (?1)", [p.to_string_lossy()]).unwrap();
+        }
+        assert_eq!(marcar_sumidos(&conn, &dir).unwrap(), 1);
+        let ausentes: Vec<String> = conn
+            .prepare("SELECT path FROM media WHERE missing = 1").unwrap()
+            .query_map([], |r| r.get(0)).unwrap().map(Result::unwrap).collect();
+        assert_eq!(ausentes, [some.to_string_lossy().into_owned()]);
+        let total: i64 = conn.query_row("SELECT COUNT(*) FROM media", [], |r| r.get(0)).unwrap();
+        assert_eq!(total, 3);
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 }

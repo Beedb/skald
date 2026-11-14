@@ -73,6 +73,12 @@ const MIGRATIONS: &[&str] = &[
     );
     CREATE INDEX idx_history_inicio ON play_history(started_at);
     CREATE INDEX idx_history_media ON play_history(media_id);",
+    // v6: pastas monitoradas (seção 5). Toda pasta importada passa a ser vigiada.
+    "CREATE TABLE watched_folder (
+        id       INTEGER PRIMARY KEY,
+        path     TEXT    NOT NULL UNIQUE,
+        added_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now'))
+    );",
 ];
 
 pub fn open(path: &Path) -> rusqlite::Result<Connection> {

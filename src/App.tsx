@@ -9,6 +9,7 @@ import Fila, { type VisaoFila } from "./Fila";
 import Lateral, { type PlaylistResumo, type Vista } from "./Lateral";
 import PlaylistView from "./PlaylistView";
 import Historico from "./Historico";
+import Pastas from "./Pastas";
 import "./App.css";
 
 type DbStatus = {
@@ -22,7 +23,18 @@ type ImportResumo = {
   adicionados: number;
   existentes: number;
   falhas: string[];
+  reencontrados: number;
+  ausentes: number;
 };
+
+/** Frase curta do que o monitoramento de pastas mudou. */
+function avisoMonitoramento(r: ImportResumo) {
+  const partes = [];
+  if (r.adicionados) partes.push(`${r.adicionados} música(s) nova(s)`);
+  if (r.reencontrados) partes.push(`${r.reencontrados} reencontrada(s)`);
+  if (r.ausentes) partes.push(`${r.ausentes} não encontrada(s)`);
+  return "Pastas monitoradas: " + partes.join(", ") + ".";
+}
 
 function App() {
   const [status, setStatus] = useState<DbStatus | null>(null);
@@ -48,6 +60,7 @@ function App() {
   const [versaoPlaylists, setVersaoPlaylists] = useState(0);
   const [curtidas, setCurtidas] = useState<Set<number>>(new Set());
   const [versaoHistorico, setVersaoHistorico] = useState(0);
+  const [aviso, setAviso] = useState<string | null>(null);
 
   // Busca: `busca` é o texto digitado; `buscaAtiva` é aplicada 200 ms depois da última tecla.
   const [busca, setBusca] = useState("");
@@ -123,6 +136,12 @@ function App() {
       }),
       listen<string>("player-erro", (e) => mostrarErro(e.payload)),
       listen("historico-mudou", () => setVersaoHistorico((v) => v + 1)),
+      listen<ImportResumo>("biblioteca-mudou", (e) => {
+        setAviso(avisoMonitoramento(e.payload));
+        carregarStatus();
+        setVersao((v) => v + 1);
+        setVersaoPlaylists((v) => v + 1);
+      }),
     ];
     return () => {
       ouvintes.forEach((o) => o.then((parar) => parar()));
@@ -249,7 +268,16 @@ function App() {
         <button onClick={importarPasta} disabled={importando}>
           {importando ? "Importando…" : "Importar pasta"}
         </button>
+        <Pastas versao={versao} onErro={setErro} />
       </header>
+      {aviso && (
+        <p className="aviso">
+          {aviso}{" "}
+          <button className="fechar-aviso" onClick={() => setAviso(null)} aria-label="Fechar aviso" title="Fechar aviso">
+            ✕
+          </button>
+        </p>
+      )}
       {erro && <p className="erro">Erro: {erro}</p>}
       {!erro && !status && <p>Conectando ao banco de dados…</p>}
       {resumo && (

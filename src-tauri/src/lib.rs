@@ -6,6 +6,7 @@ mod library;
 mod player;
 mod playlists;
 mod queue;
+mod watch;
 mod search;
 
 use std::sync::Mutex;
@@ -38,7 +39,14 @@ fn db_status(app: tauri::AppHandle, db: State<db::Db>) -> Result<DbStatus, Strin
 #[tauri::command]
 async fn import_folder(app: tauri::AppHandle, path: String) -> Result<import::ImportResumo, String> {
     tauri::async_runtime::spawn_blocking(move || {
-        let resumo = import::importar(&app.state::<db::Db>().0, std::path::Path::new(&path))?;
+        let pasta = std::path::Path::new(&path);
+        let resumo = import::importar(&app.state::<db::Db>().0, pasta)?;
+        {
+            let db = app.state::<db::Db>();
+            let conn = db.0.lock().map_err(erro_db)?;
+            watch::adicionar(&conn, &path).map_err(|e| e.to_string())?;
+        }
+        app.state::<watch::Vigia>().vigiar(pasta);
         if resumo.adicionados > 0 {
             incluir_novas(&app, Origem::Biblioteca)?;
         }
@@ -46,6 +54,37 @@ async fn import_folder(app: tauri::AppHandle, path: String) -> Result<import::Im
     })
     .await
     .map_err(|e| e.to_string())?
+}
+
+const EVENTO_BIBLIOTECA: &str = "biblioteca-mudou";
+
+/// Chamado pelo monitoramento de pastas: avisa a interface e põe as novas no contexto da fila.
+pub(crate) fn biblioteca_mudou(app: &AppHandle, resumo: &import::ImportResumo) {
+    if !resumo.mudou_algo() {
+        return;
+    }
+    if resumo.adicionados > 0 {
+        let _ = incluir_novas(app, Origem::Biblioteca);
+    }
+    let _ = app.emit(EVENTO_BIBLIOTECA, resumo);
+}
+
+#[tauri::command]
+fn watched_folders(db: State<db::Db>) -> Result<Vec<String>, String> {
+    let conn = db.0.lock().map_err(erro_db)?;
+    watch::listar(&conn).map_err(|e| e.to_string())
+}
+
+/// Para de monitorar a pasta; as músicas dela continuam na biblioteca.
+#[tauri::command]
+fn unwatch_folder(app: AppHandle, path: String) -> Result<(), String> {
+    {
+        let db = app.state::<db::Db>();
+        let conn = db.0.lock().map_err(erro_db)?;
+        watch::remover(&conn, &path).map_err(|e| e.to_string())?;
+    }
+    app.state::<watch::Vigia>().parar(std::path::Path::new(&path));
+    Ok(())
 }
 
 #[tauri::command]
@@ -538,6 +577,8 @@ pub fn run() {
             app.manage(FilaState(Mutex::new(queue::Fila::default())));
             app.manage(HistoricoState(Mutex::new(None)));
             app.manage(OrigemState(Mutex::new(None)));
+            app.manage(watch::Vigia::iniciar(app.handle().clone())?);
+            watch::Vigia::retomar(app.handle().clone());
             let handle = app.handle().clone();
             app.manage(player::Player::new(move |estado| {
                 let fim = estado.fim;
@@ -558,6 +599,8 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             db_status,
             import_folder,
+            watched_folders,
+            unwatch_folder,
             list_media,
             count_media,
             play_media,
