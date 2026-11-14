@@ -10,6 +10,7 @@ import Lateral, { type PlaylistResumo, type Vista } from "./Lateral";
 import PlaylistView from "./PlaylistView";
 import Historico from "./Historico";
 import Pastas from "./Pastas";
+import Duplicados from "./Duplicados";
 import Estatisticas from "./Estatisticas";
 import Configuracoes from "./Configuracoes";
 import "./App.css";
@@ -28,6 +29,7 @@ type ImportResumo = {
   reencontrados: number;
   ausentes: number;
   movidos: number;
+  duplicados: number;
 };
 
 /** Frase curta do que o monitoramento de pastas mudou. */
@@ -37,7 +39,8 @@ function avisoMonitoramento(r: ImportResumo) {
   if (r.reencontrados) partes.push(`${r.reencontrados} reencontrada(s)`);
   if (r.movidos) partes.push(`${r.movidos} renomeada(s) ou movida(s) reconhecida(s)`);
   if (r.ausentes) partes.push(`${r.ausentes} não encontrada(s)`);
-  return "Pastas monitoradas: " + partes.join(", ") + ".";
+  if (r.duplicados) partes.push(`${r.duplicados} grupo(s) de arquivos duplicados (veja "Duplicados")`);
+  return "Biblioteca: " + partes.join(", ") + ".";
 }
 
 function App() {
@@ -273,6 +276,7 @@ function App() {
           {importando ? "Importando…" : "Importar pasta"}
         </button>
         <Pastas versao={versao} onErro={setErro} />
+        <Duplicados versao={versao} onErro={setErro} />
       </header>
       {aviso && (
         <p className="aviso">
@@ -289,7 +293,8 @@ function App() {
           <p>
             {resumo.encontrados} arquivo(s) de áudio encontrado(s): {resumo.adicionados} adicionado(s),{" "}
             {resumo.existentes} já estava(m) na biblioteca
-            {resumo.movidos > 0 && `, ${resumo.movidos} renomeada(s) ou movida(s) reconhecida(s)`}.
+            {resumo.movidos > 0 && `, ${resumo.movidos} renomeada(s) ou movida(s) reconhecida(s)`}
+            {resumo.duplicados > 0 && `, ${resumo.duplicados} grupo(s) de duplicados (veja "Duplicados")`}.
           </p>
           {resumo.falhas.length > 0 && (
             <details>

@@ -54,6 +54,7 @@ async fn import_folder(app: tauri::AppHandle, path: String) -> Result<import::Im
             resumo.ausentes += import::marcar_sumidos(&conn, pasta).map_err(|e| e.to_string())?;
         }
         app.state::<watch::Vigia>().vigiar(pasta);
+        resumo.duplicados += import::preencher_hashes(&app.state::<db::Db>().0)?;
         reconciliar_movidos(&app, &mut resumo)?;
         if resumo.adicionados > 0 {
             incluir_novas(&app, Origem::Biblioteca)?;
@@ -68,6 +69,11 @@ const EVENTO_BIBLIOTECA: &str = "biblioteca-mudou";
 
 /// Chamado pelo monitoramento de pastas: avisa a interface e põe as novas no contexto da fila.
 pub(crate) fn biblioteca_mudou(app: &AppHandle, mut resumo: import::ImportResumo) {
+    // Também preenche, em segundo plano, o hash das músicas anteriores à etapa 20.
+    match import::preencher_hashes(&app.state::<db::Db>().0) {
+        Ok(n) => resumo.duplicados += n,
+        Err(e) => eprintln!("Hash dos arquivos: {e}"),
+    }
     if resumo.adicionados + resumo.ausentes > 0 {
         let _ = reconciliar_movidos(app, &mut resumo);
     }
@@ -106,6 +112,19 @@ fn reconciliar_movidos(app: &AppHandle, resumo: &mut import::ImportResumo) -> Re
     let _ = app.emit(EVENTO_PLAYLISTS, ());
     let _ = app.emit(EVENTO_HISTORICO, ());
     Ok(())
+}
+
+/// Arquivos idênticos na biblioteca (só aviso; nada é apagado).
+#[tauri::command]
+fn duplicates_list(db: State<db::Db>) -> Result<Vec<import::GrupoDuplicados>, String> {
+    let conn = db.0.lock().map_err(erro_db)?;
+    import::duplicados(&conn).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn duplicate_ignore(db: State<db::Db>, hash: String) -> Result<(), String> {
+    let conn = db.0.lock().map_err(erro_db)?;
+    import::ignorar_duplicado(&conn, &hash).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -858,6 +877,8 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             db_status,
             import_folder,
+            duplicates_list,
+            duplicate_ignore,
             watched_folders,
             unwatch_folder,
             list_media,

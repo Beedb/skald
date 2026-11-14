@@ -84,6 +84,10 @@ const MIGRATIONS: &[&str] = &[
         key   TEXT PRIMARY KEY,
         value TEXT NOT NULL
     );",
+    // v8: grupos de duplicados (mesmo hash) que o usuário mandou parar de avisar (seção 5).
+    "CREATE TABLE duplicate_ignored (
+        file_hash TEXT PRIMARY KEY
+    );",
 ];
 
 pub fn open(path: &Path) -> rusqlite::Result<Connection> {

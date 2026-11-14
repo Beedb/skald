@@ -745,6 +745,13 @@ body {
   white-space: nowrap;
 }
 
+.grupo-duplicados .caminhos {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
 .aviso {
   margin: 0.4rem 1rem;
   padding: 0.4rem 0.6rem;

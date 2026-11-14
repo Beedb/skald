@@ -21,6 +21,8 @@ pub struct ImportResumo {
     pub ausentes: u32,
     /// Arquivos renomeados ou movidos reconhecidos (registro antigo ficou com o caminho novo).
     pub movidos: u32,
+    /// Grupos de arquivos idênticos (mesmo hash) que ganharam um membro novo.
+    pub duplicados: u32,
 }
 
 impl ImportResumo {
@@ -31,11 +33,12 @@ impl ImportResumo {
         self.reencontrados += outro.reencontrados;
         self.ausentes += outro.ausentes;
         self.movidos += outro.movidos;
+        self.duplicados += outro.duplicados;
         self.falhas.extend(outro.falhas);
     }
 
     pub fn mudou_algo(&self) -> bool {
-        self.adicionados + self.reencontrados + self.ausentes + self.movidos > 0
+        self.adicionados + self.reencontrados + self.ausentes + self.movidos + self.duplicados > 0
     }
 }
 
@@ -125,6 +128,11 @@ fn gravar(conn: &mut Connection, faixas: &[Faixa], resumo: &mut ImportResumo) ->
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
         )?;
         let mut reencontrar = tx.prepare("UPDATE media SET missing = 0 WHERE path = ?1 AND missing = 1")?;
+        // Arquivo alterado no mesmo caminho: o hash fica para recalcular (as tags não mudam).
+        let mut alterado = tx.prepare(
+            "UPDATE media SET file_hash = NULL, file_size = ?2, file_mtime = ?3
+             WHERE path = ?1 AND file_mtime IS NOT ?3",
+        )?;
         for f in faixas {
             let n = stmt.execute(params![
                 f.path, f.title, f.artist, f.album, f.album_artist, f.genre, f.year,
@@ -140,6 +148,7 @@ fn gravar(conn: &mut Connection, faixas: &[Faixa], resumo: &mut ImportResumo) ->
                 resumo.existentes += 1;
                 // Só desmarca "não encontrado"; os metadados gravados ficam como estão.
                 resumo.reencontrados += reencontrar.execute([&f.path])? as u32;
+                alterado.execute(params![f.path, f.file_size, f.file_mtime])?;
             }
         }
     }
@@ -174,6 +183,93 @@ pub fn importar_arquivos(conn_db: &std::sync::Mutex<Connection>, arquivos: &[std
     Ok(resumo)
 }
 
+/// Hash (BLAKE3) do conteúdo inteiro do arquivo.
+pub fn hash_arquivo(path: &Path) -> std::io::Result<String> {
+    let mut h = blake3::Hasher::new();
+    h.update_reader(std::fs::File::open(path)?)?;
+    Ok(h.finalize().to_hex().to_string())
+}
+
+/// Calcula o hash das músicas presentes que ainda não têm (importadas agora, anteriores à
+/// etapa 20 ou alteradas). A leitura dos arquivos acontece sem travar o banco.
+/// Devolve quantos grupos de duplicados (não ignorados) ganharam um membro novo.
+pub fn preencher_hashes(conn_db: &std::sync::Mutex<Connection>) -> Result<u32, String> {
+    let erro = |_| "Banco de dados indisponível.".to_string();
+    let pendentes: Vec<(i64, String)> = {
+        let conn = conn_db.lock().map_err(erro)?;
+        let mut stmt = conn
+            .prepare("SELECT id, path FROM media WHERE file_hash IS NULL AND missing = 0")
+            .map_err(|e| e.to_string())?;
+        let linhas = stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?))).map_err(|e| e.to_string())?;
+        linhas.filter_map(Result::ok).collect()
+    };
+    let mut novos = std::collections::HashSet::new();
+    // Em lotes, para não segurar o banco durante a leitura de muitos arquivos.
+    for lote in pendentes.chunks(32) {
+        let hashes: Vec<(i64, String)> = lote
+            .iter()
+            .filter_map(|(id, path)| hash_arquivo(Path::new(path)).ok().map(|h| (*id, h)))
+            .collect();
+        let conn = conn_db.lock().map_err(erro)?;
+        for (id, h) in hashes {
+            conn.execute("UPDATE media SET file_hash = ?2 WHERE id = ?1", params![id, h])
+                .map_err(|e| e.to_string())?;
+            novos.insert(h);
+        }
+    }
+    if novos.is_empty() {
+        return Ok(0);
+    }
+    let conn = conn_db.lock().map_err(erro)?;
+    let grupos = duplicados(&conn).map_err(|e| e.to_string())?;
+    Ok(grupos.iter().filter(|g| novos.contains(&g.hash)).count() as u32)
+}
+
+#[derive(Serialize)]
+pub struct Duplicado {
+    pub id: i64,
+    pub path: String,
+    pub title: Option<String>,
+    pub artist: Option<String>,
+}
+
+#[derive(Serialize)]
+pub struct GrupoDuplicados {
+    pub hash: String,
+    pub musicas: Vec<Duplicado>,
+}
+
+/// Arquivos idênticos (mesmo hash) presentes na biblioteca, exceto os grupos ignorados.
+/// Só avisa: nada é apagado (seção 5).
+pub fn duplicados(conn: &Connection) -> rusqlite::Result<Vec<GrupoDuplicados>> {
+    let mut stmt = conn.prepare_cached(
+        "SELECT file_hash, id, path, title, artist FROM media
+         WHERE missing = 0 AND file_hash IN (
+             SELECT file_hash FROM media WHERE missing = 0 AND file_hash IS NOT NULL
+             GROUP BY file_hash HAVING COUNT(*) > 1)
+           AND file_hash NOT IN (SELECT file_hash FROM duplicate_ignored)
+         ORDER BY file_hash, path",
+    )?;
+    let mut grupos: Vec<GrupoDuplicados> = Vec::new();
+    let linhas = stmt.query_map([], |r| {
+        Ok((r.get::<_, String>(0)?, Duplicado { id: r.get(1)?, path: r.get(2)?, title: r.get(3)?, artist: r.get(4)? }))
+    })?;
+    for linha in linhas {
+        let (hash, m) = linha?;
+        match grupos.last_mut() {
+            Some(g) if g.hash == hash => g.musicas.push(m),
+            _ => grupos.push(GrupoDuplicados { hash, musicas: vec![m] }),
+        }
+    }
+    Ok(grupos)
+}
+
+/// O usuário decidiu manter as cópias: o grupo deixa de ser avisado.
+pub fn ignorar_duplicado(conn: &Connection, hash: &str) -> rusqlite::Result<()> {
+    conn.execute("INSERT OR IGNORE INTO duplicate_ignored (file_hash) VALUES (?1)", [hash])?;
+    Ok(())
+}
+
 /// Marca como não encontradas as músicas em `raiz` (arquivo ou pasta) cujo arquivo sumiu.
 /// O registro, as playlists e o histórico são mantidos. Devolve quantas foram marcadas.
 pub fn marcar_sumidos(conn: &Connection, raiz: &Path) -> rusqlite::Result<u32> {
@@ -190,8 +286,8 @@ pub fn marcar_sumidos(conn: &Connection, raiz: &Path) -> rusqlite::Result<u32> {
     Ok(sumidos.len() as u32)
 }
 
-/// Arquivos renomeados ou movidos (seção 5): um registro ausente e um presente com a mesma
-/// duração (±1 s) são o mesmo arquivo se, além disso,
+/// Arquivos renomeados ou movidos (seção 5): um registro ausente e um presente são o mesmo
+/// arquivo se têm o mesmo hash; ou, com a mesma duração (±1 s), se além disso
 /// - têm o mesmo tamanho em bytes e o mesmo título e artista (renomeado), ou o título dos
 ///   dois veio do nome do arquivo (sem tag de título, o nome mudou junto); ou
 /// - têm título, artista e álbum iguais e preenchidos (tags regravadas mudam o tamanho);
@@ -200,14 +296,16 @@ pub fn marcar_sumidos(conn: &Connection, raiz: &Path) -> rusqlite::Result<u32> {
 /// dele para o antigo. Nenhum arquivo é tocado. Devolve os pares (duplicado, antigo).
 pub fn reconciliar_movidos(conn: &mut Connection) -> rusqlite::Result<Vec<(i64, i64)>> {
     let tx = conn.transaction()?;
-    let pares: Vec<(i64, i64, String, Option<i64>)> = {
+    let pares: Vec<(i64, i64, String, Option<i64>, Option<String>, Option<i64>)> = {
         let mut stmt = tx.prepare(
             "WITH candidatos AS (
-                SELECT a.id AS antigo, b.id AS novo, b.path AS path, b.file_mtime AS mtime
+                SELECT a.id AS antigo, b.id AS novo, b.path AS path, b.file_mtime AS mtime,
+                       b.file_hash AS hash, b.file_size AS tamanho
                 FROM media a JOIN media b
                   ON a.missing = 1 AND b.missing = 0
                  AND a.category = b.category
-                 AND ABS(COALESCE(a.duration_ms, 0) - COALESCE(b.duration_ms, 0)) <= 1000
+                 AND ((a.file_hash IS NOT NULL AND a.file_hash = b.file_hash)
+                 OR (ABS(COALESCE(a.duration_ms, 0) - COALESCE(b.duration_ms, 0)) <= 1000
                  AND (
                     (a.file_size IS NOT NULL AND a.file_size = b.file_size AND (
                         (COALESCE(a.title, '') = COALESCE(b.title, '') AND COALESCE(a.artist, '') = COALESCE(b.artist, ''))
@@ -215,16 +313,16 @@ pub fn reconciliar_movidos(conn: &mut Connection) -> rusqlite::Result<Vec<(i64, 
                     OR (a.title IS NOT NULL AND a.artist IS NOT NULL
                         AND a.title = b.title AND a.artist = b.artist
                         AND COALESCE(a.album, '') = COALESCE(b.album, ''))
-                 )
+                 )))
             )
-            SELECT novo, antigo, path, mtime FROM candidatos c
+            SELECT novo, antigo, path, mtime, hash, tamanho FROM candidatos c
             WHERE (SELECT COUNT(*) FROM candidatos x WHERE x.antigo = c.antigo) = 1
               AND (SELECT COUNT(*) FROM candidatos x WHERE x.novo = c.novo) = 1",
         )?;
-        let linhas = stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)))?;
+        let linhas = stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?, r.get(5)?)))?;
         linhas.collect::<rusqlite::Result<_>>()?
     };
-    for (novo, antigo, path, mtime) in &pares {
+    for (novo, antigo, path, mtime, hash, tamanho) in &pares {
         // Curtida duplicada (curtiu de novo depois de renomear): fica uma só.
         tx.execute(
             "DELETE FROM playlist_item WHERE media_id = ?1 AND playlist_id IN (
@@ -236,12 +334,12 @@ pub fn reconciliar_movidos(conn: &mut Connection) -> rusqlite::Result<Vec<(i64, 
         tx.execute("UPDATE play_history SET media_id = ?2 WHERE media_id = ?1", params![novo, antigo])?;
         tx.execute("DELETE FROM media WHERE id = ?1", [novo])?;
         tx.execute(
-            "UPDATE media SET path = ?2, file_mtime = ?3, missing = 0 WHERE id = ?1",
-            params![antigo, path, mtime],
+            "UPDATE media SET path = ?2, file_mtime = ?3, file_hash = ?4, file_size = ?5, missing = 0 WHERE id = ?1",
+            params![antigo, path, mtime, hash, tamanho],
         )?;
     }
     tx.commit()?;
-    Ok(pares.into_iter().map(|(novo, antigo, _, _)| (novo, antigo)).collect())
+    Ok(pares.into_iter().map(|(novo, antigo, ..)| (novo, antigo)).collect())
 }
 
 #[cfg(test)]
@@ -339,12 +437,60 @@ mod testes {
         assert_eq!(reconciliar_movidos(&mut conn).unwrap(), []);
     }
 
+    #[test]
+    fn hash_detecta_duplicados_e_movidos() {
+        let dir = std::env::temp_dir().join(format!("skald-teste-hash-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let arq = |nome: &str, conteudo: &[u8]| {
+            let p = dir.join(nome);
+            std::fs::write(&p, conteudo).unwrap();
+            p.to_string_lossy().into_owned()
+        };
+        let (a, b, c, d) = (arq("a.mp3", b"igual"), arq("b.mp3", b"igual"), arq("c.mp3", b"outra"), arq("d.mp3", b"movida"));
+        let db = std::sync::Mutex::new(crate::db::open(Path::new(":memory:")).unwrap());
+        {
+            let conn = db.lock().unwrap();
+            // Ausente com metadados totalmente diferentes do arquivo novo: só o hash os liga.
+            conn.execute(
+                "INSERT INTO media (id, path, title, duration_ms, missing, file_hash) VALUES (1, '/velho/x.mp3', 'X', 1000, 1, ?1)",
+                [hash_arquivo(Path::new(&d)).unwrap()],
+            )
+            .unwrap();
+            for (id, p) in [(2, &a), (3, &b), (4, &c), (5, &d)] {
+                conn.execute("INSERT INTO media (id, path, title, duration_ms) VALUES (?1, ?2, 'Y', 99000)", params![id, p]).unwrap();
+            }
+        }
+        assert_eq!(preencher_hashes(&db).unwrap(), 1);
+        assert_eq!(preencher_hashes(&db).unwrap(), 0);
+        let mut conn = db.lock().unwrap();
+        let grupos = duplicados(&conn).unwrap();
+        assert_eq!(grupos.len(), 1);
+        assert_eq!(grupos[0].musicas.iter().map(|m| m.id).collect::<Vec<_>>(), [2, 3]);
+
+        assert_eq!(reconciliar_movidos(&mut conn).unwrap(), [(5, 1)]);
+        let path: String = conn.query_row("SELECT path FROM media WHERE id = 1", [], |r| r.get(0)).unwrap();
+        assert_eq!(path, d);
+
+        ignorar_duplicado(&conn, &grupos[0].hash).unwrap();
+        assert!(duplicados(&conn).unwrap().is_empty());
+        // Nada foi apagado do disco.
+        assert!([&a, &b, &c, &d].iter().all(|p| Path::new(p).is_file()));
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
     /// Ensaio sobre uma CÓPIA do banco real (altera o arquivo indicado).
     /// Rodar com: SKALD_DB_ENSAIO=/copia.db cargo test ensaio -- --nocapture
     #[test]
     fn ensaio_reconciliacao() {
         let Ok(caminho) = std::env::var("SKALD_DB_ENSAIO") else { return };
-        let mut conn = crate::db::open(Path::new(&caminho)).unwrap();
+        let db = std::sync::Mutex::new(crate::db::open(Path::new(&caminho)).unwrap());
+        let inicio = std::time::Instant::now();
+        let novos = preencher_hashes(&db).unwrap();
+        println!("hashes em {:?}; grupos de duplicados novos: {novos}", inicio.elapsed());
+        let mut conn = db.into_inner().unwrap();
+        for g in duplicados(&conn).unwrap() {
+            println!("duplicado: {:?}", g.musicas.iter().map(|m| &m.path).collect::<Vec<_>>());
+        }
         let conta = |c: &Connection, sql: &str| c.query_row(sql, [], |r| r.get::<_, i64>(0)).unwrap();
         println!("antes: {} músicas, {} ausentes", conta(&conn, "SELECT COUNT(*) FROM media"), conta(&conn, "SELECT COUNT(*) FROM media WHERE missing = 1"));
         let pares = reconciliar_movidos(&mut conn).unwrap();
