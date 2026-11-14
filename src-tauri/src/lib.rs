@@ -21,6 +21,7 @@ mod sistema;
 mod temporizador;
 mod stats;
 mod watch;
+mod rganalise;
 mod search;
 
 use std::sync::Mutex;
@@ -376,7 +377,7 @@ fn preparar_proxima(app: &AppHandle) -> Option<player::Proxima> {
             existe.then_some((id, path, mesmo_album))
         };
         if let Some((id, path, mesmo_album)) = proxima {
-            let ganho = ganho::ler(std::path::Path::new(&path));
+            let ganho = ganho_de(app, id, &path);
             let p = player::Proxima { id, path, mesmo_album, ganho };
             *app.state::<GaplessState>().0.lock().ok()? = Some(Pendente { antes, depois, id });
             return Some(p);
@@ -413,6 +414,22 @@ fn concluir_transicao(app: &AppHandle, id: i64) {
     }
 }
 
+/// ReplayGain das tags; sem elas, o calculado pelo Skáld (análise em segundo plano).
+fn ganho_de(app: &AppHandle, id: i64, path: &str) -> ganho::Ganho {
+    let g = ganho::ler(std::path::Path::new(path));
+    if g.faixa.is_some() || g.album.is_some() {
+        return g;
+    }
+    app.state::<db::Db>().0.lock().map(|c| rganalise::do_banco(&c, id)).unwrap_or_default()
+}
+
+/// Situação da análise de volume (Configurações).
+#[tauri::command]
+fn replaygain_status(db: State<db::Db>) -> Result<rganalise::Situacao, String> {
+    let conn = db.0.lock().map_err(erro_db)?;
+    rganalise::situacao(&conn).map_err(|e| e.to_string())
+}
+
 /// Toca `id` no player. Arquivo ausente é marcado como não encontrado (registro mantido).
 fn tocar_id(app: &AppHandle, id: i64) -> Result<(), String> {
     let path = {
@@ -431,7 +448,7 @@ fn tocar_id(app: &AppHandle, id: i64) -> Result<(), String> {
         path
     };
     encerrar_sessao(app, false);
-    let ganho = ganho::ler(std::path::Path::new(&path));
+    let ganho = ganho_de(app, id, &path);
     app.state::<player::Player>().tocar(id, &path, ganho)?;
     iniciar_sessao(app, id);
     Ok(())
@@ -1543,6 +1560,7 @@ pub fn run() {
             app.manage(MprisStatus(Mutex::new(Some("Conectando…".into()))));
             iniciar_mpris(app.handle().clone());
             retomar_temporizador(app.handle());
+            rganalise::iniciar(app.handle().clone());
             // Bandeja ligada: cria o ícone; iniciado com o sistema, abre só nela.
             let bandeja = {
                 let db = app.state::<db::Db>();
@@ -1640,6 +1658,7 @@ pub fn run() {
             set_dynamic_colors,
             set_tray,
             mpris_status,
+            replaygain_status,
             backup_export,
             aliases_list,
             alias_add,

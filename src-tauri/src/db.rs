@@ -105,6 +105,15 @@ const MIGRATIONS: &[&str] = &[
         alias      TEXT NOT NULL,
         canonical  TEXT NOT NULL
     );",
+    // v13: ReplayGain calculado pelo Skáld para arquivos sem as tags (seção 8.6).
+    // `tem_tag = 1`: o arquivo já tem ReplayGain (não precisa analisar). Arquivos não mudam.
+    "CREATE TABLE replaygain_analise (
+        media_id   INTEGER PRIMARY KEY REFERENCES media(id) ON DELETE CASCADE,
+        file_mtime INTEGER,
+        tem_tag    INTEGER NOT NULL DEFAULT 0,
+        track_gain REAL,
+        track_peak REAL
+    );",
 ];
 
 pub fn open(path: &Path) -> rusqlite::Result<Connection> {

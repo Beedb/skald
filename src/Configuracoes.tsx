@@ -44,6 +44,7 @@ export default function Configuracoes({ onErro }: { onErro: (m: string) => void 
   const [autostart, setAutostart] = useState(false);
   const [cache, setCache] = useState<number | null>(null);
   const [mpris, setMpris] = useState<string | null | undefined>(undefined);
+  const [analise, setAnalise] = useState<{ analisadas: number; pendentes: number } | null>(null);
   const [avisoDados, setAvisoDados] = useState<string | null>(null);
 
   useEffect(() => {
@@ -70,9 +71,16 @@ export default function Configuracoes({ onErro }: { onErro: (m: string) => void 
         .then(setMpris)
         .catch(() => {});
     lerMpris();
+    const lerAnalise = () =>
+      invoke<{ analisadas: number; pendentes: number }>("replaygain_status")
+        .then(setAnalise)
+        .catch(() => {});
+    lerAnalise();
+    const relogio = setInterval(lerAnalise, 5000);
     const parar = listen("mpris-mudou", lerMpris);
     return () => {
       parar.then((f) => f());
+      clearInterval(relogio);
     };
   }, []);
 
@@ -241,8 +249,16 @@ export default function Configuracoes({ onErro }: { onErro: (m: string) => void 
       <p className="nota">
         Usa os valores de ReplayGain gravados nos arquivos para equilibrar o volume. "Por faixa" iguala todas as
         músicas; "por álbum" mantém a diferença de volume entre as faixas de um mesmo álbum. Arquivos sem esses
-        valores tocam no volume original.
+        valores são analisados pelo Skáld em segundo plano (o resultado fica só no banco; os arquivos não mudam).
       </p>
+      {analise && normalizacao !== "desligada" && (
+        <p className="nota">
+          {analise.pendentes > 0
+            ? `Analisando o volume: ${analise.pendentes} ${analise.pendentes === 1 ? "música restante" : "músicas restantes"}.`
+            : "Análise de volume em dia."}{" "}
+          {analise.analisadas} {analise.analisadas === 1 ? "música sem tags já analisada" : "músicas sem tags já analisadas"}.
+        </p>
+      )}
       <label className="opcao">
         <span>Equalizador</span>
         <select value={equalizador} onChange={(e) => gravarEqualizador(e.target.value as Preset)}>
