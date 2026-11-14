@@ -844,6 +844,58 @@ fn queue_add(app: AppHandle, fila: State<FilaState>, id: i64, a_seguir: bool) ->
     Ok(())
 }
 
+/// Adiciona várias músicas à fila manual na ordem dada (álbum, playlist).
+#[tauri::command]
+fn queue_add_many(app: AppHandle, fila: State<FilaState>, ids: Vec<i64>, a_seguir: bool) -> Result<(), String> {
+    fila.0.lock().map_err(erro_db)?.adicionar_varios(&ids, a_seguir);
+    let _ = app.emit(EVENTO_FILA, ());
+    Ok(())
+}
+
+/// Adiciona as faixas de um álbum à fila, na ordem do álbum.
+#[tauri::command]
+fn queue_add_album(app: AppHandle, fila: State<FilaState>, chave: colecao::ChaveAlbum, a_seguir: bool) -> Result<(), String> {
+    let ids: Vec<i64> = {
+        let db = app.state::<db::Db>();
+        let conn = db.0.lock().map_err(erro_db)?;
+        colecao::faixas_do_album(&conn, &chave).map_err(|e| e.to_string())?.into_iter().map(|f| f.media.id).collect()
+    };
+    queue_add_many(app, fila, ids, a_seguir)
+}
+
+/// Adiciona as músicas de uma playlist à fila, na ordem escolhida na tela.
+#[tauri::command]
+fn queue_add_playlist(
+    app: AppHandle,
+    fila: State<FilaState>,
+    id: i64,
+    ordem: playlists::Ordem,
+    a_seguir: bool,
+) -> Result<(), String> {
+    let ids: Vec<i64> = {
+        let db = app.state::<db::Db>();
+        let conn = db.0.lock().map_err(erro_db)?;
+        playlists::itens(&conn, id, ordem)?.into_iter().map(|i| i.media.id).collect()
+    };
+    queue_add_many(app, fila, ids, a_seguir)
+}
+
+#[tauri::command]
+fn queue_move(app: AppHandle, fila: State<FilaState>, de: usize, para: usize) -> Result<(), String> {
+    fila.0.lock().map_err(erro_db)?.mover_manual(de, para);
+    let _ = app.emit(EVENTO_FILA, ());
+    Ok(())
+}
+
+/// Limpa o que viria depois da atual. A origem deixa de valer: música nova não volta a encher a fila.
+#[tauri::command]
+fn queue_clear(app: AppHandle, fila: State<FilaState>) -> Result<(), String> {
+    fila.0.lock().map_err(erro_db)?.limpar();
+    definir_origem(&app, None)?;
+    let _ = app.emit(EVENTO_FILA, ());
+    Ok(())
+}
+
 #[tauri::command]
 fn queue_remove(app: AppHandle, fila: State<FilaState>, posicao: usize) -> Result<(), String> {
     fila.0.lock().map_err(erro_db)?.remover_manual(posicao);
@@ -1045,6 +1097,11 @@ pub fn run() {
             previous_track,
             queue_add,
             queue_remove,
+            queue_add_many,
+            queue_add_album,
+            queue_add_playlist,
+            queue_move,
+            queue_clear,
             get_queue,
             get_track_details,
             get_lyrics,

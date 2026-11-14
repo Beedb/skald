@@ -254,6 +254,8 @@ export function AlbumView({
   }, [chave.album, chave.grupo, versao]);
 
   const tocar = (indice: number) => invoke("play_album", { chave, indice }).catch((e) => onErro(String(e)));
+  const enfileirar = (aSeguir: boolean) =>
+    invoke("queue_add_album", { chave, aSeguir }).catch((e) => onErro(String(e)));
   if (!faixas) return null;
   const artistas = new Set(faixas.map((f) => f.artist ?? ""));
   const artistaUnico = artistas.size === 1 ? faixas[0]?.artist : null;
@@ -279,9 +281,17 @@ export function AlbumView({
           <p className="detalhe">
             {plural(faixas.length, "música", "músicas")} · {duracaoLonga(duracao)}
           </p>
-          <button className="primario" disabled={faixas.length === 0} onClick={() => tocar(0)}>
-            ▶ Tocar álbum
-          </button>
+          <div className="acoes-album">
+            <button className="primario" disabled={faixas.length === 0} onClick={() => tocar(0)}>
+              ▶ Tocar álbum
+            </button>
+            <button disabled={faixas.length === 0} onClick={() => enfileirar(true)}>
+              Tocar em seguida
+            </button>
+            <button disabled={faixas.length === 0} onClick={() => enfileirar(false)}>
+              Adicionar à fila
+            </button>
+          </div>
         </div>
       </div>
       <div className="colecao-rolagem">

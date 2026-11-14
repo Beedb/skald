@@ -94,7 +94,7 @@ export default function PlayerCompleto({ r, fila, detalhes, onVoltar }: Props) {
             </button>
           </div>
           {aba === "fila" ? (
-            <Fila fila={fila} />
+            <Fila fila={fila} onErro={r.onErro} />
           ) : (
             <Letra id={m?.id ?? null} posicaoMs={r.estado?.posicao_ms ?? 0} onErro={r.onErro} />
           )}

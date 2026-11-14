@@ -169,6 +169,18 @@ export default function PlaylistView({ playlist, versao, tocandoId, onExcluida, 
             <button onClick={() => tocar(0)} disabled={itens.length === 0}>
               ▶ Tocar
             </button>
+            <button
+              onClick={() => acao("queue_add_playlist", { id: playlist.id, ordem, aSeguir: true })}
+              disabled={itens.length === 0}
+            >
+              Tocar em seguida
+            </button>
+            <button
+              onClick={() => acao("queue_add_playlist", { id: playlist.id, ordem, aSeguir: false })}
+              disabled={itens.length === 0}
+            >
+              Adicionar à fila
+            </button>
             {!fixa && <button onClick={abrirRenomear}>Renomear</button>}
             <button onClick={escolherCapa}>Escolher capa</button>
             {playlist.capa_escolhida && (

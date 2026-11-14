@@ -484,7 +484,7 @@ function App() {
             />
           </div>
         )}
-        {filaAberta && <Fila fila={fila} />}
+        {filaAberta && <Fila fila={fila} onErro={setErro} />}
       </div>
       {tela === "player" ? (
         <PlayerCompleto r={r} fila={fila} detalhes={detalhes} onVoltar={() => setTela("biblioteca")} />

@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import type { MediaRow } from "./Biblioteca";
 import { formatarDuracao } from "./Biblioteca";
@@ -12,9 +13,36 @@ export type VisaoFila = {
 
 export type Repetir = "desligado" | "fila" | "faixa";
 
-function Item({ m, onRemover }: { m: MediaRow; onRemover?: () => void }) {
+type Arraste = {
+  draggable: true;
+  onDragStart: (e: React.DragEvent) => void;
+  onDragOver: (e: React.DragEvent) => void;
+  onDrop: (e: React.DragEvent) => void;
+  onDragEnd: () => void;
+};
+
+function Item({
+  m,
+  onRemover,
+  arraste,
+  classe = "",
+}: {
+  m: MediaRow;
+  onRemover?: () => void;
+  arraste?: Arraste;
+  classe?: string;
+}) {
   return (
-    <li className={m.missing ? "ausente" : undefined} title={m.missing ? "Arquivo não encontrado" : undefined}>
+    <li
+      className={(m.missing ? "ausente " : "") + classe}
+      title={m.missing ? "Arquivo não encontrado" : arraste ? "Arraste para reordenar" : undefined}
+      {...arraste}
+    >
+      {arraste && (
+        <span className="alca" aria-hidden="true">
+          ⠿
+        </span>
+      )}
       <div className="faixa">
         <strong>{m.title ?? "Sem título"}</strong>
         <span>{m.artist ?? "Artista desconhecido"}</span>
@@ -29,11 +57,51 @@ function Item({ m, onRemover }: { m: MediaRow; onRemover?: () => void }) {
   );
 }
 
-export default function Fila({ fila }: { fila: VisaoFila | null }) {
+export default function Fila({ fila, onErro }: { fila: VisaoFila | null; onErro: (m: string) => void }) {
   const vazia = !fila || (fila.manual.length === 0 && fila.contexto.length === 0);
+  const [arrastando, setArrastando] = useState<number | null>(null);
+  const [alvo, setAlvo] = useState<number | null>(null);
+  const acao = (cmd: string, args?: Record<string, unknown>) => invoke(cmd, args).catch((e) => onErro(String(e)));
+
+  // Soltar sobre um item põe a música arrastada no lugar dele.
+  const arraste = (i: number): Arraste => ({
+    draggable: true,
+    onDragStart: (e) => {
+      e.dataTransfer.effectAllowed = "move";
+      e.dataTransfer.setData("text/plain", String(i));
+      setArrastando(i);
+    },
+    onDragOver: (e) => {
+      if (arrastando === null) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = "move";
+      if (alvo !== i) setAlvo(i);
+    },
+    onDrop: (e) => {
+      e.preventDefault();
+      if (arrastando !== null && arrastando !== i) acao("queue_move", { de: arrastando, para: i });
+      setArrastando(null);
+      setAlvo(null);
+    },
+    onDragEnd: () => {
+      setArrastando(null);
+      setAlvo(null);
+    },
+  });
+
+  const classeArraste = (i: number) =>
+    i === arrastando ? "arrastando" : i === alvo && arrastando !== null ? (i < arrastando ? "alvo-acima" : "alvo-abaixo") : "";
+
   return (
     <aside className="painel-fila" aria-label="Fila de reprodução">
-      <h2>Fila</h2>
+      <div className="fila-topo">
+        <h2>Fila</h2>
+        {!vazia && (
+          <button onClick={() => acao("queue_clear")} title="Tira tudo o que viria depois da música atual">
+            Limpar fila
+          </button>
+        )}
+      </div>
       {fila?.atual && (
         <section>
           <h3>Tocando agora</h3>
@@ -47,14 +115,20 @@ export default function Fila({ fila }: { fila: VisaoFila | null }) {
           <h3>Próximas na fila</h3>
           <ul>
             {fila.manual.map((m, i) => (
-              <Item key={`${i}-${m.id}`} m={m} onRemover={() => invoke("queue_remove", { posicao: i })} />
+              <Item
+                key={`${i}-${m.id}`}
+                m={m}
+                arraste={arraste(i)}
+                classe={classeArraste(i)}
+                onRemover={() => acao("queue_remove", { posicao: i })}
+              />
             ))}
           </ul>
         </section>
       )}
       {fila && fila.contexto.length > 0 && (
         <section>
-          <h3>A seguir na biblioteca</h3>
+          <h3>A seguir</h3>
           <ul>
             {fila.contexto.map((m) => (
               <Item key={m.id} m={m} />

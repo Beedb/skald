@@ -214,6 +214,36 @@ impl Fila {
         self.manual.remove(posicao)
     }
 
+    /// Várias músicas de uma vez (álbum, playlist), na ordem original: no fim da fila
+    /// manual ou, com `a_seguir`, antes de todas as que já estão nela.
+    pub fn adicionar_varios(&mut self, ids: &[i64], a_seguir: bool) {
+        if a_seguir {
+            for &id in ids.iter().rev() {
+                self.manual.push_front(id);
+            }
+        } else {
+            self.manual.extend(ids);
+        }
+    }
+
+    /// Arrasta uma música da fila manual de `de` para `para` (posições na fila manual).
+    pub fn mover_manual(&mut self, de: usize, para: usize) -> bool {
+        let Some(id) = self.manual.remove(de) else { return false };
+        let para = para.min(self.manual.len());
+        self.manual.insert(para, id);
+        true
+    }
+
+    /// Limpa o que viria depois da atual: a fila manual e o restante do contexto.
+    /// A atual continua tocando; "anterior" ainda volta pelas que já tocaram.
+    pub fn limpar(&mut self) {
+        self.manual.clear();
+        match self.indice {
+            Some(i) => self.ordem.truncate(i + 1),
+            None => self.ordem.clear(),
+        }
+    }
+
     pub fn manual(&self) -> impl Iterator<Item = i64> + '_ {
         self.manual.iter().copied()
     }
@@ -243,6 +273,27 @@ mod testes {
         assert_eq!(f.proxima(), Some(60));
         assert_eq!(f.proxima(), Some(50));
         assert_eq!(f.anterior(), Some(10));
+    }
+
+    #[test]
+    fn varios_mover_e_limpar() {
+        let mut f = Fila::default();
+        f.tocar_do_contexto(vec![1, 2, 3], 2);
+        f.adicionar(100);
+        f.adicionar_varios(&[7, 8, 9], false);
+        f.adicionar_varios(&[5, 6], true);
+        assert_eq!(f.manual().collect::<Vec<_>>(), [5, 6, 100, 7, 8, 9]);
+        assert!(f.mover_manual(0, 3));
+        assert_eq!(f.manual().collect::<Vec<_>>(), [6, 100, 7, 5, 8, 9]);
+        assert!(f.mover_manual(5, 0));
+        assert_eq!(f.manual().collect::<Vec<_>>(), [9, 6, 100, 7, 5, 8]);
+        assert!(!f.mover_manual(9, 0));
+        f.limpar();
+        assert_eq!(f.manual().count(), 0);
+        assert_eq!(f.proximas_do_contexto(5), Vec::<i64>::new());
+        assert_eq!(f.atual(), Some(2));
+        assert_eq!(f.proxima(), None);
+        assert_eq!(f.anterior(), Some(1));
     }
 
     #[test]
