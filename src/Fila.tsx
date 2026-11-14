@@ -3,6 +3,8 @@ import { invoke } from "@tauri-apps/api/core";
 import type { MediaRow } from "./Biblioteca";
 import { formatarDuracao } from "./Biblioteca";
 import { useMenuMusica } from "./MenuMusica";
+import Capa from "./Capa";
+import { GripVertical, Trash2, Volume2, X } from "lucide-react";
 
 export type VisaoFila = {
   atual: MediaRow | null;
@@ -28,40 +30,55 @@ function Item({
   arraste,
   classe = "",
   onMenu,
+  atual = false,
 }: {
   m: MediaRow;
   onRemover?: () => void;
   arraste?: Arraste;
   classe?: string;
   onMenu?: (e: React.MouseEvent) => void;
+  atual?: boolean;
 }) {
   return (
     <li
-      className={(m.missing ? "ausente " : "") + classe}
+      className={(m.missing ? "ausente " : "") + (atual ? "atual " : "") + classe}
       title={m.missing ? "Arquivo não encontrado" : arraste ? "Arraste para reordenar" : undefined}
       {...arraste}
       onContextMenu={onMenu}
     >
       {arraste && (
         <span className="alca" aria-hidden="true">
-          ⠿
+          <GripVertical size={14} />
         </span>
       )}
+      <Capa id={m.id} className="capa-fila" />
       <div className="faixa">
         <strong>{m.title ?? "Sem título"}</strong>
         <span>{m.artist ?? "Artista desconhecido"}</span>
       </div>
-      <span className="tempo">{formatarDuracao(m.duration_ms)}</span>
+      {atual ? (
+        <Volume2 size={16} className="tocando-icone" aria-label="Tocando agora" />
+      ) : (
+        <span className="tempo">{formatarDuracao(m.duration_ms)}</span>
+      )}
       {onRemover && (
         <button className="remover" onClick={onRemover} aria-label="Remover da fila" title="Remover da fila">
-          ×
+          <X size={14} />
         </button>
       )}
     </li>
   );
 }
 
-export default function Fila({ fila, onErro }: { fila: VisaoFila | null; onErro: (m: string) => void }) {
+export default function Fila({
+  fila,
+  onErro,
+  titulo = "Fila",
+}: {
+  fila: VisaoFila | null;
+  onErro: (m: string) => void;
+  titulo?: string;
+}) {
   const vazia = !fila || (fila.manual.length === 0 && fila.contexto.length === 0);
   const [arrastando, setArrastando] = useState<number | null>(null);
   const abrirMenu = useMenuMusica();
@@ -100,10 +117,10 @@ export default function Fila({ fila, onErro }: { fila: VisaoFila | null; onErro:
   return (
     <aside className="painel-fila" aria-label="Fila de reprodução">
       <div className="fila-topo">
-        <h2>Fila</h2>
+        <h2>{titulo}</h2>
         {!vazia && (
-          <button onClick={() => acao("queue_clear")} title="Tira tudo o que viria depois da música atual">
-            Limpar fila
+          <button className="limpar-fila" onClick={() => acao("queue_clear")} title="Tira tudo o que viria depois da música atual">
+            Limpar fila <Trash2 size={14} aria-hidden="true" />
           </button>
         )}
       </div>
@@ -111,7 +128,7 @@ export default function Fila({ fila, onErro }: { fila: VisaoFila | null; onErro:
         <section>
           <h3>Tocando agora</h3>
           <ul>
-            <Item m={fila.atual} onMenu={(e) => abrirMenu(e, fila.atual!.id)} />
+            <Item m={fila.atual} atual onMenu={(e) => abrirMenu(e, fila.atual!.id)} />
           </ul>
         </section>
       )}

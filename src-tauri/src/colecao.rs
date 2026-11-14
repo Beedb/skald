@@ -256,6 +256,64 @@ pub fn ids_do_artista(conn: &Connection, nome: Option<&str>) -> rusqlite::Result
     ids.collect()
 }
 
+/// "Relacionados" do player completo: o resto do álbum e mais músicas dos artistas da faixa.
+#[derive(Serialize, Debug)]
+pub struct Relacionadas {
+    pub album: Vec<MediaRow>,
+    pub artistas: Vec<String>,
+    pub do_artista: Vec<MediaRow>,
+}
+
+const MAX_DO_ARTISTA: usize = 20;
+
+pub fn relacionadas(conn: &Connection, id: i64) -> rusqlite::Result<Relacionadas> {
+    let (album, album_artist, artista, caminho): (Option<String>, Option<String>, Option<String>, String) = conn
+        .query_row("SELECT album, album_artist, artist, path FROM media WHERE id = ?1", [id], |r| {
+            Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?))
+        })?;
+    let pasta = |p: &str| std::path::Path::new(p).parent().map(|x| x.to_path_buf());
+    let norm = |s: &str| crate::search::normalizar(s.trim());
+
+    // Mesmo álbum: mesmo nome e (mesma pasta ou mesmo artista do álbum), como em `library::mesmo_album`.
+    let mut ids_album = Vec::new();
+    if let Some(nome) = &album {
+        let mut stmt = conn.prepare_cached(
+            "SELECT id, album_artist, path FROM media
+             WHERE category = 'music' AND album = ?1 COLLATE SEMACENTO AND id <> ?2
+             ORDER BY disc_number, track_number, title COLLATE SEMACENTO, id",
+        )?;
+        let linhas = stmt.query_map(params![nome, id], |r| Ok((r.get::<_, i64>(0)?, r.get::<_, Option<String>>(1)?, r.get::<_, String>(2)?)))?;
+        for l in linhas {
+            let (outro, aa, p) = l?;
+            let mesmo_artista = matches!((&album_artist, &aa), (Some(x), Some(y)) if norm(x) == norm(y));
+            if mesmo_artista || pasta(&p) == pasta(&caminho) {
+                ids_album.push(outro);
+            }
+        }
+    }
+
+    let apelidos = crate::artistas::mapa(conn);
+    let artistas = artista.as_deref().map(|a| crate::artistas::separar_mapeado(a, &apelidos)).unwrap_or_default();
+    let mut vistos: std::collections::HashSet<i64> = ids_album.iter().copied().collect();
+    vistos.insert(id);
+    let mut ids_artista = Vec::new();
+    for nome in &artistas {
+        for outro in ids_do_artista(conn, Some(nome))? {
+            if ids_artista.len() == MAX_DO_ARTISTA {
+                break;
+            }
+            if vistos.insert(outro) {
+                ids_artista.push(outro);
+            }
+        }
+    }
+    Ok(Relacionadas {
+        album: crate::library::obter_varios(conn, &ids_album)?,
+        artistas,
+        do_artista: crate::library::obter_varios(conn, &ids_artista)?,
+    })
+}
+
 #[cfg(test)]
 mod testes {
     use super::*;
@@ -277,6 +335,10 @@ mod testes {
         assert_eq!(albuns_geo, ["Invasão", "Solo"]);
         let f = faixas_do_album(&conn, &ChaveAlbum { album: Some("Invasão".into()), grupo: "/m/Invasão/".into() }).unwrap();
         assert_eq!(f[0].artistas, ["Rodrigo Zin", "GEO"]);
+        let r = relacionadas(&conn, 1).unwrap();
+        assert_eq!(r.album.iter().map(|m| m.id).collect::<Vec<_>>(), [2]);
+        assert_eq!(r.artistas, ["Rodrigo Zin", "GEO"]);
+        assert_eq!(r.do_artista.iter().map(|m| m.id).collect::<Vec<_>>(), [3], "sem repetir as do álbum");
     }
 
     #[test]

@@ -693,6 +693,13 @@ fn home_data(db: State<db::Db>) -> Result<Inicio, String> {
     })
 }
 
+/// Resto do álbum e mais músicas dos artistas da faixa (aba "Relacionados" do player).
+#[tauri::command]
+fn related_tracks(db: State<db::Db>, id: i64) -> Result<colecao::Relacionadas, String> {
+    let conn = db.0.lock().map_err(erro_db)?;
+    colecao::relacionadas(&conn, id).map_err(|e| e.to_string())
+}
+
 /// Toca um mix da tela inicial (geral, gênero ou artista), sorteado na hora.
 #[tauri::command]
 fn play_mix(app: AppHandle, fila: State<FilaState>, tipo: mixes::Tipo, valor: Option<String>) -> Result<(), String> {
@@ -1649,6 +1656,7 @@ pub fn run() {
             album_tracks,
             play_album,
             play_mix,
+            related_tracks,
             play_artist,
             cover_thumb,
             toggle_like,

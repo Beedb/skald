@@ -1,8 +1,11 @@
 import Fila, { type VisaoFila } from "./Fila";
 import { Capa, Controles, Progresso, Volume, type Reproducao } from "./PlayerBar";
 import { useState } from "react";
+import { ArrowLeft, Ellipsis } from "lucide-react";
 import { BotaoCurtir } from "./Biblioteca";
 import Letra from "./Letra";
+import Relacionados from "./Relacionados";
+import { useMenuMusica } from "./MenuMusica";
 
 export type Detalhes = {
   id: number;
@@ -57,60 +60,94 @@ type Props = {
   onVoltar: () => void;
 };
 
+type Aba = "fila" | "letra" | "relacionados" | "sobre";
+const ABAS: [Aba, string][] = [
+  ["fila", "Fila"],
+  ["letra", "Letra"],
+  ["relacionados", "Relacionados"],
+  ["sobre", "Sobre"],
+];
+
 export default function PlayerCompleto({ r, fila, detalhes, onVoltar }: Props) {
   const m = r.musica;
-  const [aba, setAba] = useState<"fila" | "letra">("fila");
+  const [aba, setAba] = useState<Aba>("fila");
+  const abrirMenu = useMenuMusica();
+  const info = detalhes && detalhes.id === m?.id ? informacoes(detalhes) : [];
   return (
     <section className="player-completo" aria-label="Player completo">
-      <button className="voltar" onClick={onVoltar}>
-        ← Voltar à biblioteca
+      {r.capa && <div className="pc-fundo" style={{ backgroundImage: `url("${r.capa}")` }} aria-hidden="true" />}
+      <button className="pc-voltar icone-botao" onClick={onVoltar} aria-label="Voltar" title="Voltar">
+        <ArrowLeft size={22} />
       </button>
 
       <div className="pc-corpo">
         <div className="pc-principal">
-          <Capa src={r.capa} className="capa-grande" />
-          <div className="pc-titulos">
-            <h2>
-              {m ? (m.title ?? "Sem título") : "Nada tocando"}
-              {m && <BotaoCurtir curtida={r.curtida} onClick={r.onCurtir} />}
-            </h2>
-            {m && <p className="pc-artista">{m.artist ?? "Artista desconhecido"}</p>}
-            {m?.album && <p className="pc-album">{m.album}</p>}
+          <div className="pc-topo">
+            <Capa src={r.capa} className="capa-grande" />
+            <div className="pc-titulos">
+              <h1>{m ? (m.title ?? "Sem título") : "Nada tocando"}</h1>
+              {m && <p className="pc-artista">{m.artist ?? "Artista desconhecido"}</p>}
+              {m?.album && <p className="pc-album">{m.album}</p>}
+              {m && (
+                <div className="pc-acoes">
+                  <BotaoCurtir curtida={r.curtida} onClick={r.onCurtir} />
+                  <button
+                    className="icone-botao"
+                    onClick={(e) => abrirMenu(e, m.id)}
+                    aria-label="Mais opções"
+                    title="Mais opções"
+                  >
+                    <Ellipsis size={20} />
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
-          <Progresso r={r} />
-          <div className="pc-controles">
-            <Controles r={r} />
-            <Volume r={r} />
+          <div className="pc-base">
+            <Progresso r={r} />
+            <div className="pc-controles">
+              <span />
+              <Controles r={r} grande />
+              <Volume r={r} />
+            </div>
           </div>
         </div>
 
         <div className="pc-lateral">
           <div className="abas" role="tablist">
-            <button role="tab" aria-selected={aba === "fila"} className={aba === "fila" ? "ativa" : ""} onClick={() => setAba("fila")}>
-              Fila
-            </button>
-            <button role="tab" aria-selected={aba === "letra"} className={aba === "letra" ? "ativa" : ""} onClick={() => setAba("letra")}>
-              Letra
-            </button>
+            {ABAS.map(([id, rotulo]) => (
+              <button
+                key={id}
+                role="tab"
+                aria-selected={aba === id}
+                className={aba === id ? "ativa" : ""}
+                onClick={() => setAba(id)}
+              >
+                {rotulo}
+              </button>
+            ))}
           </div>
-          {aba === "fila" ? (
-            <Fila fila={fila} onErro={r.onErro} />
-          ) : (
-            <Letra id={m?.id ?? null} posicaoMs={r.estado?.posicao_ms ?? 0} onErro={r.onErro} />
-          )}
-          {detalhes && detalhes.id === m?.id && (
-            <section className="pc-info">
-              <h3>Informações</h3>
-              <dl>
-                {informacoes(detalhes).map(([rotulo, valor]) => (
-                  <div key={rotulo}>
-                    <dt>{rotulo}</dt>
-                    <dd>{valor}</dd>
-                  </div>
-                ))}
-              </dl>
-            </section>
-          )}
+          <div className="pc-aba">
+            {aba === "fila" && <Fila fila={fila} onErro={r.onErro} titulo="Fila de reprodução" />}
+            {aba === "letra" && <Letra id={m?.id ?? null} posicaoMs={r.estado?.posicao_ms ?? 0} onErro={r.onErro} />}
+            {aba === "relacionados" && <Relacionados id={m?.id ?? null} onErro={r.onErro} />}
+            {aba === "sobre" &&
+              (info.length > 0 ? (
+                <section className="pc-info">
+                  <h3>Sobre esta música</h3>
+                  <dl>
+                    {info.map(([rotulo, valor]) => (
+                      <div key={rotulo}>
+                        <dt>{rotulo}</dt>
+                        <dd>{valor}</dd>
+                      </div>
+                    ))}
+                  </dl>
+                </section>
+              ) : (
+                <p className="dica">Nada tocando.</p>
+              ))}
+          </div>
         </div>
       </div>
     </section>
