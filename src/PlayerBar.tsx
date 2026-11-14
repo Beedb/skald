@@ -34,7 +34,7 @@ const ROTULO_REPETIR: Record<Repetir, string> = {
   faixa: "Repetir: faixa",
 };
 
-const ativo = (r: Reproducao) => r.estado !== null && r.estado.estado !== "parado" && r.musica !== null;
+export const ativo = (r: Reproducao) => r.estado !== null && r.estado.estado !== "parado" && r.musica !== null;
 
 export function Capa({ src, className }: { src: string | null; className: string }) {
   return src ? (

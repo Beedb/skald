@@ -58,45 +58,20 @@ h2 {
   font-weight: 600;
 }
 
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--linha) transparent;
+}
+
 body {
   margin: 0;
   background: var(--fundo);
 }
 
-.app {
-  height: 100vh;
-  display: flex;
-  flex-direction: column;
-  padding: 1rem 1.5rem 0;
-  box-sizing: border-box;
-}
 
-.topo {
-  display: flex;
-  align-items: center;
-  gap: 1rem;
-}
 
-.topo h1 {
-  margin: 0;
-  font-size: 1.5rem;
-}
 
-.contagem {
-  opacity: 0.7;
-}
 
-.busca {
-  flex: 1;
-  max-width: 32rem;
-  margin-left: auto;
-  padding: 0.4rem 0.75rem;
-  font: inherit;
-  border-radius: 6px;
-  border: 1px solid var(--linha);
-  background: transparent;
-  color: inherit;
-}
 
 .resumo p {
   margin: 0.5rem 0;
@@ -106,17 +81,11 @@ body {
   opacity: 0.7;
 }
 
-.conteudo {
-  flex: 1;
-  min-height: 0;
-  display: flex;
-  gap: 1rem;
-  margin-top: 1rem;
-}
 
 .area {
   flex: 1;
   min-width: 0;
+  min-height: 0;
   display: flex;
   flex-direction: column;
 }
@@ -125,26 +94,9 @@ body {
   display: none;
 }
 
-.categorias {
-  display: flex;
-  gap: 0.4rem;
-  margin-bottom: 0.6rem;
-}
 
-.categorias button {
-  border-radius: 999px;
-  padding: 0.25rem 0.8rem;
-}
 
-.categorias button.ativa {
-  background: var(--acento);
-  color: var(--acento-txt);
-}
 
-.categorias button:disabled {
-  opacity: 0.45;
-  cursor: default;
-}
 
 .biblioteca {
   flex: 1;
@@ -201,112 +153,21 @@ body {
   text-overflow: ellipsis;
 }
 
-.lateral {
-  width: 13rem;
-  flex-shrink: 0;
-  overflow-y: auto;
-  display: flex;
-  flex-direction: column;
-  gap: 0.15rem;
-  padding: 0.5rem;
-  border-radius: var(--raio);
-  background: var(--lateral);
-  color: var(--lateral-txt);
-}
 
-.lateral h2 {
-  color: inherit;
-  margin: 1rem 0 0.25rem;
-  font-size: 0.8rem;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  opacity: 0.6;
-}
 
-.lateral ul {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-}
 
-.item-lateral {
-  width: 100%;
-  display: flex;
-  gap: 0.5rem;
-  align-items: center;
-  padding: 0.35rem 0.5rem;
-  text-align: left;
-  font: inherit;
-  color: inherit;
-  background: none;
-  border: none;
-  border-radius: 6px;
-  cursor: pointer;
-}
 
-.item-lateral:hover {
-  background: color-mix(in srgb, var(--lateral-ativo) 10%, transparent);
-}
 
-.item-lateral.ativo {
-  background: color-mix(in srgb, var(--lateral-ativo) 16%, transparent);
-  color: var(--lateral-ativo);
-  font-weight: 600;
-}
 
-.item-lateral .nome {
-  flex: 1;
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-}
 
-.item-lateral .qtd {
-  font-size: 0.8rem;
-  opacity: 0.6;
-}
 
-.item-lateral .icone {
-  width: 1.3rem;
-  flex-shrink: 0;
-  text-align: center;
-}
 
-.item-lateral.alternar {
-  opacity: 0.7;
-}
 
-.lateral {
-  transition: width 0.15s ease;
-}
 
-.lateral.recolhida {
-  width: 3rem;
-  padding: 0.5rem 0.35rem;
-  overflow-x: hidden;
-}
 
-.lateral.recolhida .nome,
-.lateral.recolhida .qtd {
-  display: none;
-}
 
-.lateral.recolhida .item-lateral {
-  justify-content: center;
-  padding: 0.35rem 0;
-}
 
-.lateral.recolhida h2 {
-  height: 1px;
-  margin: 0.6rem 0.3rem;
-  overflow: hidden;
-  color: transparent;
-  background: color-mix(in srgb, var(--lateral-txt) 30%, transparent);
-}
 
-.item-lateral.criar {
-  opacity: 0.8;
-}
 
 .nova-playlist,
 .pl-renomear {
@@ -2080,4 +1941,367 @@ button.primario {
 
 .chip.marcado {
   border-color: var(--acento);
+}
+
+/* ---------- Estrutura: lateral | principal | fila, player embaixo ---------- */
+
+.app {
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  background:
+    radial-gradient(ellipse at 15% 0%, color-mix(in srgb, var(--acento) 9%, transparent), transparent 55%),
+    var(--fundo);
+}
+
+.conteudo {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  gap: 0;
+}
+
+.principal {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 0.9rem 1.5rem 0;
+}
+
+.topo {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.busca-caixa {
+  flex: 1;
+  max-width: 34rem;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0 0.9rem;
+  border-radius: 999px;
+  border: 1px solid var(--linha);
+  background: color-mix(in srgb, var(--card) 85%, transparent);
+  color: var(--fraco);
+  transition: border-color 0.15s ease;
+}
+
+.busca-caixa:focus-within {
+  border-color: var(--borda);
+  box-shadow: var(--sombra);
+}
+
+.busca-caixa .busca {
+  flex: 1;
+  min-width: 0;
+  padding: 0.5rem 0;
+  font: inherit;
+  border: none;
+  background: transparent;
+  color: var(--texto);
+  outline: none;
+}
+
+.topo-acoes {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.topo-acoes > button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.35rem 0.7rem;
+  font-size: 0.9rem;
+}
+
+.topo-acoes .pastas summary {
+  font-size: 0.9rem;
+  white-space: nowrap;
+}
+
+.contagem {
+  color: var(--fraco);
+  font-size: 0.85rem;
+  white-space: nowrap;
+}
+
+/* ---------- Lateral ---------- */
+
+.lateral {
+  width: 15rem;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 0.9rem 0.7rem 0.7rem;
+  background: var(--lateral);
+  color: var(--lateral-txt);
+  border-right: 1px solid var(--linha);
+  transition: width 0.15s ease;
+}
+
+.marca {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 0.3rem 0.9rem;
+}
+
+.marca-nome {
+  font-family: var(--fonte-marca);
+  font-weight: 700;
+  font-size: 1.7rem;
+  line-height: 1;
+  color: var(--acento);
+  letter-spacing: 0.04em;
+  text-shadow: var(--sombra);
+}
+
+.alternar-lateral {
+  display: grid;
+  place-items: center;
+  padding: 0.3rem;
+  background: none;
+  border: none;
+  color: var(--lateral-txt);
+  opacity: 0.7;
+}
+
+.lateral-rolagem {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+}
+
+.lateral ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.item-lateral {
+  width: 100%;
+  display: flex;
+  gap: 0.7rem;
+  align-items: center;
+  padding: 0.45rem 0.6rem;
+  text-align: left;
+  font: inherit;
+  font-size: 0.95rem;
+  color: inherit;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: var(--raio-p);
+  cursor: pointer;
+}
+
+:where(.item-lateral:not(:disabled)):hover {
+  background: color-mix(in srgb, var(--lateral-ativo) 7%, transparent);
+  color: var(--lateral-ativo);
+}
+
+.item-lateral:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.item-lateral.ativo {
+  background: linear-gradient(90deg, color-mix(in srgb, var(--acento) 45%, transparent), color-mix(in srgb, var(--acento) 12%, transparent));
+  border-color: color-mix(in srgb, var(--acento) 55%, transparent);
+  color: var(--lateral-ativo);
+  font-weight: 600;
+}
+
+.item-lateral .nome {
+  flex: 1;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.item-lateral .qtd {
+  font-size: 0.75rem;
+  opacity: 0.6;
+}
+
+.item-lateral .icone {
+  width: 1.3rem;
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+}
+
+.item-lateral .inicial {
+  width: 1.15rem;
+  height: 1.15rem;
+  display: grid;
+  place-items: center;
+  font-size: 0.7rem;
+  font-weight: 700;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--acento) 25%, transparent);
+  color: var(--lateral-ativo);
+}
+
+.item-lateral.criar {
+  opacity: 0.75;
+}
+
+.grupo-lateral {
+  display: flex;
+  align-items: center;
+}
+
+.abrir-grupo {
+  display: grid;
+  place-items: center;
+  padding: 0.3rem;
+  background: none;
+  border: none;
+  color: var(--lateral-txt);
+  transform: rotate(-90deg);
+  transition: transform 0.15s ease;
+}
+
+.abrir-grupo.aberto {
+  transform: none;
+}
+
+.subitens {
+  display: flex;
+  flex-direction: column;
+  gap: 0.05rem;
+  margin-left: 1.1rem;
+  padding-left: 0.4rem;
+  border-left: 1px solid var(--linha);
+}
+
+.subitens .item-lateral {
+  font-size: 0.88rem;
+  padding: 0.32rem 0.5rem;
+}
+
+.divisor-lateral {
+  height: 1px;
+  margin: 0.6rem 0.4rem;
+  background: var(--linha);
+}
+
+.lateral-base {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding-top: 0.6rem;
+  border-top: 1px solid var(--linha);
+}
+
+.lateral-tocando {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.4rem;
+  border-radius: var(--raio-p);
+  border: 1px solid color-mix(in srgb, var(--acento) 60%, transparent);
+  background: color-mix(in srgb, var(--acento) 8%, var(--card));
+  box-shadow: var(--sombra);
+}
+
+.lateral-tocando-faixa {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0;
+  text-align: left;
+  background: none;
+  border: none;
+  color: inherit;
+}
+
+:where(.lateral-tocando-faixa):hover {
+  background: none;
+}
+
+.lateral-tocando .faixa {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  line-height: 1.25;
+}
+
+.lateral-tocando .faixa strong,
+.lateral-tocando .faixa span {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.lateral-tocando .faixa strong {
+  color: var(--forte);
+  font-size: 0.85rem;
+}
+
+.lateral-tocando .faixa span {
+  font-size: 0.75rem;
+}
+
+.capa-lateral {
+  width: 2.5rem;
+  height: 2.5rem;
+}
+
+.lateral-tocando-play {
+  display: grid;
+  place-items: center;
+  padding: 0.35rem;
+  background: none;
+  border: none;
+  color: var(--forte);
+}
+
+.lateral.recolhida {
+  width: 3.6rem;
+  padding: 0.9rem 0.4rem 0.7rem;
+}
+
+.lateral.recolhida .marca {
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0 0 0.9rem;
+}
+
+.lateral.recolhida .nome,
+.lateral.recolhida .qtd,
+.lateral.recolhida .abrir-grupo,
+.lateral.recolhida .lateral-tocando .faixa {
+  display: none;
+}
+
+.lateral.recolhida .item-lateral {
+  justify-content: center;
+  padding: 0.45rem 0;
+}
+
+.lateral.recolhida .subitens {
+  margin-left: 0;
+  padding-left: 0;
+  border-left: none;
+}
+
+.lateral.recolhida .lateral-tocando {
+  flex-direction: column;
+  padding: 0.3rem;
 }

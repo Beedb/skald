@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { FilePlus, FolderPlus, Search } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 import { listen } from "@tauri-apps/api/event";
@@ -11,7 +12,6 @@ import PlaylistView from "./PlaylistView";
 import Historico from "./Historico";
 import Pastas from "./Pastas";
 import Duplicados from "./Duplicados";
-import Categorias from "./Categorias";
 import { Albuns, AlbumView, Artistas, ArtistaView } from "./Colecao";
 import Inicio from "./Inicio";
 import { esquecerMiniatura, miniatura } from "./Capa";
@@ -335,72 +335,6 @@ function App() {
       onErro={mostrarErro}
     >
     <main className="app">
-      <header className="topo">
-        <h1>Skáld</h1>
-        {status && (
-          <span className="contagem" title={`Banco: ${status.path} (esquema v${status.schema_version})`}>
-            {buscaAtiva ? `${total} de ` : ""}
-            {status.media_count} {status.media_count === 1 ? "música" : "músicas"}
-          </span>
-        )}
-        <input
-          ref={campoBusca}
-          className="busca"
-          type="search"
-          placeholder="Buscar por título, artista, álbum ou gênero (Ctrl+F)"
-          aria-label="Buscar"
-          value={busca}
-          onChange={(e) => {
-            setBusca(e.target.value);
-            setTela("biblioteca");
-            setVista({ tipo: "biblioteca" });
-          }}
-          onKeyDown={(e) => {
-            if (e.key === "Escape") {
-              e.stopPropagation();
-              setBusca("");
-            }
-          }}
-        />
-        <button onClick={importarPasta} disabled={importando}>
-          {importando ? "Importando…" : "Importar pasta"}
-        </button>
-        <button onClick={importarArquivos} disabled={importando} title="Adiciona arquivos soltos, sem monitorar a pasta deles">
-          Importar arquivos
-        </button>
-        <Pastas versao={versao} onErro={setErro} />
-        <Duplicados versao={versao} onErro={setErro} />
-      </header>
-      {aviso && (
-        <p className="aviso">
-          {aviso}{" "}
-          <button className="fechar-aviso" onClick={() => setAviso(null)} aria-label="Fechar aviso" title="Fechar aviso">
-            ✕
-          </button>
-        </p>
-      )}
-      {erro && <p className="erro">Erro: {erro}</p>}
-      {!erro && !status && <p>Conectando ao banco de dados…</p>}
-      {resumo && (
-        <div className="resumo">
-          <p>
-            {resumo.encontrados} arquivo(s) de áudio encontrado(s): {resumo.adicionados} adicionado(s),{" "}
-            {resumo.existentes} já estava(m) na biblioteca
-            {resumo.movidos > 0 && `, ${resumo.movidos} renomeada(s) ou movida(s) reconhecida(s)`}
-            {resumo.duplicados > 0 && `, ${resumo.duplicados} grupo(s) de duplicados (veja "Duplicados")`}.
-          </p>
-          {resumo.falhas.length > 0 && (
-            <details>
-              <summary>{resumo.falhas.length} arquivo(s) não puderam ser lidos</summary>
-              <ul>
-                {resumo.falhas.map((f) => (
-                  <li key={f}>{f}</li>
-                ))}
-              </ul>
-            </details>
-          )}
-        </div>
-      )}
       <div className="conteudo" hidden={tela === "player"}>
         <Lateral
           vista={vista}
@@ -410,121 +344,196 @@ function App() {
             setTela("biblioteca");
           }}
           onErro={setErro}
+          r={r}
+          onAbrirPlayer={() => setTela("player")}
         />
-        <div className="area" hidden={vista.tipo !== "biblioteca"}>
-          <Categorias />
-          {status && (
-            <Biblioteca
-              total={total}
-              versao={versao}
-              busca={buscaAtiva}
-              tocandoId={estado && estado.estado !== "parado" ? estado.id : null}
-              onTocar={tocar}
-              curtidas={curtidas}
-              onCurtir={curtir}
-              visivel={tela === "biblioteca" && vista.tipo === "biblioteca"}
-            />
+        <div className="principal">
+          <header className="topo">
+            <label className="busca-caixa">
+              <Search size={16} aria-hidden="true" />
+              <input
+                ref={campoBusca}
+                className="busca"
+                type="search"
+                placeholder="Buscar músicas, artistas, álbuns… (Ctrl+F)"
+                aria-label="Buscar"
+                value={busca}
+                onChange={(e) => {
+                  setBusca(e.target.value);
+                  setTela("biblioteca");
+                  setVista({ tipo: "biblioteca" });
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Escape") {
+                    e.stopPropagation();
+                    setBusca("");
+                  }
+                }}
+              />
+            </label>
+            <div className="topo-acoes">
+              {status && (
+                <span className="contagem" title={`Banco: ${status.path} (esquema v${status.schema_version})`}>
+                  {buscaAtiva ? `${total} de ` : ""}
+                  {status.media_count} {status.media_count === 1 ? "música" : "músicas"}
+                </span>
+              )}
+              <button onClick={importarPasta} disabled={importando}>
+                <FolderPlus size={16} aria-hidden="true" />
+                {importando ? "Importando…" : "Importar pasta"}
+              </button>
+              <button onClick={importarArquivos} disabled={importando} title="Adiciona arquivos soltos, sem monitorar a pasta deles">
+                <FilePlus size={16} aria-hidden="true" />
+                Arquivos
+              </button>
+              <Pastas versao={versao} onErro={setErro} />
+              <Duplicados versao={versao} onErro={setErro} />
+            </div>
+          </header>
+          {aviso && (
+            <p className="aviso">
+              {aviso}{" "}
+              <button className="fechar-aviso" onClick={() => setAviso(null)} aria-label="Fechar aviso" title="Fechar aviso">
+                ✕
+              </button>
+            </p>
+          )}
+          {erro && <p className="erro">Erro: {erro}</p>}
+          {!erro && !status && <p>Conectando ao banco de dados…</p>}
+          {resumo && (
+            <div className="resumo">
+              <p>
+                {resumo.encontrados} arquivo(s) de áudio encontrado(s): {resumo.adicionados} adicionado(s),{" "}
+                {resumo.existentes} já estava(m) na biblioteca
+                {resumo.movidos > 0 && `, ${resumo.movidos} renomeada(s) ou movida(s) reconhecida(s)`}
+                {resumo.duplicados > 0 && `, ${resumo.duplicados} grupo(s) de duplicados (veja "Duplicados")`}.
+              </p>
+              {resumo.falhas.length > 0 && (
+                <details>
+                  <summary>{resumo.falhas.length} arquivo(s) não puderam ser lidos</summary>
+                  <ul>
+                    {resumo.falhas.map((f) => (
+                      <li key={f}>{f}</li>
+                    ))}
+                  </ul>
+                </details>
+              )}
+            </div>
+          )}
+          <div className="area" hidden={vista.tipo !== "biblioteca"}>
+            {status && (
+              <Biblioteca
+                total={total}
+                versao={versao}
+                busca={buscaAtiva}
+                tocandoId={estado && estado.estado !== "parado" ? estado.id : null}
+                onTocar={tocar}
+                curtidas={curtidas}
+                onCurtir={curtir}
+                visivel={tela === "biblioteca" && vista.tipo === "biblioteca"}
+              />
+            )}
+          </div>
+          {vista.tipo === "completar" && (
+            <div className="area">
+              <Completar
+                versao={versao}
+                onMudou={(mensagem) => {
+                  setAviso(mensagem);
+                  setVersao((v) => v + 1);
+                }}
+                onErro={setErro}
+              />
+            </div>
+          )}
+          {vista.tipo === "historico" && (
+            <div className="area">
+              <Historico
+                versao={versaoHistorico}
+                visivel={tela === "biblioteca"}
+                onTocar={(id) => invoke("play_media", { id, busca: "" }).catch((e) => mostrarErro(String(e)))}
+              />
+            </div>
+          )}
+          {vista.tipo === "estatisticas" && (
+            <div className="area">
+              <Estatisticas
+                versao={versaoHistorico}
+                onErro={setErro}
+                onTocar={(id) => invoke("play_media", { id, busca: "" }).catch((e) => mostrarErro(String(e)))}
+              />
+            </div>
+          )}
+          {vista.tipo === "inicio" && (
+            <div className="area">
+              <Inicio
+                versao={versao + versaoHistorico}
+                playlists={playlists}
+                totalMusicas={status?.media_count ?? 0}
+                onPlaylist={(id) => setVista({ tipo: "playlist", id })}
+                onAlbum={(chave) => setVista({ tipo: "album", chave, de: vista })}
+                onBiblioteca={() => setVista({ tipo: "biblioteca" })}
+                onTocarMusica={(id) => invoke("play_media", { id, busca: "" }).catch((e) => mostrarErro(String(e)))}
+                onErro={setErro}
+              />
+            </div>
+          )}
+          {vista.tipo === "artistas" && (
+            <div className="area">
+              <Artistas
+                versao={versao}
+                onAbrir={(nome) => setVista({ tipo: "artista", nome })}
+                onMudou={() => setVersao((v) => v + 1)}
+                onErro={setErro}
+              />
+            </div>
+          )}
+          {vista.tipo === "artista" && (
+            <div className="area">
+              <ArtistaView
+                nome={vista.nome}
+                versao={versao}
+                onAbrirAlbum={(chave) => setVista({ tipo: "album", chave, de: vista })}
+                onVoltar={() => setVista({ tipo: "artistas" })}
+                onErro={setErro}
+              />
+            </div>
+          )}
+          {vista.tipo === "albuns" && (
+            <div className="area">
+              <Albuns versao={versao} onAbrir={(chave) => setVista({ tipo: "album", chave, de: vista })} onErro={setErro} />
+            </div>
+          )}
+          {vista.tipo === "album" && (
+            <div className="area">
+              <AlbumView
+                chave={vista.chave}
+                versao={versao}
+                tocandoId={estado && estado.estado !== "parado" ? estado.id : null}
+                onArtista={(nome) => setVista({ tipo: "artista", nome })}
+                onEditar={setLoteIds}
+                onVoltar={() => setVista(vista.de)}
+                onErro={setErro}
+              />
+            </div>
+          )}
+          {vista.tipo === "configuracoes" && (
+            <div className="area">
+              <Configuracoes onErro={setErro} />
+            </div>
+          )}
+          {playlistAtual && (
+            <div className="area">
+              <PlaylistView
+                playlist={playlistAtual}
+                versao={versaoPlaylists}
+                tocandoId={estado && estado.estado !== "parado" ? estado.id : null}
+                onExcluida={() => setVista({ tipo: "biblioteca" })}
+                onErro={setErro}
+              />
+            </div>
           )}
         </div>
-        {vista.tipo === "completar" && (
-          <div className="area">
-            <Completar
-              versao={versao}
-              onMudou={(mensagem) => {
-                setAviso(mensagem);
-                setVersao((v) => v + 1);
-              }}
-              onErro={setErro}
-            />
-          </div>
-        )}
-        {vista.tipo === "historico" && (
-          <div className="area">
-            <Historico
-              versao={versaoHistorico}
-              visivel={tela === "biblioteca"}
-              onTocar={(id) => invoke("play_media", { id, busca: "" }).catch((e) => mostrarErro(String(e)))}
-            />
-          </div>
-        )}
-        {vista.tipo === "estatisticas" && (
-          <div className="area">
-            <Estatisticas
-              versao={versaoHistorico}
-              onErro={setErro}
-              onTocar={(id) => invoke("play_media", { id, busca: "" }).catch((e) => mostrarErro(String(e)))}
-            />
-          </div>
-        )}
-        {vista.tipo === "inicio" && (
-          <div className="area">
-            <Inicio
-              versao={versao + versaoHistorico}
-              playlists={playlists}
-              totalMusicas={status?.media_count ?? 0}
-              onPlaylist={(id) => setVista({ tipo: "playlist", id })}
-              onAlbum={(chave) => setVista({ tipo: "album", chave, de: vista })}
-              onBiblioteca={() => setVista({ tipo: "biblioteca" })}
-              onTocarMusica={(id) => invoke("play_media", { id, busca: "" }).catch((e) => mostrarErro(String(e)))}
-              onErro={setErro}
-            />
-          </div>
-        )}
-        {vista.tipo === "artistas" && (
-          <div className="area">
-            <Artistas
-              versao={versao}
-              onAbrir={(nome) => setVista({ tipo: "artista", nome })}
-              onMudou={() => setVersao((v) => v + 1)}
-              onErro={setErro}
-            />
-          </div>
-        )}
-        {vista.tipo === "artista" && (
-          <div className="area">
-            <ArtistaView
-              nome={vista.nome}
-              versao={versao}
-              onAbrirAlbum={(chave) => setVista({ tipo: "album", chave, de: vista })}
-              onVoltar={() => setVista({ tipo: "artistas" })}
-              onErro={setErro}
-            />
-          </div>
-        )}
-        {vista.tipo === "albuns" && (
-          <div className="area">
-            <Albuns versao={versao} onAbrir={(chave) => setVista({ tipo: "album", chave, de: vista })} onErro={setErro} />
-          </div>
-        )}
-        {vista.tipo === "album" && (
-          <div className="area">
-            <AlbumView
-              chave={vista.chave}
-              versao={versao}
-              tocandoId={estado && estado.estado !== "parado" ? estado.id : null}
-              onArtista={(nome) => setVista({ tipo: "artista", nome })}
-              onEditar={setLoteIds}
-              onVoltar={() => setVista(vista.de)}
-              onErro={setErro}
-            />
-          </div>
-        )}
-        {vista.tipo === "configuracoes" && (
-          <div className="area">
-            <Configuracoes onErro={setErro} />
-          </div>
-        )}
-        {playlistAtual && (
-          <div className="area">
-            <PlaylistView
-              playlist={playlistAtual}
-              versao={versaoPlaylists}
-              tocandoId={estado && estado.estado !== "parado" ? estado.id : null}
-              onExcluida={() => setVista({ tipo: "biblioteca" })}
-              onErro={setErro}
-            />
-          </div>
-        )}
         {filaAberta && <Fila fila={fila} onErro={setErro} />}
       </div>
       {tela === "player" ? (
