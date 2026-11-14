@@ -109,6 +109,7 @@ pub fn open(path: &Path) -> rusqlite::Result<Connection> {
     conn.create_collation("SEMACENTO", |a, b| {
         crate::search::normalizar(a).cmp(&crate::search::normalizar(b))
     })?;
+    crate::artistas::registrar(&conn)?;
     migrate(&mut conn)?;
     crate::search::preencher_pendentes(&mut conn)?;
     Ok(conn)

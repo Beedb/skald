@@ -1579,6 +1579,10 @@ body {
   flex: 1;
 }
 
+.artistas-album {
+  margin: 0;
+}
+
 .info-album {
   display: flex;
   flex-direction: column;

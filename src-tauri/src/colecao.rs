@@ -46,15 +46,19 @@ pub struct Faixa {
     pub media: MediaRow,
     pub track_number: Option<i64>,
     pub disc_number: Option<i64>,
+    /// Créditos separados (para um link por artista).
+    pub artistas: Vec<String>,
 }
 
 pub fn artistas(conn: &Connection) -> rusqlite::Result<Vec<Artista>> {
     let mut stmt = conn.prepare_cached(&format!(
-        "SELECT MIN(artist), COUNT(DISTINCT (COALESCE(album, '') || char(0) || COALESCE(album_artist, {PASTA})) COLLATE SEMACENTO),
-                COUNT(*), MIN(id)
-         FROM media WHERE category = 'music'
-         GROUP BY artist COLLATE SEMACENTO
-         ORDER BY artist IS NULL, artist COLLATE SEMACENTO"
+        "SELECT MIN(a.value), COUNT(DISTINCT (COALESCE(m.album, '') || char(0) || COALESCE(m.album_artist, {pasta})) COLLATE SEMACENTO),
+                COUNT(*), MIN(m.id)
+         FROM media m, json_each(ARTISTAS(m.artist)) a
+         WHERE m.category = 'music'
+         GROUP BY a.value COLLATE SEMACENTO
+         ORDER BY a.value IS NULL, a.value COLLATE SEMACENTO",
+        pasta = PASTA.replace("path", "m.path")
     ))?;
     let linhas = stmt.query_map([], |r| {
         Ok(Artista { nome: r.get(0)?, albuns: r.get(1)?, musicas: r.get(2)?, capa_id: r.get(3)? })
@@ -62,8 +66,9 @@ pub fn artistas(conn: &Connection) -> rusqlite::Result<Vec<Artista>> {
     linhas.collect()
 }
 
-/// Condição "a faixa é do artista" (nome nulo: sem artista).
-const DO_ARTISTA: &str = "((?1 IS NULL AND artist IS NULL) OR artist = ?1 COLLATE SEMACENTO)";
+/// Condição "a faixa tem o artista entre os créditos" (nome nulo: sem artista).
+const DO_ARTISTA: &str = "EXISTS (SELECT 1 FROM json_each(ARTISTAS(artist)) a
+    WHERE (?1 IS NULL AND a.value IS NULL) OR a.value = ?1 COLLATE SEMACENTO)";
 
 /// Álbuns da biblioteca ou, com `artista`, só os que têm faixas dele. Agrupado em Rust
 /// (uma leitura da tabela), com as chaves normalizadas sem acentos nem maiúsculas.
@@ -122,7 +127,11 @@ pub fn albuns(conn: &Connection, artista: Option<Option<&str>>) -> rusqlite::Res
         a.adicionado_em = a.adicionado_em.max(adicionado);
         a.album_artist = a.album_artist.take().or(album_artist);
         if let Some(alvo) = &alvo {
-            a.do_artista |= artist.as_deref().map(normalizar) == *alvo;
+            a.do_artista |= match (artist.as_deref().map(crate::artistas::separar), alvo) {
+                (Some(nomes), Some(alvo)) => nomes.iter().any(|n| normalizar(n) == *alvo),
+                (Some(nomes), None) => nomes.is_empty(),
+                (None, alvo) => alvo.is_none(),
+            };
         }
         a.artistas.push(artist);
         a.ano = a.ano.max(ano);
@@ -191,7 +200,9 @@ pub fn faixas_do_album(conn: &Connection, chave: &ChaveAlbum) -> rusqlite::Resul
          ORDER BY disc_number, track_number, title COLLATE SEMACENTO, id"
     ))?;
     let linhas = stmt.query_map(params![chave.album, chave.grupo], |r| {
-        Ok(Faixa { media: linha(r)?, track_number: r.get(6)?, disc_number: r.get(7)? })
+        let media = linha(r)?;
+        let artistas = media.artist.as_deref().map(crate::artistas::separar).unwrap_or_default();
+        Ok(Faixa { media, track_number: r.get(6)?, disc_number: r.get(7)?, artistas })
     })?;
     linhas.collect()
 }
@@ -209,6 +220,25 @@ pub fn ids_do_artista(conn: &Connection, nome: Option<&str>) -> rusqlite::Result
 #[cfg(test)]
 mod testes {
     use super::*;
+
+    #[test]
+    fn creditos_divididos_contam_para_cada_artista() {
+        let conn = crate::db::open(std::path::Path::new(":memory:")).unwrap();
+        for (id, artista, album) in [(1, "Rodrigo Zin/GEO", "Invasão"), (2, "Rodrigo Zin", "Invasão"), (3, "GEO feat. Hiro", "Solo")] {
+            conn.execute(
+                "INSERT INTO media (id, path, title, artist, album) VALUES (?1, ?2, 't', ?3, ?4)",
+                params![id, format!("/m/{album}/{id}.mp3"), artista, album],
+            )
+            .unwrap();
+        }
+        let nomes: Vec<_> = artistas(&conn).unwrap().into_iter().map(|a| (a.nome.unwrap(), a.musicas)).collect();
+        assert_eq!(nomes, [("GEO".to_string(), 2), ("Hiro".to_string(), 1), ("Rodrigo Zin".to_string(), 2)]);
+        assert_eq!(ids_do_artista(&conn, Some("geo")).unwrap(), [1, 3]);
+        let albuns_geo: Vec<_> = albuns(&conn, Some(Some("GEO"))).unwrap().into_iter().map(|a| a.chave.album.unwrap()).collect();
+        assert_eq!(albuns_geo, ["Invasão", "Solo"]);
+        let f = faixas_do_album(&conn, &ChaveAlbum { album: Some("Invasão".into()), grupo: "/m/Invasão/".into() }).unwrap();
+        assert_eq!(f[0].artistas, ["Rodrigo Zin", "GEO"]);
+    }
 
     #[test]
     fn agrupa_artistas_e_albuns() {

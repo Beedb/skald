@@ -25,6 +25,7 @@ type Faixa = {
   missing: boolean;
   track_number: number | null;
   disc_number: number | null;
+  artistas: string[];
 };
 
 const nomeArtista = (n: string | null) => n ?? "Desconhecido";
@@ -272,9 +273,16 @@ export function AlbumView({
         <div className="info-album">
           <h2>{nomeAlbum(chave.album)}</h2>
           {artistaUnico ? (
-            <button className="link" onClick={() => onArtista(artistaUnico)}>
-              {artistaUnico}
-            </button>
+            <p className="artistas-album">
+              {faixas[0].artistas.map((nome, i) => (
+                <span key={nome}>
+                  {i > 0 && <span className="detalhe"> · </span>}
+                  <button className="link" onClick={() => onArtista(nome)}>
+                    {nome}
+                  </button>
+                </span>
+              ))}
+            </p>
           ) : (
             <p className="detalhe">Vários artistas</p>
           )}

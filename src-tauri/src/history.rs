@@ -151,9 +151,9 @@ pub fn estatisticas(conn: &Connection) -> rusqlite::Result<Estatisticas> {
             (SELECT COALESCE(SUM(listened_ms), 0) FROM play_history WHERE category = 'music'),
             (SELECT COUNT(*) FROM play_history WHERE category = 'music' AND counted = 1),
             (SELECT COUNT(*) FROM (
-                SELECT 1 FROM play_history
-                WHERE category = 'music' AND counted = 1 AND artist IS NOT NULL
-                GROUP BY TRIM(artist) COLLATE SEMACENTO))",
+                SELECT 1 FROM play_history h, json_each(ARTISTAS(h.artist)) a
+                WHERE h.category = 'music' AND h.counted = 1 AND a.value IS NOT NULL
+                GROUP BY TRIM(a.value) COLLATE SEMACENTO))",
         [],
         |r| Ok(Estatisticas { tempo_total_ms: r.get(0)?, musicas_escutadas: r.get(1)?, artistas_distintos: r.get(2)? }),
     )

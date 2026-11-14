@@ -1,3 +1,4 @@
+mod artistas;
 mod colecao;
 mod db;
 mod details;

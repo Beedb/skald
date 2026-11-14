@@ -58,10 +58,14 @@ pub fn periodo_valido(p: &str) -> bool {
 }
 
 /// Ranking agrupado por `chave` (expressão SQL), mostrando `nome`/`detalhe`.
+/// Artistas de cada reprodução (créditos divididos: cada participante conta).
+const COM_ARTISTAS: &str = ", json_each(ARTISTAS(h.artist)) a";
+
 fn ranking(conn: &Connection, periodo: &str, nome: &str, detalhe: &str, chave: &str, limite: u32) -> rusqlite::Result<Vec<Item>> {
+    let juntar = if nome == "a.value" { COM_ARTISTAS } else { "" };
     let sql = format!(
         "SELECT {nome}, {detalhe}, MAX(m.id), SUM(h.counted), SUM(h.listened_ms)
-         FROM play_history h LEFT JOIN media m ON m.id = h.media_id
+         FROM play_history h LEFT JOIN media m ON m.id = h.media_id{juntar}
          WHERE {NO_PERIODO} AND {nome} IS NOT NULL AND TRIM({nome}) <> ''
          GROUP BY {chave}
          HAVING SUM(h.counted) > 0
@@ -95,7 +99,7 @@ pub fn painel(conn: &Connection, periodo: &str) -> Result<Painel, String> {
         )
         .map_err(erro)?;
     let artista_album = "COALESCE(m.album_artist, h.artist)";
-    let artistas = ranking(conn, periodo, "h.artist", "NULL", "TRIM(h.artist) COLLATE SEMACENTO", 10).map_err(erro)?;
+    let artistas = ranking(conn, periodo, "a.value", "NULL", "TRIM(a.value) COLLATE SEMACENTO", 10).map_err(erro)?;
     let musicas = ranking(
         conn, periodo, "h.title", "MAX(h.artist)",
         "TRIM(h.title) COLLATE SEMACENTO, TRIM(COALESCE(h.artist, '')) COLLATE SEMACENTO", 10,
@@ -194,10 +198,10 @@ pub fn retrospectiva(conn: &Connection, periodo: &str) -> Result<Retrospectiva, 
     let dominante = conn
         .query_row(
             &format!(
-                "SELECT MAX(h.artist), SUM(h.listened_ms)
-                 FROM play_history h
-                 WHERE {NO_PERIODO} AND h.artist IS NOT NULL AND TRIM(h.artist) <> ''
-                 GROUP BY TRIM(h.artist) COLLATE SEMACENTO
+                "SELECT MAX(a.value), SUM(h.listened_ms)
+                 FROM play_history h{COM_ARTISTAS}
+                 WHERE {NO_PERIODO} AND a.value IS NOT NULL AND TRIM(a.value) <> ''
+                 GROUP BY TRIM(a.value) COLLATE SEMACENTO
                  ORDER BY SUM(h.listened_ms) DESC
                  LIMIT 1"
             ),
