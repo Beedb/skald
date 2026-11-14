@@ -17,15 +17,22 @@ const L = 1080; // largura do PNG
 const M = 64; // margem
 const G = 24; // espaço entre blocos
 const COL = (L - 2 * M - G) / 2;
-const COR = {
-  fundo: "#0d0f14",
-  bloco: "#1a1e27",
-  destaque: "#24365e",
-  texto: "#f2f2f2",
-  suave: "#b9c0cf",
-  rotulo: "#9aa3b5",
-  marca: "#7aa7ff",
-};
+/** Cores do tema atual (variáveis de docs/temas.css), lidas na hora de desenhar. */
+let COR = lerCores();
+function lerCores() {
+  const css = getComputedStyle(document.documentElement);
+  const v = (nome: string) => css.getPropertyValue(nome).trim();
+  return {
+    fundo: v("--fundo"),
+    bloco: v("--card"),
+    destaque: v("--card-3"),
+    vazio: v("--card-2"),
+    texto: v("--forte"),
+    suave: v("--texto"),
+    rotulo: v("--fraco"),
+    marca: v("--acento"),
+  };
+}
 const FONTE = '"Cantarell", "Noto Sans", "DejaVu Sans", sans-serif';
 
 function carregar(src: string | null): Promise<HTMLImageElement | null> {
@@ -91,7 +98,7 @@ function capa(ctx: CanvasRenderingContext2D, img: HTMLImageElement | null, x: nu
     const s = Math.min(img.naturalWidth, img.naturalHeight);
     ctx.drawImage(img, (img.naturalWidth - s) / 2, (img.naturalHeight - s) / 2, s, s, x, y, lado, lado);
   } else {
-    ctx.fillStyle = "#2a3040";
+    ctx.fillStyle = COR.vazio;
     ctx.fillRect(x, y, lado, lado);
     ctx.fillStyle = COR.rotulo;
     ctx.font = `${lado / 2}px ${FONTE}`;
@@ -146,6 +153,7 @@ function lista(
 
 /** Desenha a retrospectiva e devolve o PNG como data URL. */
 export async function gerarPng(d: DadosRetro): Promise<string> {
+  COR = lerCores();
   const [imgDominante, ...resto] = await Promise.all([
     carregar(d.dominante?.capa ?? null),
     ...d.artistas.map((a) => carregar(a.capa ?? null)),

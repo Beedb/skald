@@ -2,20 +2,40 @@
   font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   font-size: 16px;
   line-height: 1.5;
-  color: #111;
-  background-color: #f5f5f5;
-  color-scheme: light dark;
+  color: var(--texto);
+  background-color: var(--fundo);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    color: #eee;
-    background-color: #121212;
-  }
+/* Controles nativos seguem o tema (cores de docs/temas.css). */
+button,
+select,
+input[type="text"],
+input[type="search"],
+input:not([type]) {
+  font: inherit;
+  color: var(--texto);
+  background: var(--card-2);
+  border: 1px solid var(--linha);
+  border-radius: var(--raio-p);
+}
+
+:where(button:not(:disabled)):hover {
+  background: var(--card-3);
+}
+
+input[type="range"] {
+  accent-color: var(--acento);
+}
+
+h1,
+h2,
+h3 {
+  color: var(--forte);
 }
 
 body {
   margin: 0;
+  background: var(--fundo);
 }
 
 .app {
@@ -48,7 +68,7 @@ body {
   padding: 0.4rem 0.75rem;
   font: inherit;
   border-radius: 6px;
-  border: 1px solid rgba(128, 128, 128, 0.4);
+  border: 1px solid var(--linha);
   background: transparent;
   color: inherit;
 }
@@ -92,8 +112,8 @@ body {
 }
 
 .categorias button.ativa {
-  background: var(--acento, Highlight);
-  color: var(--acento-txt, HighlightText);
+  background: var(--acento);
+  color: var(--acento-txt);
 }
 
 .categorias button:disabled {
@@ -116,11 +136,11 @@ body {
   padding: 0.25rem 0;
   list-style: none;
   min-width: 11rem;
-  background: Canvas;
-  color: CanvasText;
-  border: 1px solid rgba(128, 128, 128, 0.4);
+  background: var(--card);
+  color: var(--texto);
+  border: 1px solid var(--linha);
   border-radius: 6px;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+  box-shadow: var(--sombra);
 }
 
 .menu-contexto {
@@ -132,7 +152,7 @@ body {
   height: 1px;
   padding: 0;
   margin: 0.25rem 0;
-  background: rgba(128, 128, 128, 0.3);
+  background: var(--linha);
 }
 
 .menu-contexto .titulo-menu {
@@ -163,11 +183,14 @@ body {
   display: flex;
   flex-direction: column;
   gap: 0.15rem;
-  border-right: 1px solid rgba(128, 128, 128, 0.3);
-  padding-right: 0.75rem;
+  padding: 0.5rem;
+  border-radius: var(--raio);
+  background: var(--lateral);
+  color: var(--lateral-txt);
 }
 
 .lateral h2 {
+  color: inherit;
   margin: 1rem 0 0.25rem;
   font-size: 0.8rem;
   text-transform: uppercase;
@@ -197,11 +220,12 @@ body {
 }
 
 .item-lateral:hover {
-  background: rgba(128, 128, 128, 0.15);
+  background: color-mix(in srgb, var(--lateral-ativo) 10%, transparent);
 }
 
 .item-lateral.ativo {
-  background: rgba(79, 142, 247, 0.2);
+  background: color-mix(in srgb, var(--lateral-ativo) 16%, transparent);
+  color: var(--lateral-ativo);
   font-weight: 600;
 }
 
@@ -226,7 +250,7 @@ body {
   font: inherit;
   padding: 0.3rem 0.5rem;
   border-radius: 6px;
-  border: 1px solid rgba(79, 142, 247, 0.6);
+  border: 1px solid color-mix(in srgb, var(--acento) 60%, transparent);
   background: transparent;
   color: inherit;
 }
@@ -320,14 +344,14 @@ body {
 }
 
 .menu-contexto li:hover {
-  background: rgba(79, 142, 247, 0.25);
+  background: color-mix(in srgb, var(--acento) 25%, transparent);
 }
 
 .painel-fila {
   width: 20rem;
   flex-shrink: 0;
   overflow-y: auto;
-  border-left: 1px solid rgba(128, 128, 128, 0.3);
+  border-left: 1px solid var(--linha);
   padding-left: 1rem;
 }
 
@@ -383,7 +407,7 @@ body {
 
 .controles .modo.ligado {
   opacity: 1;
-  outline: 2px solid #4f8ef7;
+  outline: 2px solid var(--acento);
 }
 
 .conteudo[hidden] {
@@ -395,7 +419,7 @@ body {
   object-fit: cover;
   border-radius: 6px;
   flex-shrink: 0;
-  background: rgba(128, 128, 128, 0.15);
+  background: var(--card-2);
 }
 
 .sem-capa {
@@ -427,7 +451,7 @@ body {
 }
 
 .faixa-mini:hover {
-  background: rgba(128, 128, 128, 0.15);
+  background: var(--card-2);
 }
 
 .player-completo {
@@ -465,7 +489,7 @@ body {
   height: 22rem;
   font-size: 5rem;
   border-radius: 10px;
-  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.35);
+  box-shadow: var(--sombra);
 }
 
 .pc-titulos h2 {
@@ -537,7 +561,7 @@ body {
 }
 
 .botao-fila.ativo {
-  outline: 2px solid #4f8ef7;
+  outline: 2px solid var(--acento);
 }
 
 .lista {
@@ -570,11 +594,11 @@ body {
 .linha.cabecalho {
   height: 32px;
   font-weight: 600;
-  border-bottom: 1px solid rgba(128, 128, 128, 0.3);
+  border-bottom: 1px solid var(--linha);
 }
 
 .lista .linha:hover {
-  background: rgba(128, 128, 128, 0.12);
+  background: var(--card-2);
 }
 
 .linha.ausente {
@@ -583,7 +607,7 @@ body {
 }
 
 .linha.atual {
-  color: #4f8ef7;
+  color: var(--acento);
   font-weight: 600;
 }
 
@@ -598,7 +622,7 @@ body {
   gap: 1rem;
   align-items: center;
   padding: 0.75rem 0;
-  border-top: 1px solid rgba(128, 128, 128, 0.3);
+  border-top: 1px solid var(--linha);
   margin-top: auto;
 }
 
@@ -667,7 +691,7 @@ body {
 
 
 .erro {
-  color: #c62828;
+  color: var(--c5);
 }
 
 .curtir {
@@ -688,7 +712,7 @@ body {
 }
 
 .curtir.curtida {
-  color: #e2457a;
+  color: var(--c5);
   opacity: 1;
 }
 
@@ -725,7 +749,7 @@ body {
 
 .linha-hist .escutada {
   text-align: center;
-  color: #3fa66b;
+  color: var(--c3);
 }
 
 .pastas {
@@ -745,9 +769,9 @@ body {
   width: min(32rem, 80vw);
   padding: 0.6rem;
   border-radius: 6px;
-  background: Canvas;
-  border: 1px solid rgba(128, 128, 128, 0.3);
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+  background: var(--card);
+  border: 1px solid var(--linha);
+  box-shadow: var(--sombra);
 }
 
 .pastas-lista ul {
@@ -781,7 +805,7 @@ body {
   margin: 0.4rem 1rem;
   padding: 0.4rem 0.6rem;
   border-radius: 6px;
-  background: rgba(79, 142, 247, 0.15);
+  background: color-mix(in srgb, var(--acento) 15%, transparent);
 }
 
 .fechar-aviso {
@@ -812,7 +836,7 @@ body {
   gap: 0.25rem;
   padding: 1rem 1.2rem;
   border-radius: 8px;
-  background: rgba(128, 128, 128, 0.12);
+  background: var(--card-2);
 }
 
 .indicador strong {
@@ -878,7 +902,7 @@ body {
 
 .abas button.ativa {
   opacity: 1;
-  border-bottom-color: #4f8ef7;
+  border-bottom-color: var(--acento);
 }
 
 .letra {
@@ -916,7 +940,7 @@ body {
 }
 
 .linha-letra:hover {
-  background: rgba(128, 128, 128, 0.15);
+  background: var(--card-2);
 }
 
 .letra-estatica {
@@ -974,7 +998,7 @@ body {
 .evolucao .barra {
   width: 100%;
   border-radius: 3px 3px 0 0;
-  background: #4f8ef7;
+  background: var(--acento);
 }
 
 .evolucao span {
@@ -1073,8 +1097,8 @@ body {
   inset: 0;
   z-index: 100;
   overflow-y: auto;
-  background: #0d0f14;
-  color: #f2f2f2;
+  background: var(--fundo);
+  color: var(--forte);
   padding: 2rem 1rem;
 }
 
@@ -1089,7 +1113,7 @@ body {
 
 .rt-salvo {
   font-size: 0.85rem;
-  color: #b9c0cf;
+  color: var(--texto);
   max-width: 40vw;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1122,7 +1146,7 @@ body {
   font-size: 0.85rem;
   letter-spacing: 0.1em;
   text-transform: uppercase;
-  color: #7aa7ff;
+  color: var(--acento);
 }
 
 .rt-destaques {
@@ -1143,7 +1167,7 @@ body {
   gap: 0.3rem;
   padding: 1rem 1.2rem;
   border-radius: 10px;
-  background: #1a1e27;
+  background: var(--card);
 }
 
 .rt-bloco h3 {
@@ -1151,7 +1175,7 @@ body {
   font-size: 0.75rem;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: #9aa3b5;
+  color: var(--fraco);
 }
 
 .rt-bloco > strong {
@@ -1159,11 +1183,11 @@ body {
 }
 
 .rt-bloco > span {
-  color: #b9c0cf;
+  color: var(--texto);
 }
 
 .rt-grande {
-  background: #24365e;
+  background: var(--card-3);
 }
 
 .rt-grande > strong {
@@ -1186,7 +1210,7 @@ body {
 .rt-pos {
   width: 1.4rem;
   text-align: right;
-  color: #7aa7ff;
+  color: var(--acento);
   font-weight: 700;
 }
 
@@ -1198,11 +1222,11 @@ body {
 }
 
 .rt-nome small {
-  color: #9aa3b5;
+  color: var(--fraco);
 }
 
 .rt-vezes {
-  color: #b9c0cf;
+  color: var(--texto);
   font-variant-numeric: tabular-nums;
 }
 
@@ -1218,8 +1242,8 @@ body {
 .rt-sem-capa {
   display: grid;
   place-items: center;
-  background: #2a3040;
-  color: #9aa3b5;
+  background: var(--card-2);
+  color: var(--fraco);
 }
 
 .rt-com-capa {
@@ -1245,5 +1269,5 @@ body {
 }
 
 .rt-com-capa span {
-  color: #b9c0cf;
+  color: var(--texto);
 }

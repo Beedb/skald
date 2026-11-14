@@ -1,9 +1,16 @@
 import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { aplicarTema, ModoTema, temDuasVariantes, TEMAS } from "./tema";
 
 type Normalizacao = "desligada" | "faixa" | "album";
 type Preset = "desligado" | "grave" | "agudo" | "bateria" | "voz" | "instrumental";
-type Config = { crossfade_ms: number; normalizacao: Normalizacao; equalizador: Preset };
+type Config = {
+  crossfade_ms: number;
+  normalizacao: Normalizacao;
+  equalizador: Preset;
+  tema: string;
+  modo_tema: ModoTema;
+};
 
 const PRESETS: [Preset, string][] = [
   ["desligado", "Desligado"],
@@ -14,11 +21,13 @@ const PRESETS: [Preset, string][] = [
   ["instrumental", "Instrumental"],
 ];
 
-/** Configurações (seção 12). Por enquanto, só a reprodução. */
+/** Configurações (seção 12): aparência e reprodução. */
 export default function Configuracoes({ onErro }: { onErro: (m: string) => void }) {
   const [crossfade, setCrossfade] = useState<number | null>(null);
   const [normalizacao, setNormalizacao] = useState<Normalizacao>("faixa");
   const [equalizador, setEqualizador] = useState<Preset>("desligado");
+  const [tema, setTema] = useState("brasa");
+  const [modo, setModo] = useState<ModoTema>("sistema");
 
   useEffect(() => {
     invoke<Config>("get_settings")
@@ -26,9 +35,18 @@ export default function Configuracoes({ onErro }: { onErro: (m: string) => void 
         setCrossfade(c.crossfade_ms / 1000);
         setNormalizacao(c.normalizacao);
         setEqualizador(c.equalizador);
+        setTema(c.tema);
+        setModo(c.modo_tema);
       })
       .catch((e) => onErro(String(e)));
   }, []);
+
+  function gravarAparencia(novoTema: string, novoModo: ModoTema) {
+    setTema(novoTema);
+    setModo(novoModo);
+    aplicarTema(novoTema, novoModo);
+    invoke("set_appearance", { tema: novoTema, modo: novoModo }).catch((e) => onErro(String(e)));
+  }
 
   function gravarEqualizador(preset: Preset) {
     setEqualizador(preset);
@@ -50,6 +68,30 @@ export default function Configuracoes({ onErro }: { onErro: (m: string) => void 
   return (
     <section className="configuracoes">
       <h2>Configurações</h2>
+      <h3>Aparência</h3>
+      <label className="opcao">
+        <span>Tema</span>
+        <select value={tema} onChange={(e) => gravarAparencia(e.target.value, modo)}>
+          {TEMAS.map((t) => (
+            <option key={t.id} value={t.id}>
+              {t.nome}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label className="opcao">
+        <span>Claro ou escuro</span>
+        <select
+          value={modo}
+          disabled={!temDuasVariantes(tema)}
+          onChange={(e) => gravarAparencia(tema, e.target.value as ModoTema)}
+        >
+          <option value="sistema">Seguir o sistema</option>
+          <option value="claro">Claro</option>
+          <option value="escuro">Escuro</option>
+        </select>
+      </label>
+      {!temDuasVariantes(tema) && <p className="nota">Este tema tem uma variante só.</p>}
       <h3>Reprodução</h3>
       <label className="opcao">
         <span>

@@ -6,6 +6,10 @@ use serde::Serialize;
 const CROSSFADE: &str = "crossfade_ms";
 const NORMALIZACAO: &str = "normalizacao";
 const EQUALIZADOR: &str = "equalizador";
+const TEMA: &str = "tema";
+const MODO_TEMA: &str = "modo_tema";
+/// Tema padrão do Skáld (docs/temas.css).
+const TEMA_PADRAO: &str = "brasa";
 /// Crossfade padrão: ligado, 5 s (desligado entre faixas do mesmo álbum).
 const CROSSFADE_PADRAO: u64 = 5000;
 pub const CROSSFADE_MAX: u64 = 12_000;
@@ -16,6 +20,10 @@ pub struct Configuracoes {
     /// ReplayGain: desligada, faixa (padrão) ou álbum.
     pub normalizacao: crate::ganho::Modo,
     pub equalizador: crate::eq::Preset,
+    /// Família de cores de docs/temas.css (ex.: "brasa", "nord").
+    pub tema: String,
+    /// "claro", "escuro" ou "sistema" (padrão).
+    pub modo_tema: String,
 }
 
 fn ler(conn: &Connection, chave: &str) -> rusqlite::Result<Option<String>> {
@@ -42,7 +50,22 @@ pub fn carregar(conn: &Connection) -> rusqlite::Result<Configuracoes> {
     let equalizador = ler(conn, EQUALIZADOR)?
         .and_then(|v| crate::eq::Preset::de_texto(&v))
         .unwrap_or_default();
-    Ok(Configuracoes { crossfade_ms, normalizacao, equalizador })
+    let tema = ler(conn, TEMA)?.unwrap_or_else(|| TEMA_PADRAO.into());
+    let modo_tema = ler(conn, MODO_TEMA)?.unwrap_or_else(|| "sistema".into());
+    Ok(Configuracoes { crossfade_ms, normalizacao, equalizador, tema, modo_tema })
+}
+
+/// Aparência (seção 12). O tema vira o atributo `data-tema`, então só aceita letras e hífen.
+pub fn definir_aparencia(conn: &Connection, tema: &str, modo: &str) -> Result<(), String> {
+    let valido = !tema.is_empty() && tema.len() <= 40 && tema.chars().all(|c| c.is_ascii_lowercase() || c == '-');
+    if !valido {
+        return Err("Tema inválido.".into());
+    }
+    if !["claro", "escuro", "sistema"].contains(&modo) {
+        return Err("Modo de tema inválido.".into());
+    }
+    gravar(conn, TEMA, tema).map_err(|e| e.to_string())?;
+    gravar(conn, MODO_TEMA, modo).map_err(|e| e.to_string())
 }
 
 pub fn definir_equalizador(conn: &Connection, preset: crate::eq::Preset) -> rusqlite::Result<()> {
@@ -83,6 +106,18 @@ mod testes {
         assert_eq!(carregar(&conn).unwrap().normalizacao, Modo::Album);
         definir_normalizacao(&conn, Modo::Desligada).unwrap();
         assert_eq!(carregar(&conn).unwrap().normalizacao, Modo::Desligada);
+    }
+
+    #[test]
+    fn aparencia_padrao_e_gravada() {
+        let conn = crate::db::open(std::path::Path::new(":memory:")).unwrap();
+        let c = carregar(&conn).unwrap();
+        assert_eq!((c.tema.as_str(), c.modo_tema.as_str()), ("brasa", "sistema"));
+        definir_aparencia(&conn, "nord", "claro").unwrap();
+        let c = carregar(&conn).unwrap();
+        assert_eq!((c.tema.as_str(), c.modo_tema.as_str()), ("nord", "claro"));
+        assert!(definir_aparencia(&conn, "x\" onload", "claro").is_err());
+        assert!(definir_aparencia(&conn, "nord", "roxo").is_err());
     }
 
     #[test]

@@ -840,6 +840,12 @@ fn get_settings(db: State<db::Db>) -> Result<settings::Configuracoes, String> {
 
 /// Duração do crossfade em ms (0 desliga); vale a partir da próxima troca de faixa.
 #[tauri::command]
+fn set_appearance(db: State<db::Db>, tema: String, modo: String) -> Result<(), String> {
+    let conn = db.0.lock().map_err(erro_db)?;
+    settings::definir_aparencia(&conn, &tema, &modo)
+}
+
+#[tauri::command]
 fn set_crossfade(db: State<db::Db>, player: State<player::Player>, ms: u64) -> Result<u64, String> {
     let ms = {
         let conn = db.0.lock().map_err(erro_db)?;
@@ -978,6 +984,7 @@ pub fn run() {
             set_volume,
             seek,
             get_settings,
+            set_appearance,
             set_crossfade,
             set_normalization,
             set_equalizer

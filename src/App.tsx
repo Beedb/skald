@@ -12,6 +12,7 @@ import Historico from "./Historico";
 import Pastas from "./Pastas";
 import Duplicados from "./Duplicados";
 import Categorias from "./Categorias";
+import { aplicarTema, ModoTema } from "./tema";
 import Estatisticas from "./Estatisticas";
 import Configuracoes from "./Configuracoes";
 import "./App.css";
@@ -131,6 +132,10 @@ function App() {
         .catch((e) => setErro(String(e)));
     carregarPlaylists();
     carregarCurtidas();
+    // O tema salvo no banco vale sobre a cópia local usada no primeiro desenho.
+    invoke<{ tema: string; modo_tema: ModoTema }>("get_settings")
+      .then((c) => aplicarTema(c.tema, c.modo_tema))
+      .catch(() => {});
     const ouvintes = [
       listen<EstadoPlayer>("player-estado", (e) => {
         setEstado(e.payload);

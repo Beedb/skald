@@ -51,7 +51,7 @@ function Lista({ titulo, itens, capas }: { titulo: string; itens: Item[]; capas?
   );
 }
 
-/** Composição única da retrospectiva (seção 11.7), sobre fundo escuro. */
+/** Composição única da retrospectiva (seção 11.7), nas cores do tema. */
 /** Textos da composição, usados na tela e no PNG. */
 function dados(r: Retrospectiva): DadosRetro {
   const dominanteCapa = r.artistas.find((a) => a.nome === r.dominante?.nome)?.capa ?? null;
