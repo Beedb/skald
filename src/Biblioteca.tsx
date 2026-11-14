@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import type { PlaylistResumo } from "./Lateral";
+import { useMenuMusica } from "./MenuMusica";
 import { useVirtualizer } from "@tanstack/react-virtual";
 
 export type MediaRow = {
@@ -32,20 +32,11 @@ type Props = {
   busca: string;
   tocandoId: number | null;
   onTocar: (id: number) => void;
-  onEnfileirar: (id: number, aSeguir: boolean) => void;
-  playlists: PlaylistResumo[];
-  onAdicionarPlaylist: (playlistId: number, mediaId: number) => void;
-  onNovaPlaylistCom: (mediaId: number) => void;
   curtidas: Set<number>;
   onCurtir: (mediaId: number) => void;
-  /** Exclui da biblioteca (só o registro; o arquivo fica no disco). */
-  onRemover: (mediaId: number) => void;
-  onInformacoes: (mediaId: number) => void;
   /** Falso enquanto o player completo ocupa a tela; a lista fica montada e guarda a rolagem. */
   visivel: boolean;
 };
-
-type Menu = { x: number; y: number; id: number; confirmar?: boolean };
 
 export function BotaoCurtir({ curtida, onClick }: { curtida: boolean; onClick: () => void }) {
   return (
@@ -68,14 +59,8 @@ export default function Biblioteca({
   busca,
   tocandoId,
   onTocar,
-  onEnfileirar,
-  playlists,
-  onAdicionarPlaylist,
-  onNovaPlaylistCom,
   curtidas,
   onCurtir,
-  onRemover,
-  onInformacoes,
   visivel,
 }: Props) {
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -91,25 +76,7 @@ export default function Biblioteca({
   const versaoAtual = useRef(chave);
   const buscaAnterior = useRef(busca);
   const [, setTick] = useState(0);
-  const [menu, setMenu] = useState<Menu | null>(null);
-
-  // Fecha o menu de contexto ao clicar fora, rolar ou apertar Esc.
-  useEffect(() => {
-    if (!menu) return;
-    const fechar = () => setMenu(null);
-    const tecla = (e: KeyboardEvent) => e.key === "Escape" && fechar();
-    window.addEventListener("click", fechar);
-    window.addEventListener("blur", fechar);
-    window.addEventListener("keydown", tecla);
-    scrollRef.current?.addEventListener("scroll", fechar);
-    const lista = scrollRef.current;
-    return () => {
-      window.removeEventListener("click", fechar);
-      window.removeEventListener("blur", fechar);
-      window.removeEventListener("keydown", tecla);
-      lista?.removeEventListener("scroll", fechar);
-    };
-  }, [menu]);
+  const abrirMenu = useMenuMusica();
 
   const virtualizer = useVirtualizer({
     count: total,
@@ -186,15 +153,7 @@ export default function Biblioteca({
                 role="row"
                 className={"linha" + (m?.missing ? " ausente" : "") + (m && m.id === tocandoId ? " atual" : "")}
                 onDoubleClick={() => m && onTocar(m.id)}
-                onContextMenu={(e) => {
-                  e.preventDefault();
-                  if (m)
-                    setMenu({
-                      x: Math.min(e.clientX, window.innerWidth - 200),
-                      y: Math.min(e.clientY, window.innerHeight - 370),
-                      id: m.id,
-                    });
-                }}
+                onContextMenu={(e) => m && abrirMenu(e, m.id, { tocar: () => onTocar(m.id) })}
                 title={m?.missing ? "Arquivo não encontrado" : undefined}
                 style={{ height: ALTURA_LINHA, transform: `translateY(${item.start}px)` }}
               >
@@ -214,51 +173,6 @@ export default function Biblioteca({
           })}
         </div>
       </div>
-      {menu && (
-        <ul className="menu-contexto" role="menu" style={{ left: menu.x, top: menu.y }}>
-          <li role="menuitem" onClick={() => onTocar(menu.id)}>
-            Tocar agora
-          </li>
-          <li role="menuitem" onClick={() => onEnfileirar(menu.id, true)}>
-            Tocar a seguir
-          </li>
-          <li role="menuitem" onClick={() => onEnfileirar(menu.id, false)}>
-            Adicionar à fila
-          </li>
-          <li role="separator" className="separador" />
-          <li role="presentation" className="titulo-menu">
-            Adicionar à playlist
-          </li>
-          {playlists.filter((p) => p.kind === "user").map((p) => (
-            <li key={p.id} role="menuitem" className="recuado" onClick={() => onAdicionarPlaylist(p.id, menu.id)}>
-              {p.name}
-            </li>
-          ))}
-          <li role="menuitem" className="recuado" onClick={() => onNovaPlaylistCom(menu.id)}>
-            + Nova playlist com esta música
-          </li>
-          <li role="separator" className="separador" />
-          <li role="menuitem" onClick={() => onInformacoes(menu.id)}>
-            Informações e sugestões…
-          </li>
-          {menu.confirmar ? (
-            <li role="menuitem" className="perigo" onClick={() => onRemover(menu.id)}>
-              Confirmar: remover (o arquivo fica no disco)
-            </li>
-          ) : (
-            <li
-              role="menuitem"
-              onClick={(e) => {
-                e.stopPropagation();
-                setMenu({ ...menu, confirmar: true });
-              }}
-              title="Tira a música da biblioteca e das playlists; o arquivo não é apagado e o histórico fica"
-            >
-              Remover da biblioteca…
-            </li>
-          )}
-        </ul>
-      )}
     </div>
   );
 }

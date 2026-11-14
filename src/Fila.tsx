@@ -2,6 +2,7 @@ import { useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import type { MediaRow } from "./Biblioteca";
 import { formatarDuracao } from "./Biblioteca";
+import { useMenuMusica } from "./MenuMusica";
 
 export type VisaoFila = {
   atual: MediaRow | null;
@@ -26,17 +27,20 @@ function Item({
   onRemover,
   arraste,
   classe = "",
+  onMenu,
 }: {
   m: MediaRow;
   onRemover?: () => void;
   arraste?: Arraste;
   classe?: string;
+  onMenu?: (e: React.MouseEvent) => void;
 }) {
   return (
     <li
       className={(m.missing ? "ausente " : "") + classe}
       title={m.missing ? "Arquivo não encontrado" : arraste ? "Arraste para reordenar" : undefined}
       {...arraste}
+      onContextMenu={onMenu}
     >
       {arraste && (
         <span className="alca" aria-hidden="true">
@@ -60,6 +64,7 @@ function Item({
 export default function Fila({ fila, onErro }: { fila: VisaoFila | null; onErro: (m: string) => void }) {
   const vazia = !fila || (fila.manual.length === 0 && fila.contexto.length === 0);
   const [arrastando, setArrastando] = useState<number | null>(null);
+  const abrirMenu = useMenuMusica();
   const [alvo, setAlvo] = useState<number | null>(null);
   const acao = (cmd: string, args?: Record<string, unknown>) => invoke(cmd, args).catch((e) => onErro(String(e)));
 
@@ -106,7 +111,7 @@ export default function Fila({ fila, onErro }: { fila: VisaoFila | null; onErro:
         <section>
           <h3>Tocando agora</h3>
           <ul>
-            <Item m={fila.atual} />
+            <Item m={fila.atual} onMenu={(e) => abrirMenu(e, fila.atual!.id)} />
           </ul>
         </section>
       )}
@@ -120,6 +125,7 @@ export default function Fila({ fila, onErro }: { fila: VisaoFila | null; onErro:
                 m={m}
                 arraste={arraste(i)}
                 classe={classeArraste(i)}
+                onMenu={(e) => abrirMenu(e, m.id)}
                 onRemover={() => acao("queue_remove", { posicao: i })}
               />
             ))}
@@ -131,7 +137,7 @@ export default function Fila({ fila, onErro }: { fila: VisaoFila | null; onErro:
           <h3>A seguir</h3>
           <ul>
             {fila.contexto.map((m) => (
-              <Item key={m.id} m={m} />
+              <Item key={m.id} m={m} onMenu={(e) => abrirMenu(e, m.id)} />
             ))}
           </ul>
         </section>

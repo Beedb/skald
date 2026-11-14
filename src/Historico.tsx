@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { formatarDuracao } from "./Biblioteca";
+import { useMenuMusica } from "./MenuMusica";
 
 type Entrada = {
   id: number;
@@ -38,6 +39,7 @@ type Props = {
 
 /** Histórico de reprodução, da mais recente para a mais antiga. */
 export default function Historico({ versao, visivel, onTocar }: Props) {
+  const abrirMenu = useMenuMusica();
   const [total, setTotal] = useState(0);
   const scrollRef = useRef<HTMLDivElement>(null);
   const paginas = useRef(new Map<number, Entrada[]>());
@@ -124,6 +126,7 @@ export default function Historico({ versao, visivel, onTocar }: Props) {
                     }
                     style={{ height: ALTURA_LINHA, transform: `translateY(${v.start}px)` }}
                     onDoubleClick={() => tocavel && onTocar(e.media_id!)}
+                    onContextMenu={(ev) => e && e.media_id !== null && abrirMenu(ev, e.media_id)}
                   >
                     {e ? (
                       <>

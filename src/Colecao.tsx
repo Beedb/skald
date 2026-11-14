@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import Capa from "./Capa";
 import { formatarDuracao } from "./Biblioteca";
+import { useMenuMusica } from "./MenuMusica";
 
 /** Visões de Artistas e Álbuns (seção 4). */
 
@@ -247,6 +248,7 @@ export function AlbumView({
   onVoltar: () => void;
 } & Erro) {
   const [faixas, setFaixas] = useState<Faixa[] | null>(null);
+  const abrirMenu = useMenuMusica();
   useEffect(() => {
     setFaixas(null);
     invoke<Faixa[]>("album_tracks", { chave })
@@ -310,6 +312,7 @@ export function AlbumView({
               className={(f.missing ? "ausente" : "") + (f.id === tocandoId ? " atual" : "")}
               title={f.missing ? "Arquivo não encontrado" : undefined}
               onDoubleClick={() => tocar(i)}
+              onContextMenu={(e) => abrirMenu(e, f.id, { tocar: () => tocar(i) })}
             >
               <span className="numero">
                 {discos > 1 && f.disc_number ? `${f.disc_number}.` : ""}

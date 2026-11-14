@@ -16,6 +16,7 @@ import { Albuns, AlbumView, Artistas, ArtistaView } from "./Colecao";
 import Inicio from "./Inicio";
 import { esquecerMiniatura, miniatura } from "./Capa";
 import Informacoes from "./Informacoes";
+import { MenuMusicaProvider } from "./MenuMusica";
 import { aplicarCorCapa, corDaImagem, reaplicarCorCapa } from "./coresCapa";
 import { aplicarTema, ModoTema } from "./tema";
 import Estatisticas from "./Estatisticas";
@@ -310,6 +311,15 @@ function App() {
   }
 
   return (
+    <MenuMusicaProvider
+      playlists={playlists}
+      onTocar={(id) => invoke("play_media", { id, busca: "" }).catch((e) => mostrarErro(String(e)))}
+      onEnfileirar={enfileirar}
+      onAdicionarPlaylist={adicionarPlaylist}
+      onNovaPlaylistCom={novaPlaylistCom}
+      onRemover={removerDaBiblioteca}
+      onInformacoes={setInformacoesId}
+    >
     <main className="app">
       <header className="topo">
         <h1>Skáld</h1>
@@ -396,14 +406,8 @@ function App() {
               busca={buscaAtiva}
               tocandoId={estado && estado.estado !== "parado" ? estado.id : null}
               onTocar={tocar}
-              onEnfileirar={enfileirar}
-              playlists={playlists}
-              onAdicionarPlaylist={adicionarPlaylist}
-              onNovaPlaylistCom={novaPlaylistCom}
               curtidas={curtidas}
               onCurtir={curtir}
-              onRemover={removerDaBiblioteca}
-              onInformacoes={setInformacoesId}
               visivel={tela === "biblioteca" && vista.tipo === "biblioteca"}
             />
           )}
@@ -516,6 +520,7 @@ function App() {
         />
       )}
     </main>
+    </MenuMusicaProvider>
   );
 }
 

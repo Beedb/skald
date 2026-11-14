@@ -5,6 +5,7 @@ import { useVirtualizer } from "@tanstack/react-virtual";
 import { formatarDuracao, type MediaRow } from "./Biblioteca";
 import { Capa } from "./PlayerBar";
 import type { PlaylistResumo } from "./Lateral";
+import { useMenuMusica } from "./MenuMusica";
 
 type Item = MediaRow & { item_id: number };
 type Ordem = "personalizada" | "titulo" | "artista";
@@ -28,6 +29,7 @@ type Props = {
 
 export default function PlaylistView({ playlist, versao, tocandoId, onExcluida, onErro }: Props) {
   const [itens, setItens] = useState<Item[]>([]);
+  const abrirMenu = useMenuMusica();
   const [ordem, setOrdem] = useState<Ordem>("personalizada");
   const [capa, setCapa] = useState<string | null>(null);
   const [renomeando, setRenomeando] = useState(false);
@@ -231,6 +233,7 @@ export default function PlaylistView({ playlist, versao, tocandoId, onExcluida, 
                     title={m.missing ? "Arquivo não encontrado" : undefined}
                     style={{ height: ALTURA_LINHA, transform: `translateY(${v.start}px)` }}
                     onDoubleClick={() => tocar(v.index)}
+                    onContextMenu={(e) => abrirMenu(e, m.id, { tocar: () => tocar(v.index) })}
                   >
                     <span className="num">{v.index + 1}</span>
                     <span>{m.title ?? "Sem título"}</span>

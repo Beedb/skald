@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import Capa from "./Capa";
 import { Album, CartaoAlbum, ChaveAlbum } from "./Colecao";
 import type { PlaylistResumo } from "./Lateral";
+import { useMenuMusica } from "./MenuMusica";
 
 /** Tela inicial (seção 4.2): playlists tocadas há pouco e prévia da biblioteca. */
 
@@ -72,6 +73,7 @@ export default function Inicio({
   onErro: (m: string) => void;
 }) {
   const [dados, setDados] = useState<DadosInicio | null>(null);
+  const abrirMenu = useMenuMusica();
   useEffect(() => {
     invoke<DadosInicio>("home_data")
       .then(setDados)
@@ -119,6 +121,7 @@ export default function Inicio({
                 <button
                   className={m.missing ? "ausente" : undefined}
                   onClick={() => onTocarMusica(m.id)}
+                  onContextMenu={(e) => abrirMenu(e, m.id)}
                   title={m.missing ? "Arquivo não encontrado" : "Tocar"}
                 >
                   <Capa id={m.id} />
