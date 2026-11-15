@@ -19,3 +19,7 @@
 # If you keep the line number information, uncomment this to
 # hide the original source file name.
 #-renamesourcefileattribute SourceFile
+# Ponte window.SkaldAndroid (MainActivity.Ponte): métodos chamados só pelo JavaScript.
+-keepclassmembers class com.skald.app.MainActivity$Ponte {
+    @android.webkit.JavascriptInterface <methods>;
+}

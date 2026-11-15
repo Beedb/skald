@@ -41,6 +41,16 @@ scripts/android.sh dev                                    # celular via adb ou e
 4. `MainActivity.kt` chama `GStreamer.init(this)` antes do `super.onCreate`, assim o
    `gst::init()` do Rust já encontra tudo pronto.
 
+## Permissão e pasta Music
+
+`MainActivity.kt` expõe `window.SkaldAndroid` (`temPermissao`, `pedirPermissao`, cuja
+resposta chega no evento `skald-permissao`, e `pastaMusica`); o lado da interface fica em
+`src/android.ts`. No Android o botão vira "Importar Music": pede `READ_MEDIA_AUDIO` (ou
+`READ_EXTERNAL_STORAGE` até o Android 12) e chama `import_folder` com a pasta Music, que
+passa a ser monitorada como no desktop. "Arquivos" some, porque o seletor do Android
+devolve `content://`, que o `lofty` não lê. Com essa permissão o sistema mostra só os
+arquivos de mídia: `.lrc` ao lado da música não aparece (a letra salva no Skáld funciona).
+
 ## O que ficou de fora no Android (`#[cfg(desktop)]`)
 
 Bandeja, iniciar com o sistema, notificação de troca de música (`notify-rust`) e MPRIS
@@ -48,8 +58,6 @@ Bandeja, iniciar com o sistema, notificação de troca de música (`notify-rust`
 
 ## Próximas etapas (Fase Android)
 
-- Pedir `READ_MEDIA_AUDIO` em tempo de execução e importar a pasta `Music` (o seletor de
-  pasta do Android devolve `content://`, que o `lofty` não lê).
 - Reprodução em segundo plano: serviço em primeiro plano com `MediaSession`
   (notificação de mídia, tela de bloqueio, fones Bluetooth); substitui MPRIS e bandeja.
 - Interface para tela estreita (lateral vira gaveta, player em tela cheia, toque).

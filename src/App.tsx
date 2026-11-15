@@ -23,6 +23,7 @@ import { aplicarCorCapa, corDaImagem, reaplicarCorCapa } from "./coresCapa";
 import { aplicarTema, ModoTema } from "./tema";
 import Estatisticas from "./Estatisticas";
 import Configuracoes from "./Configuracoes";
+import { garantirPermissao, noAndroid, pastaMusica } from "./android";
 import "./App.css";
 
 type DbStatus = {
@@ -291,9 +292,20 @@ function App() {
   }
 
   async function importarPasta() {
+    if (noAndroid) return importarMusicaAndroid();
     const pasta = await open({ directory: true, title: "Escolha a pasta de músicas" });
     if (typeof pasta !== "string") return;
     await importar("import_folder", { path: pasta });
+  }
+
+  /** Android: importa (e passa a monitorar) a pasta Music, depois de pedir a permissão. */
+  async function importarMusicaAndroid() {
+    if (!(await garantirPermissao())) {
+      setErro("Sem permissão para ler as músicas. Libere em Configurações do Android → Apps → Skáld → Permissões.");
+      return;
+    }
+    const pasta = pastaMusica();
+    if (pasta) await importar("import_folder", { path: pasta });
   }
 
   /** Arquivos soltos: entram na biblioteca sem monitorar a pasta deles. */
@@ -380,12 +392,14 @@ function App() {
               )}
               <button onClick={importarPasta} disabled={importando}>
                 <FolderPlus size={16} aria-hidden="true" />
-                {importando ? "Importando…" : "Importar pasta"}
+                {importando ? "Importando…" : noAndroid ? "Importar Music" : "Importar pasta"}
               </button>
+              {!noAndroid && (
               <button onClick={importarArquivos} disabled={importando} title="Adiciona arquivos soltos, sem monitorar a pasta deles">
                 <FilePlus size={16} aria-hidden="true" />
                 Arquivos
               </button>
+              )}
               <Pastas versao={versao} onErro={setErro} />
               <Duplicados versao={versao} onErro={setErro} />
             </div>
