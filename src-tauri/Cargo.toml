@@ -39,6 +39,10 @@ ureq = "3"
 [target.'cfg(target_os = "linux")'.dependencies]
 souvlaki = { version = "0.9.3", default-features = false, features = ["use_zbus"] }
 
+# Iniciar com o sistema no Windows (HKCU\...\Run).
+[target.'cfg(windows)'.dependencies]
+winreg = "0.56"
+
 
 # Read the optimization guideline for more details: https://tauri.app/concept/size/#cargo-configuration
 [profile.release]

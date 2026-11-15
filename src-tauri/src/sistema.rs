@@ -33,6 +33,40 @@ pub fn definir_autostart(config_dir: &Path, executavel: &Path, ativo: bool) -> R
     std::fs::write(&arquivo, conteudo).map_err(|e| e.to_string())
 }
 
+/// Windows: valor `Skald` em `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`.
+#[cfg(windows)]
+pub mod registro {
+    use std::path::Path;
+
+    use winreg::RegKey;
+    use winreg::enums::{HKEY_CURRENT_USER, KEY_READ, KEY_SET_VALUE};
+
+    const CHAVE: &str = r"Software\Microsoft\Windows\CurrentVersion\Run";
+    const NOME: &str = "Skald";
+
+    pub fn ativo() -> bool {
+        RegKey::predef(HKEY_CURRENT_USER)
+            .open_subkey_with_flags(CHAVE, KEY_READ)
+            .and_then(|k| k.get_value::<String, _>(NOME))
+            .is_ok()
+    }
+
+    pub fn definir(executavel: &Path, ativo: bool) -> Result<(), String> {
+        let chave = RegKey::predef(HKEY_CURRENT_USER)
+            .open_subkey_with_flags(CHAVE, KEY_SET_VALUE)
+            .map_err(|e| e.to_string())?;
+        if !ativo {
+            return match chave.delete_value(NOME) {
+                Err(e) if e.kind() != std::io::ErrorKind::NotFound => Err(e.to_string()),
+                _ => Ok(()),
+            };
+        }
+        // Aspas no caminho (pode ter espaço, ex.: C:\Users\Nome Sobrenome\...).
+        let valor = format!("\"{}\" {}", executavel.display(), super::ARG_MINIMIZADO);
+        chave.set_value(NOME, &valor).map_err(|e| e.to_string())
+    }
+}
+
 /// Notificação de nova música (D-Bus). Falhas são ignoradas: o app segue sem ela.
 pub fn notificar_musica(titulo: &str, artista: &str, capa: Option<&Path>) {
     let mut n = notify_rust::Notification::new();

@@ -1489,14 +1489,25 @@ fn set_notifications(db: State<db::Db>, ativo: bool) -> Result<(), String> {
 
 #[tauri::command]
 fn autostart_get(app: AppHandle) -> Result<bool, String> {
+    #[cfg(windows)]
+    {
+        let _ = app;
+        Ok(sistema::registro::ativo())
+    }
+    #[cfg(not(windows))]
     Ok(sistema::autostart_ativo(&app.path().config_dir().map_err(|e| e.to_string())?))
 }
 
 #[tauri::command]
 fn set_autostart(app: AppHandle, ativo: bool) -> Result<(), String> {
-    let dir = app.path().config_dir().map_err(|e| e.to_string())?;
     let exe = std::env::current_exe().map_err(|e| e.to_string())?;
-    sistema::definir_autostart(&dir, &exe, ativo)
+    #[cfg(windows)]
+    {
+        let _ = app;
+        sistema::registro::definir(&exe, ativo)
+    }
+    #[cfg(not(windows))]
+    sistema::definir_autostart(&app.path().config_dir().map_err(|e| e.to_string())?, &exe, ativo)
 }
 
 /// Última música notificada, para avisar só quando ela muda.
@@ -1587,7 +1598,6 @@ fn seek(player: State<player::Player>, posicao_ms: u64) -> Result<(), String> {
     player.buscar(posicao_ms)
 }
 
-#[cfg_attr(mobile, tauri::mobile_entry_point)]
 /// Windows instalado: o GStreamer vem junto (DLLs ao lado do .exe, plugins em
 /// `gstreamer-1.0/`). Usa só esses plugins, com registro próprio, para não misturar
 /// com um GStreamer instalado no sistema. Em `tauri dev` a pasta não existe e nada muda.
@@ -1614,6 +1624,7 @@ fn gstreamer_embutido() {
     }
 }
 
+#[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     #[cfg(windows)]
     gstreamer_embutido();

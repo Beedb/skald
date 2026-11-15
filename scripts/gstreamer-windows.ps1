@@ -1,4 +1,4 @@
-# Copia para src-tauri/gstreamer/ só o que o Skáld usa do GStreamer (MSVC x86_64):
+﻿# Copia para src-tauri/gstreamer/ só o que o Skáld usa do GStreamer (MSVC x86_64):
 # os plugins da lista abaixo e, de forma recursiva, as DLLs de que eles dependem.
 # O instalador (tauri.windows.conf.json) põe bin/ ao lado do skald.exe e plugins/ em
 # gstreamer-1.0/. Rodar antes de `npm run tauri build` no Windows (npm run build:windows).
