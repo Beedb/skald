@@ -13,10 +13,14 @@ import android.webkit.WebView
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
 import org.freedesktop.gstreamer.GStreamer
 
 class MainActivity : TauriActivity() {
   private var webView: WebView? = null
+  /** Margens seguras (barra de status, recorte da câmera, barra de navegação) em px de CSS. */
+  @Volatile private var insetsJson = "{\"topo\":0,\"base\":0,\"esquerda\":0,\"direita\":0}"
 
   /** Leitura das músicas: READ_MEDIA_AUDIO a partir do Android 13, antes READ_EXTERNAL_STORAGE. */
   private val permissaoAudio =
@@ -66,6 +70,15 @@ class MainActivity : TauriActivity() {
   override fun onWebViewCreate(webView: WebView) {
     this.webView = webView
     webView.addJavascriptInterface(Ponte(), "SkaldAndroid")
+    // O app desenha por baixo das barras do sistema (edge-to-edge, obrigatório no Android 15+);
+    // a interface recebe as margens e afasta o conteúdo delas (variáveis --seguro-* no CSS).
+    ViewCompat.setOnApplyWindowInsetsListener(webView) { v, insets ->
+      val b = insets.getInsets(WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout())
+      val d = resources.displayMetrics.density
+      insetsJson = "{\"topo\":${b.top / d},\"base\":${b.bottom / d},\"esquerda\":${b.left / d},\"direita\":${b.right / d}}"
+      avisar("skald-insets", true)
+      ViewCompat.onApplyWindowInsets(v, insets)
+    }
   }
 
   /** Ponte para a interface (window.SkaldAndroid). Os métodos rodam fora da thread da UI. */
@@ -104,6 +117,10 @@ class MainActivity : TauriActivity() {
         }
       }
     }
+
+    /** Margens seguras atuais (JSON com topo, base, esquerda e direita em px de CSS). */
+    @JavascriptInterface
+    fun insets(): String = insetsJson
 
     /** Pasta Music do armazenamento compartilhado (ex.: /storage/emulated/0/Music). */
     @JavascriptInterface

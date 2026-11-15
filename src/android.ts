@@ -5,6 +5,7 @@ interface PonteAndroid {
   temAcessoTotal(): boolean;
   pedirAcessoTotal(): void;
   pastaMusica(): string;
+  insets(): string;
 }
 
 const ponte = (window as unknown as { SkaldAndroid?: PonteAndroid }).SkaldAndroid;
@@ -39,4 +40,21 @@ export async function garantirPermissao(): Promise<"total" | "audio" | false> {
 /** Pasta Music do aparelho; no Android o seletor de pastas devolve content://, que não serve. */
 export function pastaMusica(): string | null {
   return ponte ? ponte.pastaMusica() : null;
+}
+
+/** Afasta a interface das barras do sistema: grava --seguro-topo/base/esquerda/direita no :root. */
+export function acompanharMargens() {
+  if (!ponte) return;
+  const aplicar = () => {
+    try {
+      const m = JSON.parse(ponte.insets()) as Record<string, number>;
+      for (const lado of ["topo", "base", "esquerda", "direita"]) {
+        document.documentElement.style.setProperty(`--seguro-${lado}`, `${m[lado] ?? 0}px`);
+      }
+    } catch {
+      /* sem margens: segue sem afastar */
+    }
+  };
+  aplicar();
+  window.addEventListener("skald-insets", aplicar);
 }

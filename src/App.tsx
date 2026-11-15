@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { FilePlus, FolderPlus, Search } from "lucide-react";
+import { FilePlus, FolderPlus, Menu, Search } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 import { listen } from "@tauri-apps/api/event";
@@ -72,6 +72,8 @@ function App() {
   const [estado, setEstado] = useState<EstadoPlayer | null>(null);
   const [fila, setFila] = useState<VisaoFila | null>(null);
   const [filaAberta, setFilaAberta] = useState(false);
+  // Tela estreita (celular): a lateral vira gaveta, aberta pelo botão ☰ do topo.
+  const [gaveta, setGaveta] = useState(false);
   const [tela, setTela] = useState<"biblioteca" | "player">("biblioteca");
   const [volume, setVolume] = useState(1);
   const [detalhes, setDetalhes] = useState<Detalhes | null>(null);
@@ -358,13 +360,22 @@ function App() {
           onVista={(v) => {
             setVista(v);
             setTela("biblioteca");
+            setGaveta(false);
           }}
           onErro={setErro}
           r={r}
-          onAbrirPlayer={() => setTela("player")}
+          onAbrirPlayer={() => {
+            setTela("player");
+            setGaveta(false);
+          }}
+          aberta={gaveta}
         />
+        {gaveta && <div className="gaveta-fundo" onClick={() => setGaveta(false)} aria-hidden="true" />}
         <div className="principal">
           <header className="topo">
+            <button className="icone-botao botao-gaveta" onClick={() => setGaveta(true)} aria-label="Abrir menu" title="Menu">
+              <Menu size={20} aria-hidden="true" />
+            </button>
             <label className="busca-caixa">
               <Search size={16} aria-hidden="true" />
               <input

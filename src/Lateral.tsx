@@ -58,6 +58,8 @@ type Props = {
   onErro: (mensagem: string) => void;
   r: Reproducao;
   onAbrirPlayer: () => void;
+  /** Tela estreita: gaveta aberta por cima do conteúdo. */
+  aberta?: boolean;
 };
 
 const CHAVE_RECOLHIDA = "skald-lateral-recolhida";
@@ -106,7 +108,7 @@ function TocandoAgora({ r, onAbrir }: { r: Reproducao; onAbrir: () => void }) {
 }
 
 /** Barra lateral: marca, navegação, playlists e música atual. Pode ser recolhida a uma coluna de ícones. */
-export default function Lateral({ vista, playlists, onVista, onErro, r, onAbrirPlayer }: Props) {
+export default function Lateral({ vista, playlists, onVista, onErro, r, onAbrirPlayer, aberta = false }: Props) {
   const [criando, setCriando] = useState(false);
   const [nome, setNome] = useState("");
   // Enter/Esc e o blur ao desmontar disparam juntos: só a primeira ação vale.
@@ -198,7 +200,7 @@ export default function Lateral({ vista, playlists, onVista, onErro, r, onAbrirP
   const tam = 18;
 
   return (
-    <nav className={"lateral" + (recolhida ? " recolhida" : "")} aria-label="Navegação">
+    <nav className={"lateral" + (recolhida ? " recolhida" : "") + (aberta ? " aberta" : "")} aria-label="Navegação">
       <div className="marca">
         <span className="marca-nome">{recolhida ? "S" : "Skáld"}</span>
         <button

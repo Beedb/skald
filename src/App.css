@@ -1726,6 +1726,8 @@ button.primario {
   display: flex;
   flex-direction: column;
   box-sizing: border-box;
+  /* Celular: afasta das barras do sistema (variáveis gravadas por src/android.ts). */
+  padding: var(--seguro-topo, 0px) var(--seguro-direita, 0px) var(--seguro-base, 0px) var(--seguro-esquerda, 0px);
   background:
     radial-gradient(ellipse at 15% 0%, color-mix(in srgb, var(--acento) 9%, transparent), transparent 55%),
     var(--fundo);
@@ -2814,4 +2816,175 @@ input[type="range"].trilha:disabled {
 
 .linha-completar .detalhe.ok {
   color: var(--acento);
+}
+
+/* ---------- Tela estreita (celular) ---------- */
+
+.botao-gaveta,
+.gaveta-fundo {
+  display: none;
+}
+
+@media (max-width: 720px) {
+  html,
+  body {
+    overflow-x: hidden;
+  }
+
+  /* Lateral vira gaveta por cima do conteúdo. */
+  .botao-gaveta {
+    display: inline-flex;
+    flex-shrink: 0;
+  }
+
+  .lateral,
+  .lateral.recolhida {
+    position: fixed;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    z-index: 30;
+    width: min(18rem, 85vw);
+    padding-top: calc(0.9rem + var(--seguro-topo, 0px));
+    padding-bottom: calc(0.7rem + var(--seguro-base, 0px));
+    transform: translateX(-100%);
+    transition: transform 0.2s ease;
+    box-shadow: var(--sombra);
+  }
+
+  .lateral.aberta {
+    transform: none;
+  }
+
+  .alternar-lateral {
+    display: none;
+  }
+
+  .gaveta-fundo {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 29;
+    background: color-mix(in srgb, var(--fundo) 65%, transparent);
+  }
+
+  /* Topo: ☰ e busca numa linha, ações embaixo. */
+  .principal {
+    padding: 0.6rem 0.8rem 0;
+  }
+
+  .topo {
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin-bottom: 0.6rem;
+  }
+
+  .busca-caixa {
+    margin: 0;
+    max-width: none;
+  }
+
+  .topo-acoes {
+    width: 100%;
+    overflow-x: auto;
+  }
+
+  .contagem {
+    display: none;
+  }
+
+  /* Player: faixa e botões em cima, controles e progresso embaixo; volume pelas teclas do aparelho. */
+  .player {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      "faixa extras"
+      "centro centro";
+    gap: 0.3rem 0.5rem;
+    padding: 0.4rem 0.7rem 0.5rem;
+  }
+
+  .player-faixa {
+    grid-area: faixa;
+  }
+
+  .player-centro {
+    grid-area: centro;
+  }
+
+  .player .extras {
+    grid-area: extras;
+  }
+
+  .player .volume,
+  .pc-controles .volume {
+    display: none;
+  }
+
+  /* Fila ocupa a área do conteúdo. */
+  .conteudo > .painel-fila {
+    position: absolute;
+    inset: 0;
+    z-index: 20;
+    width: auto;
+    padding: 0.8rem;
+    border-left: none;
+    background: var(--fundo);
+  }
+
+  .conteudo {
+    position: relative;
+  }
+
+  /* Listas: sem a coluna Álbum. */
+  .biblioteca .linha {
+    grid-template-columns: 1.75rem 3fr 2fr 3.2rem;
+    gap: 0.5rem;
+  }
+
+  .linha.linha-pl {
+    grid-template-columns: 1.6rem 3fr 2fr 3.2rem 2rem;
+    gap: 0.5rem;
+  }
+
+  .biblioteca .linha > :nth-child(4),
+  .linha.linha-pl > :nth-child(4) {
+    display: none;
+  }
+
+  /* Player completo: tudo numa coluna rolável. */
+  .player-completo {
+    padding: 0.8rem 0.8rem 1rem;
+  }
+
+  .pc-corpo {
+    flex-direction: column;
+    overflow-y: auto;
+    gap: 1rem;
+  }
+
+  .pc-principal {
+    justify-content: flex-start;
+    gap: 1.5rem;
+    padding: 0;
+  }
+
+  .pc-topo {
+    gap: 1rem;
+  }
+
+  .capa-grande {
+    width: min(75vw, 40vh);
+    height: min(75vw, 40vh);
+  }
+
+  .pc-controles {
+    grid-template-columns: 1fr;
+    justify-items: center;
+  }
+
+  .pc-lateral {
+    width: auto;
+    flex-shrink: 0;
+    min-height: 70vh;
+  }
 }
