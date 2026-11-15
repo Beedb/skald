@@ -46,9 +46,12 @@ scripts/android.sh dev                                    # celular via adb ou e
 `MainActivity.kt` expõe `window.SkaldAndroid` (`temPermissao`, `pedirPermissao`, cuja
 resposta chega no evento `skald-permissao`, e `pastaMusica`); o lado da interface fica em
 `src/android.ts`. No Android o botão "Importar pasta" pede `READ_MEDIA_AUDIO` (ou
-`READ_EXTERNAL_STORAGE` até o Android 12) e chama `import_folder` com a pasta Music, que
-passa a ser monitorada como no desktop. "Arquivos" some, porque o seletor do Android
-devolve `content://`, que o `lofty` não lê. Com essa permissão o sistema mostra só os
+`READ_EXTERNAL_STORAGE` até o Android 12), abre o seletor de pastas do sistema
+(`escolherPasta` → evento `skald-pasta`) e chama `import_folder`, que importa e monitora
+como no desktop. O seletor devolve `content://`; `MainActivity.caminhoDaArvore` converte
+para caminho (`primary:X` → `/storage/emulated/0/X`, cartão `XXXX-XXXX:X` →
+`/storage/XXXX-XXXX/X`; pasta de nuvem não tem caminho e é ignorada). "Arquivos" some,
+porque arquivos soltos chegam só como `content://`, que o `lofty` não lê. Com essa permissão o sistema mostra só os
 arquivos de mídia. Por isso o Skáld pede antes "acesso a todos os arquivos"
 (`MANAGE_EXTERNAL_STORAGE`, tela das configurações do Android; resposta no evento
 `skald-acesso-total`), que deixa ler os `.lrc` ao lado das músicas. Recusado, cai no
