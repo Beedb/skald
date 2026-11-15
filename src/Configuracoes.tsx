@@ -293,12 +293,12 @@ export default function Configuracoes({ onErro }: { onErro: (m: string) => void 
       </label>
       <p className="nota">Só aparece quando a janela do Skáld não está em primeiro plano.</p>
       <p className="opcao">
-        <span>Teclas de mídia e controles do sistema (MPRIS)</span>
+        <span>Teclas de mídia e controles do sistema</span>
         <strong>{mpris === undefined ? "…" : mpris === null ? "ativos" : "indisponíveis"}</strong>
       </p>
       {mpris && (
         <p className="nota">
-          {mpris} Sem o barramento D-Bus da sessão não há como o sistema controlar o Skáld; o resto funciona normalmente.
+          {mpris} Enquanto isso, o sistema não consegue controlar o Skáld; o resto funciona normalmente.
         </p>
       )}
       <h3>Dados</h3>

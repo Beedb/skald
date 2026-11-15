@@ -34,9 +34,7 @@ blake3 = { version = "1.8.7", features = ["std"] }
 image = { version = "0.25.10", default-features = false, features = ["jpeg", "png", "webp"] }
 notify-rust = "4"
 ureq = "3"
-
-# MPRIS só no Linux; no Windows o SMTC fica para a etapa 40.
-[target.'cfg(target_os = "linux")'.dependencies]
+# MPRIS (Linux, via zbus) e SMTC (Windows).
 souvlaki = { version = "0.9.3", default-features = false, features = ["use_zbus"] }
 
 # Iniciar com o sistema no Windows (HKCU\...\Run).

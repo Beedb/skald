@@ -16,10 +16,6 @@ mod miniaturas;
 mod mixes;
 mod player;
 mod playlists;
-#[cfg(target_os = "linux")]
-mod mpris;
-#[cfg(not(target_os = "linux"))]
-#[path = "mpris_stub.rs"]
 mod mpris;
 mod queue;
 mod settings;
