@@ -1,23 +1,24 @@
 //! Integração com o sistema (seção 8.10 e 12): iniciar com a sessão e notificação de troca de música.
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 /// Argumento usado ao iniciar com o sistema: com a bandeja ligada, abre só na bandeja.
+#[cfg(desktop)]
 pub const ARG_MINIMIZADO: &str = "--minimizado";
 
 /// `~/.config/autostart/skald.desktop` (padrão XDG, sem depender de serviço).
-#[cfg_attr(windows, allow(dead_code))] // no Windows o início automático usa o registro
-pub fn arquivo_autostart(config_dir: &Path) -> PathBuf {
+#[cfg(desktop)]
+pub fn arquivo_autostart(config_dir: &Path) -> std::path::PathBuf {
     config_dir.join("autostart").join("skald.desktop")
 }
 
-#[cfg_attr(windows, allow(dead_code))]
+#[cfg(desktop)]
 pub fn autostart_ativo(config_dir: &Path) -> bool {
     arquivo_autostart(config_dir).is_file()
 }
 
 /// Cria ou remove a entrada de início automático (só o nosso `.desktop`).
-#[cfg_attr(windows, allow(dead_code))]
+#[cfg(desktop)]
 pub fn definir_autostart(config_dir: &Path, executavel: &Path, ativo: bool) -> Result<(), String> {
     let arquivo = arquivo_autostart(config_dir);
     if !ativo {
@@ -71,6 +72,7 @@ pub mod registro {
 }
 
 /// Notificação de nova música (D-Bus). Falhas são ignoradas: o app segue sem ela.
+#[cfg(desktop)]
 pub fn notificar_musica(titulo: &str, artista: &str, capa: Option<&Path>) {
     let mut n = notify_rust::Notification::new();
     n.appname("Skáld").summary(titulo).body(artista).icon("skald").timeout(5000);
@@ -79,6 +81,10 @@ pub fn notificar_musica(titulo: &str, artista: &str, capa: Option<&Path>) {
     }
     let _ = n.show();
 }
+
+/// No Android a notificação de mídia virá com o serviço de reprodução em segundo plano.
+#[cfg(mobile)]
+pub fn notificar_musica(_titulo: &str, _artista: &str, _capa: Option<&Path>) {}
 
 #[cfg(test)]
 mod testes {

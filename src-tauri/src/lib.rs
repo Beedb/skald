@@ -16,6 +16,10 @@ mod miniaturas;
 mod mixes;
 mod player;
 mod playlists;
+#[cfg(desktop)]
+mod mpris;
+#[cfg(mobile)]
+#[path = "mpris_stub.rs"]
 mod mpris;
 mod queue;
 mod settings;
@@ -1403,8 +1407,10 @@ fn mpris_status(estado: State<MprisStatus>) -> Result<Option<String>, String> {
     Ok(estado.0.lock().map_err(erro_db)?.clone())
 }
 
+#[cfg(desktop)]
 const ID_BANDEJA: &str = "principal";
 
+#[cfg(desktop)]
 fn mostrar_janela(app: &AppHandle) {
     if let Some(w) = app.get_webview_window("main") {
         let _ = w.unminimize();
@@ -1415,6 +1421,7 @@ fn mostrar_janela(app: &AppHandle) {
 
 /// Mostra ou esconde o ícone da bandeja (criado na primeira vez). Sem a biblioteca de
 /// indicadores (libayatana-appindicator3), a criação falha sem derrubar o app.
+#[cfg(desktop)]
 fn definir_bandeja(app: &AppHandle, ativo: bool) -> Result<(), String> {
     if let Some(t) = app.tray_by_id(ID_BANDEJA) {
         return t.set_visible(ativo).map_err(|e| e.to_string());
@@ -1466,6 +1473,12 @@ fn definir_bandeja(app: &AppHandle, ativo: bool) -> Result<(), String> {
     }
 }
 
+/// No celular não há bandeja: ligar falha e a opção fica desligada.
+#[cfg(mobile)]
+fn definir_bandeja(_app: &AppHandle, ativo: bool) -> Result<(), String> {
+    if ativo { Err("Bandeja indisponível neste sistema.".into()) } else { Ok(()) }
+}
+
 /// "Fechar envia para a bandeja". Se a bandeja não puder ser criada, a opção volta a desligada.
 #[tauri::command]
 fn set_tray(app: AppHandle, ativo: bool) -> Result<(), String> {
@@ -1490,19 +1503,30 @@ fn autostart_get(app: AppHandle) -> Result<bool, String> {
         let _ = app;
         Ok(sistema::registro::ativo())
     }
-    #[cfg(not(windows))]
+    #[cfg(mobile)]
+    {
+        let _ = app;
+        Ok(false)
+    }
+    #[cfg(all(desktop, not(windows)))]
     Ok(sistema::autostart_ativo(&app.path().config_dir().map_err(|e| e.to_string())?))
 }
 
 #[tauri::command]
 fn set_autostart(app: AppHandle, ativo: bool) -> Result<(), String> {
+    #[cfg(mobile)]
+    {
+        let _ = (app, ativo);
+        return Err("Iniciar com o sistema não está disponível neste sistema.".into());
+    }
+    #[cfg(desktop)]
     let exe = std::env::current_exe().map_err(|e| e.to_string())?;
     #[cfg(windows)]
     {
         let _ = app;
         sistema::registro::definir(&exe, ativo)
     }
-    #[cfg(not(windows))]
+    #[cfg(all(desktop, not(windows)))]
     sistema::definir_autostart(&app.path().config_dir().map_err(|e| e.to_string())?, &exe, ativo)
 }
 
@@ -1688,11 +1712,13 @@ pub fn run() {
             retomar_temporizador(app.handle());
             rganalise::iniciar(app.handle().clone());
             // Bandeja ligada: cria o ícone; iniciado com o sistema, abre só nela.
+            #[cfg(desktop)]
             let bandeja = {
                 let db = app.state::<db::Db>();
                 let conn = db.0.lock().map_err(erro_db)?;
                 settings::carregar(&conn)?.bandeja
             };
+            #[cfg(desktop)]
             if bandeja {
                 match definir_bandeja(app.handle(), true) {
                     Ok(()) if std::env::args().any(|a| a == sistema::ARG_MINIMIZADO) => {
@@ -1707,7 +1733,10 @@ pub fn run() {
             Ok(())
         })
         .on_window_event(|janela, evento| {
+            #[cfg(mobile)]
+            let _ = (janela, evento);
             // Com a bandeja ligada, fechar só esconde a janela; a música continua.
+            #[cfg(desktop)]
             if let tauri::WindowEvent::CloseRequested { api, .. } = evento {
                 let app = janela.app_handle();
                 let bandeja = app.tray_by_id(ID_BANDEJA).is_some()
