@@ -1,10 +1,13 @@
 package com.skald.app
 
 import android.Manifest
+import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.Environment
+import android.provider.Settings
 import android.webkit.JavascriptInterface
 import android.webkit.WebView
 import androidx.activity.enableEdgeToEdge
@@ -20,11 +23,28 @@ class MainActivity : TauriActivity() {
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) Manifest.permission.READ_MEDIA_AUDIO
     else Manifest.permission.READ_EXTERNAL_STORAGE
 
+  /** Evento JS que recebe a resposta do pedido em andamento. */
+  private var eventoPedido = "skald-permissao"
+  /** Voltando da tela "acesso a todos os arquivos" das configurações. */
+  private var aguardandoAcessoTotal = false
+
   private val pedido = registerForActivityResult(ActivityResultContracts.RequestPermission()) { ok ->
-    webView?.evaluateJavascript(
-      "window.dispatchEvent(new CustomEvent('skald-permissao', { detail: $ok }))", null
-    )
+    avisar(eventoPedido, ok)
   }
+
+  private fun avisar(evento: String, ok: Boolean) {
+    webView?.evaluateJavascript("window.dispatchEvent(new CustomEvent('$evento', { detail: $ok }))", null)
+  }
+
+  private fun temPermissaoAudio(): Boolean =
+    ContextCompat.checkSelfPermission(this, permissaoAudio) == PackageManager.PERMISSION_GRANTED
+
+  /** Android 11+: "acesso a todos os arquivos". Antes disso, a permissão de leitura já basta
+   *  (com requestLegacyExternalStorage no Android 10). */
+  private fun temAcessoTotal(): Boolean =
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) Environment.isExternalStorageManager()
+    else ContextCompat.checkSelfPermission(this, Manifest.permission.READ_EXTERNAL_STORAGE) ==
+      PackageManager.PERMISSION_GRANTED
 
   override fun onCreate(savedInstanceState: Bundle?) {
     enableEdgeToEdge()
@@ -35,6 +55,14 @@ class MainActivity : TauriActivity() {
     super.onCreate(savedInstanceState)
   }
 
+  override fun onResume() {
+    super.onResume()
+    if (aguardandoAcessoTotal) {
+      aguardandoAcessoTotal = false
+      avisar("skald-acesso-total", temAcessoTotal())
+    }
+  }
+
   override fun onWebViewCreate(webView: WebView) {
     this.webView = webView
     webView.addJavascriptInterface(Ponte(), "SkaldAndroid")
@@ -43,13 +71,38 @@ class MainActivity : TauriActivity() {
   /** Ponte para a interface (window.SkaldAndroid). Os métodos rodam fora da thread da UI. */
   inner class Ponte {
     @JavascriptInterface
-    fun temPermissao(): Boolean =
-      ContextCompat.checkSelfPermission(this@MainActivity, permissaoAudio) == PackageManager.PERMISSION_GRANTED
+    fun temPermissao(): Boolean = temPermissaoAudio()
 
-    /** Mostra o pedido do sistema; a resposta chega no evento `skald-permissao` (detail = concedida). */
+    /** Pedido do sistema para ler músicas; resposta no evento `skald-permissao`. */
     @JavascriptInterface
     fun pedirPermissao() {
-      runOnUiThread { pedido.launch(permissaoAudio) }
+      runOnUiThread {
+        eventoPedido = "skald-permissao"
+        pedido.launch(permissaoAudio)
+      }
+    }
+
+    @JavascriptInterface
+    fun temAcessoTotal(): Boolean = this@MainActivity.temAcessoTotal()
+
+    /** Acesso a todos os arquivos (para ler .lrc); resposta no evento `skald-acesso-total`. */
+    @JavascriptInterface
+    fun pedirAcessoTotal() {
+      runOnUiThread {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+          aguardandoAcessoTotal = true
+          try {
+            startActivity(
+              Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION, Uri.parse("package:$packageName"))
+            )
+          } catch (e: Exception) {
+            startActivity(Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION))
+          }
+        } else {
+          eventoPedido = "skald-acesso-total"
+          pedido.launch(Manifest.permission.READ_EXTERNAL_STORAGE)
+        }
+      }
     }
 
     /** Pasta Music do armazenamento compartilhado (ex.: /storage/emulated/0/Music). */

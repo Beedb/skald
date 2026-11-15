@@ -300,12 +300,16 @@ function App() {
 
   /** Android: importa (e passa a monitorar) a pasta Music, depois de pedir a permissão. */
   async function importarMusicaAndroid() {
-    if (!(await garantirPermissao())) {
+    const acesso = await garantirPermissao();
+    if (!acesso) {
       setErro("Sem permissão para ler as músicas. Libere em Configurações do Android → Apps → Skáld → Permissões.");
       return;
     }
     const pasta = pastaMusica();
     if (pasta) await importar("import_folder", { path: pasta });
+    if (acesso === "audio") {
+      setAviso('Sem "acesso a todos os arquivos", as letras .lrc ao lado das músicas não são lidas. Importe de novo para liberar.');
+    }
   }
 
   /** Arquivos soltos: entram na biblioteca sem monitorar a pasta deles. */

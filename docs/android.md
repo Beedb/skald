@@ -49,7 +49,17 @@ resposta chega no evento `skald-permissao`, e `pastaMusica`); o lado da interfac
 `READ_EXTERNAL_STORAGE` até o Android 12) e chama `import_folder` com a pasta Music, que
 passa a ser monitorada como no desktop. "Arquivos" some, porque o seletor do Android
 devolve `content://`, que o `lofty` não lê. Com essa permissão o sistema mostra só os
-arquivos de mídia: `.lrc` ao lado da música não aparece (a letra salva no Skáld funciona).
+arquivos de mídia. Por isso o Skáld pede antes "acesso a todos os arquivos"
+(`MANAGE_EXTERNAL_STORAGE`, tela das configurações do Android; resposta no evento
+`skald-acesso-total`), que deixa ler os `.lrc` ao lado das músicas. Recusado, cai no
+`READ_MEDIA_AUDIO` e avisa que os `.lrc` ficam de fora. Até o Android 10 a leitura comum
+basta (`requestLegacyExternalStorage`).
+
+## APK de release para teste
+
+`scripts/android.sh build --apk --target aarch64` gera um APK sem assinatura (~26 MB);
+para instalar, alinhar com `zipalign` e assinar com `apksigner` (por ora com a chave de
+debug `~/.android/debug.keystore`). Para publicar falta uma chave de release própria.
 
 ## O que ficou de fora no Android (`#[cfg(desktop)]`)
 
