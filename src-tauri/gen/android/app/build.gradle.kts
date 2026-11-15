@@ -14,7 +14,24 @@ val tauriProperties = Properties().apply {
     }
 }
 
+// Chave de release fora do repositório: gen/android/keystore.properties (ignorado pelo git)
+// aponta para o .jks (storeFile, storePassword, keyAlias, keyPassword).
+val keystoreProperties = Properties().apply {
+    val f = rootProject.file("keystore.properties")
+    if (f.exists()) f.inputStream().use { load(it) }
+}
+
 android {
+    signingConfigs {
+        if (keystoreProperties.getProperty("storeFile") != null) {
+            create("release") {
+                storeFile = file(keystoreProperties.getProperty("storeFile"))
+                storePassword = keystoreProperties.getProperty("storePassword")
+                keyAlias = keystoreProperties.getProperty("keyAlias")
+                keyPassword = keystoreProperties.getProperty("keyPassword")
+            }
+        }
+    }
     compileSdk = 37
     ndkVersion = "27.3.13750724"
     namespace = "com.skald.app"
@@ -40,6 +57,7 @@ android {
             }
         }
         getByName("release") {
+            signingConfigs.findByName("release")?.let { signingConfig = it }
             optimization {
                enable = true
             }

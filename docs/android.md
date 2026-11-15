@@ -57,9 +57,16 @@ basta (`requestLegacyExternalStorage`).
 
 ## APK de release para teste
 
-`scripts/android.sh build --apk --target aarch64` gera um APK sem assinatura (~26 MB);
-para instalar, alinhar com `zipalign` e assinar com `apksigner` (por ora com a chave de
-debug `~/.android/debug.keystore`). Para publicar falta uma chave de release própria.
+`scripts/android.sh build --apk --target aarch64` gera
+`app/build/outputs/apk/universal/release/app-universal-release.apk` (~26 MB), assinado
+com a chave do Skáld: `~/Android/chaves/skald-release.jks` (senha em
+`~/Android/chaves/keystore.properties`, copiado para `gen/android/keystore.properties`,
+ignorado pelo git). Sem esse arquivo o release sai sem assinatura. **Guardar cópia da
+chave**: sem ela não dá para publicar atualizações que instalem por cima.
+
+Ícones: `npx tauri icon docs/icone.png` gera os do Android (fundo adaptável preto em
+`res/values/ic_launcher_background.xml`); desfazer as mudanças em `icons/icon.icns` e
+`icons/ios/`.
 
 ## O que ficou de fora no Android (`#[cfg(desktop)]`)
 
