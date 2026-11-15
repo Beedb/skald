@@ -30,7 +30,7 @@ O Skáld organiza e toca as músicas que estão no seu computador. Ele não faz 
 - Equalizador com presets
 - Letras sincronizadas (`.lrc` ou tag), com busca no LRCLIB
 - Temporizador para dormir, com o volume baixando devagar
-- Teclas de mídia e integração com o painel do sistema (MPRIS, só no Linux por enquanto), ícone na bandeja e notificação ao trocar de música
+- Teclas de mídia e integração com o painel do sistema (MPRIS no Linux, controles de mídia no Windows), ícone na bandeja e notificação ao trocar de música
 
 **Histórico e estatísticas**
 - Histórico de reprodução: uma música conta como escutada a partir de 60% da duração, com no mínimo 20 s
