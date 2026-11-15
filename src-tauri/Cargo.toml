@@ -40,6 +40,11 @@ ureq = "3"
 notify-rust = "4"
 souvlaki = { version = "0.9.3", default-features = false, features = ["use_zbus"] }
 
+# Android: notificação de mídia via JNI (MidiaService.kt).
+[target.'cfg(target_os = "android")'.dependencies]
+jni = "0.21"
+ndk-context = "0.1"
+
 # Iniciar com o sistema no Windows (HKCU\...\Run).
 [target.'cfg(windows)'.dependencies]
 winreg = "0.56"

@@ -68,6 +68,17 @@ chave**: sem ela não dá para publicar atualizações que instalem por cima.
 `res/values/ic_launcher_background.xml`); desfazer as mudanças em `icons/icon.icns` e
 `icons/ios/`.
 
+## Segundo plano e notificação de mídia
+
+`src-tauri/src/midia_android.rs` faz o papel do `mpris.rs` no Android (mesma API, entra
+como `mod mpris`): um worker manda faixa, capa (cache `midia/`), duração, posição e estado
+para `Midia.atualizar` (Kotlin) por JNI, pegando a classe pelo class loader da atividade.
+`Midia.kt` liga o `MidiaService` (serviço em primeiro plano `mediaPlayback`, com
+`MediaSession` e notificação `MediaStyle`) ao começar a tocar e o desliga sem faixa. Os
+botões da notificação, da tela de bloqueio e dos fones chamam `Midia.comando` →
+`Java_com_skald_app_Midia_comando` (Rust) → `avancar`/`voltar`/`alternar_pausa`/`buscar`.
+`proguard-rules.pro` mantém `Midia` (chamada só pelo JNI).
+
 ## O que ficou de fora no Android (`#[cfg(desktop)]`)
 
 Bandeja, iniciar com o sistema, notificação de troca de música (`notify-rust`) e MPRIS
@@ -75,8 +86,6 @@ Bandeja, iniciar com o sistema, notificação de troca de música (`notify-rust`
 
 ## Próximas etapas (Fase Android)
 
-- Reprodução em segundo plano: serviço em primeiro plano com `MediaSession`
-  (notificação de mídia, tela de bloqueio, fones Bluetooth); substitui MPRIS e bandeja.
 - Interface para tela estreita (lateral vira gaveta, player em tela cheia, toque).
 - Monitoramento de pastas: testar o `notify` (inotify) nas pastas compartilhadas.
 - Ícones e assinatura do APK de release.

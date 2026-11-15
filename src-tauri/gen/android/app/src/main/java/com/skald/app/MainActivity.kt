@@ -56,6 +56,7 @@ class MainActivity : TauriActivity() {
     // de o Rust criar o player; depois disso o gst::init() do Rust não faz nada.
     System.loadLibrary("gstreamer_android")
     GStreamer.init(this)
+    Midia.contexto = applicationContext
     super.onCreate(savedInstanceState)
   }
 

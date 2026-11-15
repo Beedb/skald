@@ -23,3 +23,6 @@
 -keepclassmembers class com.skald.app.MainActivity$Ponte {
     @android.webkit.JavascriptInterface <methods>;
 }
+
+# Midia: atualizar() é chamado só pelo Rust via JNI (midia_android.rs).
+-keep class com.skald.app.Midia { *; }

@@ -18,7 +18,10 @@ mod player;
 mod playlists;
 #[cfg(desktop)]
 mod mpris;
-#[cfg(mobile)]
+#[cfg(target_os = "android")]
+#[path = "midia_android.rs"]
+mod mpris;
+#[cfg(all(mobile, not(target_os = "android")))]
 #[path = "mpris_stub.rs"]
 mod mpris;
 mod queue;
