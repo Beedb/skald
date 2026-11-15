@@ -7,6 +7,8 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.Environment
+import android.provider.DocumentsContract
+import org.json.JSONObject
 import android.provider.Settings
 import android.webkit.JavascriptInterface
 import android.webkit.WebView
@@ -34,6 +36,30 @@ class MainActivity : TauriActivity() {
 
   private val pedido = registerForActivityResult(ActivityResultContracts.RequestPermission()) { ok ->
     avisar(eventoPedido, ok)
+  }
+
+  /** Seletor de pastas do Android; a resposta vai para o evento `skald-pasta` (caminho ou null). */
+  private val seletorPasta = registerForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
+    val caminho = uri?.let { caminhoDaArvore(it) }
+    val detalhe = if (caminho != null) JSONObject.quote(caminho) else "null"
+    webView?.evaluateJavascript("window.dispatchEvent(new CustomEvent('skald-pasta', { detail: $detalhe }))", null)
+  }
+
+  /** content://…/tree/primary%3AMúsicas → /storage/emulated/0/Músicas (cartão SD: /storage/XXXX-XXXX/…).
+   *  Com acesso aos arquivos o Rust lê o caminho direto, como no desktop. */
+  private fun caminhoDaArvore(uri: Uri): String? {
+    val id = runCatching { DocumentsContract.getTreeDocumentId(uri) }.getOrNull() ?: return null
+    if (id.startsWith("raw:")) return id.removePrefix("raw:")
+    val volume = id.substringBefore(':')
+    val resto = id.substringAfter(':', "")
+    @Suppress("DEPRECATION")
+    val raiz = when (volume) {
+      "primary" -> Environment.getExternalStorageDirectory().absolutePath
+      "home" -> Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOCUMENTS).absolutePath
+      "downloads" -> Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS).absolutePath
+      else -> if (Regex("[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}").matches(volume)) "/storage/$volume" else return null
+    }
+    return if (resto.isEmpty()) raiz else "$raiz/$resto"
   }
 
   private fun avisar(evento: String, ok: Boolean) {
@@ -122,6 +148,12 @@ class MainActivity : TauriActivity() {
     /** Margens seguras atuais (JSON com topo, base, esquerda e direita em px de CSS). */
     @JavascriptInterface
     fun insets(): String = insetsJson
+
+    /** Abre o seletor de pastas; resposta no evento `skald-pasta`. */
+    @JavascriptInterface
+    fun escolherPasta() {
+      runOnUiThread { seletorPasta.launch(null) }
+    }
 
     /** Pasta Music do armazenamento compartilhado (ex.: /storage/emulated/0/Music). */
     @JavascriptInterface

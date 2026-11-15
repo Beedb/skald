@@ -6,6 +6,7 @@ interface PonteAndroid {
   pedirAcessoTotal(): void;
   pastaMusica(): string;
   insets(): string;
+  escolherPasta(): void;
 }
 
 const ponte = (window as unknown as { SkaldAndroid?: PonteAndroid }).SkaldAndroid;
@@ -13,10 +14,14 @@ const ponte = (window as unknown as { SkaldAndroid?: PonteAndroid }).SkaldAndroi
 export const noAndroid = ponte !== undefined;
 
 function esperar(evento: string, pedir: () => void): Promise<boolean> {
+  return esperarValor<boolean>(evento, pedir).then(Boolean);
+}
+
+function esperarValor<T>(evento: string, pedir: () => void): Promise<T> {
   return new Promise((resolve) => {
     const aoResponder = (e: Event) => {
       window.removeEventListener(evento, aoResponder);
-      resolve(Boolean((e as CustomEvent<boolean>).detail));
+      resolve((e as CustomEvent<T>).detail);
     };
     window.addEventListener(evento, aoResponder);
     pedir();
@@ -35,6 +40,13 @@ export async function garantirPermissao(): Promise<"total" | "audio" | false> {
   if (ponte.temPermissao()) return "audio";
   if (await esperar("skald-permissao", () => ponte.pedirPermissao())) return "audio";
   return false;
+}
+
+/** Seletor de pastas do Android: devolve o caminho no aparelho, ou null se cancelado ou se a
+ *  pasta não tiver caminho (ex.: nuvem). */
+export function escolherPasta(): Promise<string | null> {
+  if (!ponte) return Promise.resolve(null);
+  return esperarValor<string | null>("skald-pasta", () => ponte.escolherPasta());
 }
 
 /** Pasta Music do aparelho; no Android o seletor de pastas devolve content://, que não serve. */

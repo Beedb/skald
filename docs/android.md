@@ -45,7 +45,7 @@ scripts/android.sh dev                                    # celular via adb ou e
 
 `MainActivity.kt` expõe `window.SkaldAndroid` (`temPermissao`, `pedirPermissao`, cuja
 resposta chega no evento `skald-permissao`, e `pastaMusica`); o lado da interface fica em
-`src/android.ts`. No Android o botão vira "Importar Music": pede `READ_MEDIA_AUDIO` (ou
+`src/android.ts`. No Android o botão "Importar pasta" pede `READ_MEDIA_AUDIO` (ou
 `READ_EXTERNAL_STORAGE` até o Android 12) e chama `import_folder` com a pasta Music, que
 passa a ser monitorada como no desktop. "Arquivos" some, porque o seletor do Android
 devolve `content://`, que o `lofty` não lê. Com essa permissão o sistema mostra só os

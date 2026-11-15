@@ -23,7 +23,7 @@ import { aplicarCorCapa, corDaImagem, reaplicarCorCapa } from "./coresCapa";
 import { aplicarTema, ModoTema } from "./tema";
 import Estatisticas from "./Estatisticas";
 import Configuracoes from "./Configuracoes";
-import { garantirPermissao, noAndroid, pastaMusica } from "./android";
+import { escolherPasta, garantirPermissao, noAndroid } from "./android";
 import "./App.css";
 
 type DbStatus = {
@@ -300,15 +300,16 @@ function App() {
     await importar("import_folder", { path: pasta });
   }
 
-  /** Android: importa (e passa a monitorar) a pasta Music, depois de pedir a permissão. */
+  /** Android: pede a permissão, abre o seletor de pastas e importa (e passa a monitorar) a escolhida. */
   async function importarMusicaAndroid() {
     const acesso = await garantirPermissao();
     if (!acesso) {
       setErro("Sem permissão para ler as músicas. Libere em Configurações do Android → Apps → Skáld → Permissões.");
       return;
     }
-    const pasta = pastaMusica();
-    if (pasta) await importar("import_folder", { path: pasta });
+    const pasta = await escolherPasta();
+    if (pasta === null) return;
+    await importar("import_folder", { path: pasta });
     if (acesso === "audio") {
       setAviso('Sem "acesso a todos os arquivos", as letras .lrc ao lado das músicas não são lidas. Importe de novo para liberar.');
     }
@@ -407,7 +408,7 @@ function App() {
               )}
               <button onClick={importarPasta} disabled={importando}>
                 <FolderPlus size={16} aria-hidden="true" />
-                {importando ? "Importando…" : noAndroid ? "Importar Music" : "Importar pasta"}
+                {importando ? "Importando…" : "Importar pasta"}
               </button>
               {!noAndroid && (
               <button onClick={importarArquivos} disabled={importando} title="Adiciona arquivos soltos, sem monitorar a pasta deles">
