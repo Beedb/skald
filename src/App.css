@@ -2335,15 +2335,17 @@ input[type="range"].trilha:disabled {
 .faixa-mixes {
   display: grid;
   grid-auto-flow: column;
-  grid-auto-columns: minmax(15rem, 1fr);
-  gap: 0.9rem;
+  /* Largura fixa: com poucos mixes, 1fr esticava cada cartão até a largura da tela. */
+  grid-auto-columns: 11rem;
+  justify-content: start;
+  gap: 0.8rem;
   overflow-x: auto;
   padding-bottom: 0.4rem;
 }
 
 .cartao-mix {
   position: relative;
-  aspect-ratio: 16 / 10;
+  aspect-ratio: 1;
   padding: 0;
   overflow: hidden;
   text-align: left;
@@ -2379,7 +2381,7 @@ input[type="range"].trilha:disabled {
   height: 100%;
   aspect-ratio: auto;
   border-radius: 0;
-  font-size: 3rem;
+  font-size: 2.2rem;
 }
 
 /* Escurece embaixo para o texto e tinge com o acento. */
@@ -2395,9 +2397,9 @@ input[type="range"].trilha:disabled {
 
 .mix-texto {
   position: absolute;
-  left: 0.9rem;
-  right: 3.6rem;
-  bottom: 0.75rem;
+  left: 0.75rem;
+  right: 3rem;
+  bottom: 0.6rem;
   z-index: 1;
   display: flex;
   flex-direction: column;
@@ -2413,7 +2415,7 @@ input[type="range"].trilha:disabled {
 
 .mix-texto strong {
   font-family: var(--fonte-titulo);
-  font-size: 1.05rem;
+  font-size: 0.95rem;
 }
 
 .mix-texto span {
@@ -2424,11 +2426,11 @@ input[type="range"].trilha:disabled {
 
 .mix-play {
   position: absolute;
-  right: 0.8rem;
-  bottom: 0.8rem;
+  right: 0.6rem;
+  bottom: 0.6rem;
   z-index: 1;
-  width: 2.3rem;
-  height: 2.3rem;
+  width: 2rem;
+  height: 2rem;
   display: grid;
   place-items: center;
   border-radius: 50%;
