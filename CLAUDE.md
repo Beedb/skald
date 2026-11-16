@@ -149,14 +149,14 @@ Etapas:
 
 ### 7.2 Android
 
-- [ ] 36. Retomar ao reabrir
-- [ ] 37. Fila clicável
-- [ ] 38. Continuar sozinho
-- [ ] 39. Playlist: adicionar músicas e menu ⋮
-- [ ] 40. Configurações mais bonitas
-- [ ] 41. Barra de progresso clicável/arrastável
-- [ ] 42. Foco de áudio (AudioFocus)
-- [ ] 43. Um toque já toca
+- [x] 36. Retomar ao reabrir
+- [x] 37. Fila clicável
+- [x] 38. Continuar sozinho
+- [x] 39. Playlist: adicionar músicas e menu ⋮
+- [x] 40. Configurações mais bonitas
+- [x] 41. Barra de progresso clicável/arrastável
+- [x] 42. Foco de áudio (AudioFocus)
+- [x] 43. Um toque já toca
 
 ### 7.3 Windows
 
@@ -194,6 +194,9 @@ Conferir o que já existe antes de cada etapa e marcar `[x]` só com teste feito
 - **39 Playlist**: `src/AdicionarMusicas.tsx` (modal com busca em `list_media`/`count_media`, páginas de 200, virtualizada, seleção múltipla; já presentes ficam marcadas e desabilitadas; `playlist_add`). `PlaylistView` com Tocar, Adicionar músicas e ⋮ (`.menu-contexto` com Tocar em seguida, Adicionar à fila, Renomear, Escolher capa, Usar capa automática, Exportar M3U, Excluir; `.desativado` com playlist vazia).
 - **40 Configurações**: componentes `Cartao`/`Linha`/`Interruptor` em `Configuracoes.tsx` (classes `cfg-*`, `.interruptor` = checkbox `role="switch"`); cartão Biblioteca (contagem via `db_status`, pastas monitoradas com "Parar de monitorar"). Empilha em ≤ 720 px.
 - **41 Progresso**: `Progresso` em `PlayerBar.tsx` é uma barra própria (`.barra-progresso`, `role="slider"`, pointer capture, dica de tempo, setas ±5 s, Home/End; `pendente` segura o ponto buscado até o player confirmar ou 2 s). Busca com `SeekFlags::ACCURATE`; `AsyncDone` no deck ativo gera aviso (posição atualiza pausado).
+- **42 Foco de áudio (Android)**: `Foco.kt` (`AudioFocusRequestCompat`, `AUDIOFOCUS_GAIN`, uso mídia/música), chamado em `Midia.atualizar` só quando o estado muda (`ultimo`). Tocando: pede o foco (negado → pausa). `LOSS`: pausa e solta; `LOSS_TRANSIENT`: pausa e retoma no `GAIN` (`retomarNaVolta`); "pode abaixar" fica com o ducking automático do Android. Parado: solta o foco.
+- **43 Um toque (Android)**: `tocarAo` em `src/android.ts` (`onClick` no Android, `onDoubleClick` no desktop) em álbum, histórico e playlist; na biblioteca o toque toca se não houver seleção. `BotaoCurtir` e as ações da linha da playlist param a propagação.
+- Android testado num Galaxy S24+ (SM-S926B) com `adb` (depuração USB autorizada; `adb install -r` às vezes falha com `INSTALL_FAILED_VERIFICATION_FAILURE` na segunda tentativa seguida, mas a primeira instala).
 - Pendente: `cargo test` às vezes cai com SIGSEGV (~1 em 6, já antes da etapa 41; provavelmente testes do GStreamer em paralelo).
 
 ### Redesenho visual (a partir das imagens do usuário, concluído)
