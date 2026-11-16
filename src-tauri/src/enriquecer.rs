@@ -554,28 +554,52 @@ mod testes {
         println!("capa: {:?}", capa.as_ref().map(Vec::len));
     }
 
-    #[test]
-    fn grava_tags_no_arquivo() {
-        // WAV gerado pelo GStreamer (como no teste do player); sem ele, o teste é pulado.
-        let dir = std::env::temp_dir().join(format!("skald-tags-{}", std::process::id()));
-        std::fs::create_dir_all(&dir).unwrap();
-        let wav = dir.join("t.wav");
-        let ok = std::process::Command::new("gst-launch-1.0")
-            .args(["-q", "audiotestsrc", "num-buffers=10", "!", "wavenc", "!", "filesink"])
-            .arg(format!("location={}", wav.display()))
-            .status()
-            .is_ok_and(|s| s.success());
-        if !ok {
-            return;
-        }
-        let campos = Campos { title: Some("Teste".into()), album: Some("Álbum".into()), year: Some(2024), track_number: Some(3), ..Default::default() };
-        gravar_no_arquivo(&wav, &campos, None).unwrap();
-        let lido = lofty::read_from_path(&wav).unwrap();
+    fn confere_tags(wav: &Path) {
+        let lido = lofty::read_from_path(wav).unwrap();
         use lofty::prelude::*;
         let tag = lido.primary_tag().unwrap();
         assert_eq!(tag.title().as_deref(), Some("Teste"));
         assert_eq!(tag.album().as_deref(), Some("Álbum"));
         assert_eq!(tag.track(), Some(3));
+    }
+
+    fn campos_teste() -> Campos {
+        Campos { title: Some("Teste".into()), album: Some("Álbum".into()), year: Some(2024), track_number: Some(3), ..Default::default() }
+    }
+
+    #[test]
+    fn grava_tags_no_arquivo() {
+        let dir = std::env::temp_dir().join(format!("skald tags ção-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let wav = dir.join("t.wav");
+        crate::teste_util::wav(&wav, 4410, 0);
+        gravar_no_arquivo(&wav, &campos_teste(), None).unwrap();
+        confere_tags(&wav);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// No Windows o arquivo aberto pelo player pode ficar travado para escrita.
+    #[test]
+    fn grava_tags_enquanto_toca() {
+        let dir = std::env::temp_dir().join(format!("skald tags tocando-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let wav = dir.join("tocando.wav");
+        crate::teste_util::wav(&wav, 44_100 * 6, 3);
+        let (tx, rx) = std::sync::mpsc::channel();
+        let p = crate::player::Player::new(move |e| { let _ = tx.send(e); }, || None).unwrap();
+        p.silenciar_para_teste();
+        p.tocar(1, &wav.to_string_lossy(), crate::ganho::Ganho::default()).unwrap();
+        loop {
+            let e = rx.recv_timeout(std::time::Duration::from_secs(10)).expect("o player não começou");
+            assert!(e.erro.is_none(), "{:?}", e.erro);
+            if e.estado == crate::player::Estado::Tocando && e.posicao_ms > 500 {
+                break;
+            }
+        }
+        let gravou = gravar_no_arquivo(&wav, &campos_teste(), None);
+        drop(p);
+        gravou.expect("gravar tags com a música tocando");
+        confere_tags(&wav);
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

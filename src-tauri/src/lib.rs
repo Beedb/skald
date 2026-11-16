@@ -1,6 +1,8 @@
 mod apelidos;
 mod artistas;
 mod backup;
+#[cfg(test)]
+mod teste_util;
 mod buscaletras;
 mod colecao;
 mod db;

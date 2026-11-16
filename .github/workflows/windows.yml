@@ -47,7 +47,9 @@ jobs:
           $base = "https://gstreamer.freedesktop.org/data/pkg/windows/$env:GST_VERSAO/msvc"
           $nome = "gstreamer-1.0-msvc-x86_64-$env:GST_VERSAO.exe"
           Invoke-WebRequest "$base/$nome" -OutFile gst-instalador.exe
-          $esperado = ((Invoke-WebRequest "$base/$nome.sha256sum").Content -split '\s+')[0]
+          $txt = (Invoke-WebRequest "$base/$nome.sha256sum").Content
+          if ($txt -is [byte[]]) { $txt = [Text.Encoding]::ASCII.GetString($txt) }
+          $esperado = ($txt.Trim() -split '\s+')[0]
           $obtido = (Get-FileHash gst-instalador.exe -Algorithm SHA256).Hash
           if ($obtido -ne $esperado) { throw "SHA-256 não confere: $obtido <> $esperado" }
 

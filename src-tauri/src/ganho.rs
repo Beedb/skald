@@ -132,16 +132,16 @@ mod testes {
         let dir = std::env::temp_dir().join(format!("skald-teste-rg-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let arquivo = dir.join("rg.flac");
-        let ok = std::process::Command::new("gst-launch-1.0")
-            .args(["-q", "audiotestsrc", "num-buffers=10", "!", "taginject"])
-            .arg("tags=replaygain-track-gain=(double)-6.5,replaygain-track-peak=(double)0.9,replaygain-album-gain=(double)-4.0")
-            .args(["!", "flacenc", "!", "filesink"])
-            .arg(format!("location={}", arquivo.display()))
-            .status()
-            .is_ok_and(|s| s.success());
-        if !ok {
-            eprintln!("gst-launch-1.0 indisponível; teste ignorado");
-            return;
+        // O gst-launch trata "\" como escape; o Windows aceita "/".
+        let local = format!("location={}", arquivo.display().to_string().replace('\\', "/"));
+        let tags = "tags=replaygain-track-gain=(double)-6.5,replaygain-track-peak=(double)0.9,replaygain-album-gain=(double)-4.0";
+        let args = ["audiotestsrc", "num-buffers=10", "!", "taginject", tags, "!", "flacenc", "!", "filesink", &local];
+        match crate::teste_util::gst_launch(&args) {
+            None => {
+                eprintln!("gst-launch-1.0 não instalado; teste ignorado");
+                return;
+            }
+            Some(ok) => assert!(ok, "gst-launch-1.0 falhou ao gerar o FLAC"),
         }
         let g = ler(&arquivo);
         std::fs::remove_dir_all(&dir).unwrap();

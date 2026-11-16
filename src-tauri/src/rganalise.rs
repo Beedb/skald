@@ -224,18 +224,10 @@ mod testes {
 
     #[test]
     fn analisa_wav_e_guarda_no_banco() {
-        // WAV de teste gerado pelo GStreamer; sem gst-launch, o teste é pulado.
-        let dir = std::env::temp_dir().join(format!("skald-rg-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("skald rg ção-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let wav = dir.join("t.wav");
-        let ok = std::process::Command::new("gst-launch-1.0")
-            .args(["-q", "audiotestsrc", "num-buffers=200", "volume=0.5", "!", "wavenc", "!", "filesink"])
-            .arg(format!("location={}", wav.display()))
-            .status()
-            .is_ok_and(|s| s.success());
-        if !ok {
-            return;
-        }
+        crate::teste_util::wav(&wav, 200 * 1024, 0);
         let v = analisar(&wav).unwrap();
         assert!(v.db.is_finite() && v.pico.is_some_and(|p| p > 0.3 && p <= 1.0), "{v:?}");
 

@@ -230,6 +230,15 @@ impl Player {
     }
 
     /// Alterna entre tocar e pausar (os dois decks, durante um crossfade).
+    /// Os dois decks sem som, mas no ritmo real (`sync`).
+    #[cfg(test)]
+    pub(crate) fn silenciar_para_teste(&self) {
+        for d in &self.decks {
+            let mudo = gst::ElementFactory::make("fakesink").property("sync", true).build().unwrap();
+            d.set_property("audio-sink", &mudo);
+        }
+    }
+
     pub fn alternar_pausa(&self) -> Result<(), String> {
         let (ativo, saindo) = {
             let g = self.int.lock().unwrap();
@@ -541,12 +550,8 @@ mod testes {
     use std::sync::atomic::{AtomicBool, Ordering};
     use std::sync::mpsc;
 
-    /// Os dois decks sem som, mas no ritmo real (`sync`).
     fn silenciar(p: &Player) {
-        for d in &p.decks {
-            let mudo = gst::ElementFactory::make("fakesink").property("sync", true).build().unwrap();
-            d.set_property("audio-sink", &mudo);
-        }
+        p.silenciar_para_teste();
     }
 
     /// Toca a.mp3 (3 s) da pasta de teste sem som (fakesink) e espera o fim da faixa.
@@ -593,29 +598,8 @@ mod testes {
     }
 
     /// Gera um WAV de tom de 440 Hz com `buffers` blocos de 1024 amostras (44,1 kHz).
-    /// Escrito em Rust (PCM 16 bits mono), sem `gst-launch-1.0` nem `audiotestsrc`,
-    /// que não vão no GStreamer embutido do Windows.
     fn gerar_wav(destino: &std::path::Path, buffers: u32) {
-        let amostras = buffers * 1024;
-        let bytes = amostras * 2;
-        let mut w = Vec::with_capacity(44 + bytes as usize);
-        w.extend_from_slice(b"RIFF");
-        w.extend_from_slice(&(36 + bytes).to_le_bytes());
-        w.extend_from_slice(b"WAVEfmt ");
-        w.extend_from_slice(&16u32.to_le_bytes());
-        w.extend_from_slice(&1u16.to_le_bytes()); // PCM
-        w.extend_from_slice(&1u16.to_le_bytes()); // mono
-        w.extend_from_slice(&44_100u32.to_le_bytes());
-        w.extend_from_slice(&88_200u32.to_le_bytes());
-        w.extend_from_slice(&2u16.to_le_bytes());
-        w.extend_from_slice(&16u16.to_le_bytes());
-        w.extend_from_slice(b"data");
-        w.extend_from_slice(&bytes.to_le_bytes());
-        for i in 0..amostras {
-            let v = (i as f64 * 440.0 * std::f64::consts::TAU / 44_100.0).sin() * 8000.0;
-            w.extend_from_slice(&(v as i16).to_le_bytes());
-        }
-        std::fs::write(destino, w).unwrap();
+        crate::teste_util::wav(destino, buffers * 1024, 0);
     }
 
     struct Resultado {

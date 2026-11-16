@@ -137,32 +137,7 @@ mod testes {
     use super::*;
 
     fn wav(destino: &Path, segundos: u32) {
-        let amostras = 44_100 * segundos;
-        let bytes = amostras * 2;
-        let mut w = Vec::new();
-        for (rotulo, valor) in [(b"RIFF", 36 + bytes)] {
-            w.extend_from_slice(rotulo);
-            w.extend_from_slice(&valor.to_le_bytes());
-        }
-        w.extend_from_slice(b"WAVEfmt ");
-        for v in [16u32] {
-            w.extend_from_slice(&v.to_le_bytes());
-        }
-        for v in [1u16, 1] {
-            w.extend_from_slice(&v.to_le_bytes());
-        }
-        for v in [44_100u32, 88_200] {
-            w.extend_from_slice(&v.to_le_bytes());
-        }
-        for v in [2u16, 16] {
-            w.extend_from_slice(&v.to_le_bytes());
-        }
-        w.extend_from_slice(b"data");
-        w.extend_from_slice(&bytes.to_le_bytes());
-        // Conteúdo diferente por arquivo (hash único).
-        let semente = destino.to_string_lossy().len() as u32;
-        w.extend((0..amostras).flat_map(|i| (((i * (semente + 7)) % 4000) as i16).to_le_bytes()));
-        std::fs::write(destino, w).unwrap();
+        crate::teste_util::wav(destino, 44_100 * segundos, std::process::id() % 97);
     }
 
     /// O mesmo caminho da thread de `Vigia::iniciar` + o que `biblioteca_mudou` faz depois.
