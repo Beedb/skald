@@ -1623,7 +1623,8 @@ fn seek(player: State<player::Player>, posicao_ms: u64) -> Result<(), String> {
 
 /// Windows instalado: o GStreamer vem junto (DLLs ao lado do .exe, plugins em
 /// `gstreamer-1.0/`). Usa só esses plugins, com registro próprio, para não misturar
-/// com um GStreamer instalado no sistema. Em `tauri dev` a pasta não existe e nada muda.
+/// com um GStreamer instalado no sistema. Em `tauri dev` o Tauri também copia os recursos
+/// para `target\debug`, então o dev usa o mesmo conjunto do instalador.
 #[cfg(windows)]
 fn gstreamer_embutido() {
     let Some(dir) = std::env::current_exe().ok().and_then(|e| e.parent().map(|p| p.to_path_buf())) else { return };

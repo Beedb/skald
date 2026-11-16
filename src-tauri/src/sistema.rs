@@ -8,17 +8,20 @@ pub const ARG_MINIMIZADO: &str = "--minimizado";
 
 /// `~/.config/autostart/skald.desktop` (padrão XDG, sem depender de serviço).
 #[cfg(desktop)]
+#[cfg_attr(windows, allow(dead_code))] // no Windows o início automático usa o registro
 pub fn arquivo_autostart(config_dir: &Path) -> std::path::PathBuf {
     config_dir.join("autostart").join("skald.desktop")
 }
 
 #[cfg(desktop)]
+#[cfg_attr(windows, allow(dead_code))]
 pub fn autostart_ativo(config_dir: &Path) -> bool {
     arquivo_autostart(config_dir).is_file()
 }
 
 /// Cria ou remove a entrada de início automático (só o nosso `.desktop`).
 #[cfg(desktop)]
+#[cfg_attr(windows, allow(dead_code))]
 pub fn definir_autostart(config_dir: &Path, executavel: &Path, ativo: bool) -> Result<(), String> {
     let arquivo = arquivo_autostart(config_dir);
     if !ativo {

@@ -18,7 +18,7 @@ const LIMITE: Duration = Duration::from_secs(300);
 
 /// Mede ganho (dB, referência 89 dB do ReplayGain) e pico de um arquivo.
 pub fn analisar(path: &Path) -> Result<Valor, String> {
-    gst::init().map_err(|e| e.to_string())?;
+    crate::player::gst_iniciar().map_err(|e| e.to_string())?;
     let uri = gst::glib::filename_to_uri(path, None).map_err(|e| e.to_string())?;
     let pipeline = gst::parse::launch(
         "uridecodebin name=origem ! audioconvert ! audioresample ! rganalysis name=rg ! fakesink sync=false",

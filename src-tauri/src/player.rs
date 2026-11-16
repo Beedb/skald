@@ -16,6 +16,34 @@ use serde::Serialize;
 use crate::eq;
 use crate::ganho::{self, Ganho};
 
+/// Inicia o GStreamer. Nos testes do Windows, o `cargo test` põe `target\debug` no PATH,
+/// onde o Tauri copiou o GStreamer embutido: a DLL de lá não acha plugins sozinha. Então
+/// os testes usam os plugins embutidos, como o app (`gstreamer_embutido` em lib.rs).
+pub(crate) fn gst_iniciar() -> Result<(), gst::glib::Error> {
+    #[cfg(all(test, windows))]
+    {
+        static UMA_VEZ: std::sync::Once = std::sync::Once::new();
+        UMA_VEZ.call_once(|| {
+            let caminhos = std::env::var_os("PATH").unwrap_or_default();
+            let Some(dir) = std::env::split_paths(&caminhos)
+                .find(|p| p.join("gstreamer-1.0-0.dll").is_file() && p.join("gstreamer-1.0").is_dir())
+            else {
+                return;
+            };
+            let registro = std::env::temp_dir().join("skald-teste-gstreamer-registry.bin");
+            // SAFETY: só nos testes, antes do primeiro `gst::init`.
+            unsafe {
+                std::env::set_var("GST_PLUGIN_SYSTEM_PATH_1_0", dir.join("gstreamer-1.0"));
+                std::env::remove_var("GST_PLUGIN_PATH_1_0");
+                std::env::remove_var("GST_PLUGIN_PATH");
+                std::env::set_var("GST_REGISTRY_1_0", registro);
+                std::env::set_var("GST_REGISTRY_FORK", "no");
+            }
+        });
+    }
+    gst::init()
+}
+
 #[derive(Serialize, Clone, Copy, PartialEq, Debug)]
 #[serde(rename_all = "lowercase")]
 pub enum Estado {
@@ -119,7 +147,7 @@ impl Player {
         avisar: impl Fn(EstadoPlayer) + Send + 'static,
         pedir_proxima: impl Fn() -> Option<Proxima> + Send + Sync + 'static,
     ) -> Result<Self, String> {
-        gst::init().map_err(|e| format!("Falha ao iniciar o GStreamer: {e}"))?;
+        gst_iniciar().map_err(|e| format!("Falha ao iniciar o GStreamer: {e}"))?;
         let ((d0, e0), (d1, e1)) = (criar_deck()?, criar_deck()?);
         let (decks, eqs) = ([d0, d1], [e0, e1]);
         let int = Arc::new(Mutex::new(Interno {
@@ -565,14 +593,29 @@ mod testes {
     }
 
     /// Gera um WAV de tom de 440 Hz com `buffers` blocos de 1024 amostras (44,1 kHz).
-    fn gerar_wav(destino: &std::path::Path, buffers: u32) -> bool {
-        std::process::Command::new("gst-launch-1.0")
-            .args(["-q", "audiotestsrc"])
-            .arg(format!("num-buffers={buffers}"))
-            .args(["samplesperbuffer=1024", "!", "wavenc", "!", "filesink"])
-            .arg(format!("location={}", destino.display()))
-            .status()
-            .is_ok_and(|s| s.success())
+    /// Escrito em Rust (PCM 16 bits mono), sem `gst-launch-1.0` nem `audiotestsrc`,
+    /// que não vão no GStreamer embutido do Windows.
+    fn gerar_wav(destino: &std::path::Path, buffers: u32) {
+        let amostras = buffers * 1024;
+        let bytes = amostras * 2;
+        let mut w = Vec::with_capacity(44 + bytes as usize);
+        w.extend_from_slice(b"RIFF");
+        w.extend_from_slice(&(36 + bytes).to_le_bytes());
+        w.extend_from_slice(b"WAVEfmt ");
+        w.extend_from_slice(&16u32.to_le_bytes());
+        w.extend_from_slice(&1u16.to_le_bytes()); // PCM
+        w.extend_from_slice(&1u16.to_le_bytes()); // mono
+        w.extend_from_slice(&44_100u32.to_le_bytes());
+        w.extend_from_slice(&88_200u32.to_le_bytes());
+        w.extend_from_slice(&2u16.to_le_bytes());
+        w.extend_from_slice(&16u16.to_le_bytes());
+        w.extend_from_slice(b"data");
+        w.extend_from_slice(&bytes.to_le_bytes());
+        for i in 0..amostras {
+            let v = (i as f64 * 440.0 * std::f64::consts::TAU / 44_100.0).sin() * 8000.0;
+            w.extend_from_slice(&(v as i16).to_le_bytes());
+        }
+        std::fs::write(destino, w).unwrap();
     }
 
     struct Resultado {
@@ -583,13 +626,12 @@ mod testes {
 
     /// Toca a.wav e oferece b.wav (id 2) como próxima, uma vez. Devolve o que aconteceu.
     fn tocar_duas(nome: &str, buffers: u32, crossfade_ms: u64, mesmo_album: bool) -> Option<Resultado> {
-        let dir = std::env::temp_dir().join(format!("skald-teste-{nome}-{}", std::process::id()));
+        // Espaço e acento no caminho, como em "Música/Álbum de Fulano" (URIs no Windows).
+        let dir = std::env::temp_dir().join(format!("skald teste ção {nome}-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
-        let (a, b) = (dir.join("a.wav"), dir.join("b.wav"));
-        if !gerar_wav(&a, buffers) || !gerar_wav(&b, buffers) {
-            eprintln!("gst-launch-1.0 indisponível; teste ignorado");
-            return None;
-        }
+        let (a, b) = (dir.join("faixa á.wav"), dir.join("faixa é.wav"));
+        gerar_wav(&a, buffers);
+        gerar_wav(&b, buffers);
         let pedida = AtomicBool::new(false);
         let b_str = b.to_string_lossy().into_owned();
         let (tx, rx) = mpsc::channel();
@@ -653,6 +695,62 @@ mod testes {
         assert_eq!(t.id, Some(2));
         assert!(!r.parou_antes);
         assert!(quando > Duration::from_millis(3600), "trocou antes do fim: {quando:?}");
+    }
+
+    /// Uma música de cada extensão da biblioteca (e cada arquivo de `SKALD_FORMATOS_DIR`),
+    /// tocada sem som por ~2 s.
+    /// Rodar com: SKALD_DB_ENSAIO=/copia.db cargo test ensaio_formatos -- --nocapture
+    #[test]
+    fn ensaio_formatos() {
+        let mut arquivos: Vec<(String, String)> = Vec::new();
+        if let Ok(caminho) = std::env::var("SKALD_DB_ENSAIO") {
+            let conn = crate::db::open(std::path::Path::new(&caminho)).unwrap();
+            let mut stmt = conn
+                .prepare(
+                    "SELECT lower(replace(path, rtrim(path, replace(path, '.', '')), '')) AS ext, min(path)
+                     FROM media WHERE missing = 0 GROUP BY ext",
+                )
+                .unwrap();
+            arquivos.extend(stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?))).unwrap().map(Result::unwrap));
+        }
+        if let Ok(dir) = std::env::var("SKALD_FORMATOS_DIR") {
+            for f in std::fs::read_dir(dir).unwrap().flatten() {
+                let p = f.path();
+                let ext = p.extension().map(|e| e.to_string_lossy().to_lowercase()).unwrap_or_default();
+                arquivos.push((ext, p.to_string_lossy().into_owned()));
+            }
+        }
+        if arquivos.is_empty() {
+            return;
+        }
+        let mut falhas = Vec::new();
+        for (ext, path) in &arquivos {
+            let (tx, rx) = mpsc::channel();
+            let p = Player::new(move |e| { let _ = tx.send(e); }, || None).unwrap();
+            silenciar(&p);
+            p.tocar(1, path, Ganho::default()).unwrap();
+            let limite = Instant::now() + Duration::from_secs(8);
+            let mut resultado = Err("sem progresso".to_string());
+            while Instant::now() < limite {
+                let Ok(e) = rx.recv_timeout(Duration::from_secs(8)) else { break };
+                if let Some(erro) = e.erro {
+                    resultado = Err(erro);
+                    break;
+                }
+                if e.estado == Estado::Tocando && e.posicao_ms > 1500 {
+                    resultado = Ok(e.duracao_ms);
+                    break;
+                }
+            }
+            match resultado {
+                Ok(d) => println!("ok  {ext:5} {d:>7} ms  {path}"),
+                Err(m) => {
+                    println!("ERRO {ext:5} {m}  {path}");
+                    falhas.push(ext.clone());
+                }
+            }
+        }
+        assert!(falhas.is_empty(), "formatos com erro: {falhas:?}");
     }
 
     #[test]
