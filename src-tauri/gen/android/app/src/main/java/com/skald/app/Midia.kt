@@ -34,6 +34,7 @@ object Midia {
     val e = Estado(titulo, artista, album, capa, duracaoMs, posicaoMs, estado)
     atual = e
     principal.post {
+      Foco.aoMudar(contexto, e.estado)
       val servico = MidiaService.instancia
       when {
         e.estado == 0 -> servico?.encerrar()
