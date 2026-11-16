@@ -121,16 +121,17 @@ fn ler_pasta(raiz: &Path, resumo: &mut ImportResumo) -> Vec<Faixa> {
 fn gravar(conn: &mut Connection, faixas: &[Faixa], resumo: &mut ImportResumo) -> rusqlite::Result<()> {
     let tx = conn.transaction()?;
     {
-        let mut stmt = tx.prepare(
+        let mut stmt = tx.prepare(&format!(
             "INSERT OR IGNORE INTO media
              (path, title, artist, album, album_artist, genre, year,
               track_number, disc_number, duration_ms, file_size, file_mtime, search_text, category)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13,
                  -- Categoria da pasta monitorada mais interna que contém o arquivo (seção 10).
                  COALESCE((SELECT category FROM watched_folder
-                           WHERE substr(?1, 1, length(path) + 1) = path || '/'
+                           WHERE substr(?1, 1, length(path) + 1) = path || {sep}
                            ORDER BY length(path) DESC LIMIT 1), 'music'))",
-        )?;
+            sep = crate::library::SEP_SQL
+        ))?;
         let mut excluido = tx.prepare("SELECT 1 FROM excluded_path WHERE path = ?1")?;
         let mut reencontrar = tx.prepare("UPDATE media SET missing = 0 WHERE path = ?1 AND missing = 1")?;
         // Arquivo alterado no mesmo caminho: o hash fica para recalcular (as tags não mudam).
@@ -316,7 +317,7 @@ pub fn marcar_sumidos(conn: &Connection, raiz: &Path) -> rusqlite::Result<u32> {
 pub fn reconciliar_movidos(conn: &mut Connection) -> rusqlite::Result<Vec<(i64, i64)>> {
     let tx = conn.transaction()?;
     let pares: Vec<(i64, i64, String, Option<i64>, Option<String>, Option<i64>)> = {
-        let mut stmt = tx.prepare(
+        let mut stmt = tx.prepare(&format!(
             "WITH candidatos AS (
                 SELECT a.id AS antigo, b.id AS novo, b.path AS path, b.file_mtime AS mtime,
                        b.file_hash AS hash, b.file_size AS tamanho
@@ -328,7 +329,7 @@ pub fn reconciliar_movidos(conn: &mut Connection) -> rusqlite::Result<Vec<(i64, 
                  AND (
                     (a.file_size IS NOT NULL AND a.file_size = b.file_size AND (
                         (COALESCE(a.title, '') = COALESCE(b.title, '') AND COALESCE(a.artist, '') = COALESCE(b.artist, ''))
-                        OR (a.path LIKE '%/' || a.title || '.%' AND b.path LIKE '%/' || b.title || '.%')))
+                        OR (a.path LIKE '%' || {sep} || a.title || '.%' AND b.path LIKE '%' || {sep} || b.title || '.%')))
                     OR (a.title IS NOT NULL AND a.artist IS NOT NULL
                         AND a.title = b.title AND a.artist = b.artist
                         AND COALESCE(a.album, '') = COALESCE(b.album, ''))
@@ -337,7 +338,8 @@ pub fn reconciliar_movidos(conn: &mut Connection) -> rusqlite::Result<Vec<(i64, 
             SELECT novo, antigo, path, mtime, hash, tamanho FROM candidatos c
             WHERE (SELECT COUNT(*) FROM candidatos x WHERE x.antigo = c.antigo) = 1
               AND (SELECT COUNT(*) FROM candidatos x WHERE x.novo = c.novo) = 1",
-        )?;
+            sep = crate::library::SEP_SQL
+        ))?;
         let linhas = stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?, r.get(5)?)))?;
         linhas.collect::<rusqlite::Result<_>>()?
     };
@@ -405,13 +407,18 @@ mod testes {
         std::fs::remove_dir_all(&dir).unwrap();
     }
 
+    /// "/m/a.mp3" com o separador do sistema ("\m\a.mp3" no Windows).
+    fn nativo(p: &str) -> String {
+        p.replace('/', std::path::MAIN_SEPARATOR_STR)
+    }
+
     #[test]
     fn renomeado_mantem_playlists_curtidas_e_historico() {
         let mut conn = crate::db::open(Path::new(":memory:")).unwrap();
         let ins = |c: &Connection, id: i64, path: &str, titulo: &str, tam: i64, dur: i64, ausente: bool| {
             c.execute(
                 "INSERT INTO media (id, path, title, artist, file_size, duration_ms, missing) VALUES (?1, ?2, ?3, 'Djavan', ?4, ?5, ?6)",
-                params![id, path, titulo, tam, dur, ausente],
+                params![id, nativo(path), titulo, tam, dur, ausente],
             )
             .unwrap();
         };
@@ -445,7 +452,7 @@ mod testes {
         assert_eq!(pares, [(2, 1), (7, 6), (9, 8)]);
         let (path, ausente): (String, bool) =
             conn.query_row("SELECT path, missing FROM media WHERE id = 1", [], |r| Ok((r.get(0)?, r.get(1)?))).unwrap();
-        assert_eq!((path.as_str(), ausente), ("/m/Djavan - Oceano.mp3", false));
+        assert_eq!((path, ausente), (nativo("/m/Djavan - Oceano.mp3"), false));
         let conta = |sql: &str| conn.query_row(sql, [], |r| r.get::<_, i64>(0)).unwrap();
         assert_eq!(conta("SELECT COUNT(*) FROM media WHERE id = 2"), 0);
         assert_eq!(conta(&format!("SELECT COUNT(*) FROM playlist_item WHERE playlist_id = {curtidas}")), 1);
@@ -475,13 +482,15 @@ mod testes {
         gravar(&mut conn, &[faixa("/fora.mp3")], &mut resumo).unwrap();
         assert_eq!(resumo.adicionados, 1);
         // Categoria vem da pasta monitorada mais interna.
-        conn.execute_batch(
-            "INSERT INTO watched_folder (path, category) VALUES ('/p', 'podcast'), ('/p/m', 'music');",
+        conn.execute(
+            "INSERT INTO watched_folder (path, category) VALUES (?1, 'podcast'), (?2, 'music')",
+            [nativo("/p"), nativo("/p/m")],
         )
         .unwrap();
         let mut resumo = ImportResumo::default();
-        gravar(&mut conn, &[faixa("/p/ep.mp3"), faixa("/p/m/x.mp3"), faixa("/px/y.mp3")], &mut resumo).unwrap();
-        let cat = |p: &str| conn.query_row("SELECT category FROM media WHERE path = ?1", [p], |r| r.get::<_, String>(0)).unwrap();
+        let faixas = ["/p/ep.mp3", "/p/m/x.mp3", "/px/y.mp3"].map(|p| faixa(&nativo(p)));
+        gravar(&mut conn, &faixas, &mut resumo).unwrap();
+        let cat = |p: &str| conn.query_row("SELECT category FROM media WHERE path = ?1", [nativo(p)], |r| r.get::<_, String>(0)).unwrap();
         assert_eq!((cat("/p/ep.mp3").as_str(), cat("/p/m/x.mp3").as_str(), cat("/px/y.mp3").as_str()), ("podcast", "music", "music"));
     }
 

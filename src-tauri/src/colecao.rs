@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use crate::library::{MediaRow, linha};
 
 /// Pasta do arquivo (com a barra final), em SQL.
-const PASTA: &str = "rtrim(path, replace(path, '/', ''))";
+const PASTA: &str = crate::library::PASTA_SQL;
 
 #[derive(Serialize, Debug)]
 pub struct Artista {

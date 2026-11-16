@@ -3,6 +3,18 @@ use rusqlite::{Connection, OptionalExtension, params_from_iter};
 use crate::search;
 use serde::Serialize;
 
+/// Separador de pastas nos caminhos gravados em `media.path`, como literal SQL.
+#[cfg(windows)]
+pub const SEP_SQL: &str = "'\\'";
+#[cfg(not(windows))]
+pub const SEP_SQL: &str = "'/'";
+
+/// Pasta do arquivo (com o separador final), em SQL. No Windows aceita `\` e `/`.
+#[cfg(windows)]
+pub const PASTA_SQL: &str = "rtrim(path, replace(replace(path, '/', ''), '\\', ''))";
+#[cfg(not(windows))]
+pub const PASTA_SQL: &str = "rtrim(path, replace(path, '/', ''))";
+
 #[derive(Serialize, Debug, Clone)]
 pub struct MediaRow {
     pub id: i64,

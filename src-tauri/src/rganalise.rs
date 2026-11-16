@@ -77,7 +77,10 @@ pub fn do_banco(conn: &Connection, id: i64) -> Ganho {
 fn album(conn: &Connection, id: i64) -> Option<Valor> {
     let chave: crate::colecao::ChaveAlbum = conn
         .query_row(
-            "SELECT album, COALESCE(album_artist, rtrim(path, replace(path, '/', ''))) FROM media WHERE id = ?1 AND album IS NOT NULL",
+            &format!(
+                "SELECT album, COALESCE(album_artist, {}) FROM media WHERE id = ?1 AND album IS NOT NULL",
+                crate::library::PASTA_SQL
+            ),
             [id],
             |r| Ok(crate::colecao::ChaveAlbum { album: r.get(0)?, grupo: r.get(1)? }),
         )
