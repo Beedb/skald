@@ -143,9 +143,9 @@ Etapas:
 - [x] 36. Retomar ao reabrir
 - [x] 37. Fila clicável
 - [x] 38. Continuar sozinho
-- [ ] 39. Playlist: adicionar músicas e menu ⋮
-- [ ] 40. Configurações mais bonitas
-- [ ] 41. Barra de progresso clicável/arrastável
+- [x] 39. Playlist: adicionar músicas e menu ⋮
+- [x] 40. Configurações mais bonitas
+- [x] 41. Barra de progresso clicável/arrastável
 
 ### 7.2 Android
 
@@ -186,11 +186,15 @@ Conferir o que já existe antes de cada etapa e marcar `[x]` só com teste feito
 
 **MVP, Fase 2 (etapas 10 a 19), Fase 3 (20 a 23), Fase 4 (24 a 28) e Fase 5 (29 a 32) e Fase 6 (33 a 35) concluídos; Fase 8 (Windows): 44 a 50.**
 
-### Fase 7 (Linux: 36 a 38)
+### Fase 7 (Linux: 36 a 41)
 
 - **36 Retomar**: `Fila` e `Origem` serializáveis; configuração `retomar` (JSON `Retomar { fila, posicao_ms, origem }`) gravada por `acompanhar_retomar` (troca de faixa/estado e a cada 5 s tocando, numa thread) e no `RunEvent::Exit`. `retomar_reproducao` (thread no setup) restaura a fila (aleatório/repetir seguem as configurações) e chama `Player::carregar_pausado` (Paused, espera até 5 s, busca a posição). Sessão do histórico fica em `RetomarControle.sessao_pendente` e só começa ao tocar. Comando `player_state` (a tela pede ao abrir); `toggle_pause` sem faixa carregada toca a atual da fila.
 - **37 Fila clicável**: `Fila::pular_manual` (as anteriores saem) e `pular_contexto` (manual continua antes); comando `queue_jump(manual, posicao)`; classe `.clicavel` em `Fila.tsx`.
 - **38 Continuar tocando**: `colecao::continuacao` (presentes, grupos embaralhados: mesmo artista via `ARTISTAS`, mesmo gênero, resto); `Fila::continuar_com`; usado em `avancar` e em `preparar_proxima` (`Pendente.continuou`; gapless/crossfade valem), origem zerada. Configuração `continuar_tocando` (padrão ligada), comando `set_continue`, opção em Reprodução.
+- **39 Playlist**: `src/AdicionarMusicas.tsx` (modal com busca em `list_media`/`count_media`, páginas de 200, virtualizada, seleção múltipla; já presentes ficam marcadas e desabilitadas; `playlist_add`). `PlaylistView` com Tocar, Adicionar músicas e ⋮ (`.menu-contexto` com Tocar em seguida, Adicionar à fila, Renomear, Escolher capa, Usar capa automática, Exportar M3U, Excluir; `.desativado` com playlist vazia).
+- **40 Configurações**: componentes `Cartao`/`Linha`/`Interruptor` em `Configuracoes.tsx` (classes `cfg-*`, `.interruptor` = checkbox `role="switch"`); cartão Biblioteca (contagem via `db_status`, pastas monitoradas com "Parar de monitorar"). Empilha em ≤ 720 px.
+- **41 Progresso**: `Progresso` em `PlayerBar.tsx` é uma barra própria (`.barra-progresso`, `role="slider"`, pointer capture, dica de tempo, setas ±5 s, Home/End; `pendente` segura o ponto buscado até o player confirmar ou 2 s). Busca com `SeekFlags::ACCURATE`; `AsyncDone` no deck ativo gera aviso (posição atualiza pausado).
+- Pendente: `cargo test` às vezes cai com SIGSEGV (~1 em 6, já antes da etapa 41; provavelmente testes do GStreamer em paralelo).
 
 ### Redesenho visual (a partir das imagens do usuário, concluído)
 
