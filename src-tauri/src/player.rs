@@ -256,7 +256,7 @@ impl Player {
         }
         if posicao_ms > 0 {
             let _ = deck.seek_simple(
-                gst::SeekFlags::FLUSH | gst::SeekFlags::KEY_UNIT,
+                gst::SeekFlags::FLUSH | gst::SeekFlags::ACCURATE,
                 gst::ClockTime::from_mseconds(posicao_ms),
             );
         }
@@ -378,7 +378,7 @@ impl Player {
             self.decks[ativo].set_property("volume", volume);
         }
         self.decks[ativo]
-            .seek_simple(gst::SeekFlags::FLUSH | gst::SeekFlags::KEY_UNIT, gst::ClockTime::from_mseconds(ms))
+            .seek_simple(gst::SeekFlags::FLUSH | gst::SeekFlags::ACCURATE, gst::ClockTime::from_mseconds(ms))
             .map_err(|_| "Não foi possível mudar a posição.".to_string())
     }
 }
@@ -469,6 +469,10 @@ fn vigiar(
                             envio_imediato = true;
                             transicao = true;
                         }
+                    }
+                    // Busca concluída (também pausado): a posição nova vai para a tela.
+                    gst::MessageView::AsyncDone(..) if i == ativo => {
+                        envio_imediato = true;
                     }
                     gst::MessageView::StateChanged(s)
                         if i == ativo && s.src().is_some_and(|src| src == decks[i].upcast_ref::<gst::Object>()) =>

@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   ListMusic,
   Maximize2,
@@ -108,33 +108,97 @@ export function Controles({ r, grande = false }: { r: Reproducao; grande?: boole
 const trilha = (valor: number, max: number) =>
   ({ "--p": `${max > 0 ? Math.min(100, (valor / max) * 100) : 0}%` }) as React.CSSProperties;
 
+/** Barra de progresso: clicar vai direto ao ponto; arrastar mostra o tempo e busca ao soltar. */
 export function Progresso({ r }: { r: Reproducao }) {
   const [arrastando, setArrastando] = useState<number | null>(null);
+  // Depois de buscar, mostra o ponto escolhido até o player confirmar (ou 2 s).
+  const [pendente, setPendente] = useState<{ ms: number; em: number } | null>(null);
+  const [sobre, setSobre] = useState<{ ms: number; x: number } | null>(null);
+  const barra = useRef<HTMLDivElement>(null);
   const duracao = r.estado?.duracao_ms || r.musica?.duration_ms || 0;
-  const posicao = arrastando ?? (ativo(r) ? r.estado!.posicao_ms : 0);
+  const real = ativo(r) ? r.estado!.posicao_ms : 0;
+  const habilitada = ativo(r) && duracao > 0;
 
-  function soltar() {
-    if (arrastando !== null) invoke("seek", { posicaoMs: Math.round(arrastando) });
+  useEffect(() => {
+    if (pendente && (Math.abs(real - pendente.ms) < 1500 || Date.now() - pendente.em > 2000)) setPendente(null);
+  }, [real, pendente]);
+
+  const posicao = arrastando ?? pendente?.ms ?? real;
+
+  const ponto = (clientX: number) => {
+    const caixa = barra.current!.getBoundingClientRect();
+    const f = Math.min(1, Math.max(0, (clientX - caixa.left) / caixa.width));
+    return { ms: f * duracao, x: f * caixa.width };
+  };
+
+  function buscar(ms: number) {
+    const alvo = Math.round(Math.min(Math.max(0, ms), duracao));
+    setPendente({ ms: alvo, em: Date.now() });
+    invoke("seek", { posicaoMs: alvo });
+  }
+
+  function apertar(e: React.PointerEvent<HTMLDivElement>) {
+    if (!habilitada || e.button !== 0) return;
+    e.currentTarget.setPointerCapture(e.pointerId);
+    setArrastando(ponto(e.clientX).ms);
+  }
+
+  function mover(e: React.PointerEvent<HTMLDivElement>) {
+    if (!habilitada) return;
+    const p = ponto(e.clientX);
+    setSobre(p);
+    if (arrastando !== null) setArrastando(p.ms);
+  }
+
+  function soltar(e: React.PointerEvent<HTMLDivElement>) {
+    if (arrastando === null) return;
+    buscar(ponto(e.clientX).ms);
     setArrastando(null);
   }
 
+  function tecla(e: React.KeyboardEvent<HTMLDivElement>) {
+    if (!habilitada) return;
+    const passo = { ArrowLeft: -5000, ArrowRight: 5000, ArrowDown: -5000, ArrowUp: 5000 }[e.key];
+    if (passo !== undefined) buscar(posicao + passo);
+    else if (e.key === "Home") buscar(0);
+    else if (e.key === "End") buscar(duracao - 1000);
+    else return;
+    e.preventDefault();
+    e.stopPropagation();
+  }
+
+  const fracao = duracao > 0 ? Math.min(100, (posicao / duracao) * 100) : 0;
   return (
     <div className="progresso">
       <span className="tempo">{formatarDuracao(posicao) || "0:00"}</span>
-      <input
-        type="range"
-        className="trilha"
-        style={trilha(posicao, duracao)}
-        min={0}
-        max={duracao || 1}
-        step={1000}
-        value={Math.min(posicao, duracao || 1)}
-        disabled={!ativo(r) || !duracao}
+      <div
+        ref={barra}
+        className={"barra-progresso" + (habilitada ? "" : " desabilitada") + (arrastando !== null ? " arrastando" : "")}
+        role="slider"
+        tabIndex={habilitada ? 0 : -1}
         aria-label="Posição"
-        onChange={(e) => setArrastando(Number(e.target.value))}
+        aria-valuemin={0}
+        aria-valuemax={Math.round(duracao / 1000)}
+        aria-valuenow={Math.round(posicao / 1000)}
+        aria-valuetext={formatarDuracao(posicao) || "0:00"}
+        aria-disabled={!habilitada}
+        onPointerDown={apertar}
+        onPointerMove={mover}
         onPointerUp={soltar}
-        onKeyUp={soltar}
-      />
+        onPointerCancel={() => setArrastando(null)}
+        onPointerLeave={() => setSobre(null)}
+        onKeyDown={tecla}
+      >
+        <div className="bp-trilha">
+          <div className="bp-tocado" style={{ width: `${fracao}%` }} />
+        </div>
+        <div className="bp-pino" style={{ left: `${fracao}%` }} />
+        {sobre && habilitada && (
+          <span className="bp-dica" style={{ left: sobre.x }}>
+            {formatarDuracao(arrastando ?? sobre.ms) || "0:00"}
+          </span>
+        )}
+      </div>
       <span className="tempo">{formatarDuracao(duracao) || "0:00"}</span>
     </div>
   );

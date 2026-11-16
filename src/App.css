@@ -2367,8 +2367,80 @@ button.primario {
   gap: 0.6rem;
 }
 
-.progresso .trilha {
+/* Barra de progresso (etapa 41): área de clique alta, trilha fina. */
+.barra-progresso {
+  position: relative;
   flex: 1;
+  height: 16px;
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  touch-action: none;
+  outline: none;
+}
+
+.barra-progresso.desabilitada {
+  cursor: default;
+}
+
+.bp-trilha {
+  position: relative;
+  width: 100%;
+  height: 4px;
+  border-radius: 999px;
+  background: var(--card-3);
+  overflow: hidden;
+  transition: height 0.15s ease;
+}
+
+.bp-tocado {
+  height: 100%;
+  background: var(--acento);
+}
+
+.bp-pino {
+  position: absolute;
+  top: 50%;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--forte);
+  transform: translate(-50%, -50%);
+  opacity: 0;
+  transition: opacity 0.15s ease;
+  pointer-events: none;
+}
+
+.barra-progresso:not(.desabilitada):hover .bp-trilha,
+.barra-progresso.arrastando .bp-trilha {
+  height: 6px;
+}
+
+.barra-progresso:not(.desabilitada):hover .bp-pino,
+.barra-progresso.arrastando .bp-pino,
+.barra-progresso:focus-visible .bp-pino {
+  opacity: 1;
+}
+
+.barra-progresso:focus-visible .bp-trilha {
+  outline: 2px solid var(--acento);
+  outline-offset: 3px;
+}
+
+.bp-dica {
+  position: absolute;
+  bottom: calc(100% + 4px);
+  transform: translateX(-50%);
+  padding: 0.1rem 0.4rem;
+  border-radius: var(--raio-p);
+  background: var(--card);
+  border: 1px solid var(--linha);
+  color: var(--texto);
+  font-size: 0.75rem;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  pointer-events: none;
+  box-shadow: var(--sombra);
 }
 
 .tempo {
