@@ -1,3 +1,4 @@
+import { noAndroid } from "./android";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { useMenuMusica } from "./MenuMusica";
@@ -42,7 +43,11 @@ export function BotaoCurtir({ curtida, onClick }: { curtida: boolean; onClick: (
   return (
     <button
       className={"curtir" + (curtida ? " curtida" : "")}
-      onClick={onClick}
+      onClick={(e) => {
+        // Curtir não seleciona nem toca a linha.
+        e.stopPropagation();
+        onClick();
+      }}
       onDoubleClick={(e) => e.stopPropagation()}
       aria-pressed={curtida}
       aria-label={curtida ? "Descurtir" : "Curtir"}
@@ -199,8 +204,13 @@ export default function Biblioteca({
                   (m && selecao.has(m.id) ? " selecionada" : "")
                 }
                 aria-selected={m ? selecao.has(m.id) : undefined}
-                onClick={(e) => m && clicar(e, item.index, m.id)}
-                onDoubleClick={() => m && onTocar(m.id)}
+                onClick={(e) => {
+                  if (!m) return;
+                  // Android: um toque toca; com seleção já aberta (toque longo → menu), o toque seleciona.
+                  if (noAndroid && selecao.size === 0 && !e.ctrlKey && !e.shiftKey) onTocar(m.id);
+                  else clicar(e, item.index, m.id);
+                }}
+                onDoubleClick={() => !noAndroid && m && onTocar(m.id)}
                 onContextMenu={(e) => m && menu(e, item.index, m.id)}
                 title={m?.missing ? "Arquivo não encontrado" : undefined}
                 style={{ height: ALTURA_LINHA, transform: `translateY(${item.start}px)` }}

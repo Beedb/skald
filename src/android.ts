@@ -13,6 +13,9 @@ const ponte = (window as unknown as { SkaldAndroid?: PonteAndroid }).SkaldAndroi
 
 export const noAndroid = ponte !== undefined;
 
+/** Tocar uma música da lista: no Android um toque basta (etapa 43); no desktop, dois cliques. */
+export const tocarAo = (tocar: () => void) => (noAndroid ? { onClick: tocar } : { onDoubleClick: tocar });
+
 function esperar(evento: string, pedir: () => void): Promise<boolean> {
   return esperarValor<boolean>(evento, pedir).then(Boolean);
 }

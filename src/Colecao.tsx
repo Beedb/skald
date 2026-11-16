@@ -1,3 +1,4 @@
+import { tocarAo } from "./android";
 import { useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { useVirtualizer } from "@tanstack/react-virtual";
@@ -332,7 +333,7 @@ export function AlbumView({
               key={f.id}
               className={(f.missing ? "ausente" : "") + (f.id === tocandoId ? " atual" : "")}
               title={f.missing ? "Arquivo não encontrado" : undefined}
-              onDoubleClick={() => tocar(i)}
+              {...tocarAo(() => tocar(i))}
               onContextMenu={(e) => abrirMenu(e, f.id, { tocar: () => tocar(i) })}
             >
               <span className="numero">

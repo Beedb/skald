@@ -1,3 +1,4 @@
+import { tocarAo } from "./android";
 import { useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { ask, open, save } from "@tauri-apps/plugin-dialog";
@@ -314,7 +315,7 @@ export default function PlaylistView({ playlist, versao, tocandoId, onExcluida, 
                     className={"linha linha-pl" + (m.missing ? " ausente" : "") + (m.id === tocandoId ? " atual" : "")}
                     title={m.missing ? "Arquivo não encontrado" : undefined}
                     style={{ height: ALTURA_LINHA, transform: `translateY(${v.start}px)` }}
-                    onDoubleClick={() => tocar(v.index)}
+                    {...tocarAo(() => tocar(v.index))}
                     onContextMenu={(e) => abrirMenu(e, m.id, { tocar: () => tocar(v.index) })}
                   >
                     <span className="num">{v.index + 1}</span>
@@ -322,7 +323,11 @@ export default function PlaylistView({ playlist, versao, tocandoId, onExcluida, 
                     <span>{m.artist ?? "Artista desconhecido"}</span>
                     <span>{m.album ?? ""}</span>
                     <span className="duracao">{formatarDuracao(m.duration_ms)}</span>
-                    <span className="pl-item-acoes" onDoubleClick={(e) => e.stopPropagation()}>
+                    <span
+                      className="pl-item-acoes"
+                      onClick={(e) => e.stopPropagation()}
+                      onDoubleClick={(e) => e.stopPropagation()}
+                    >
                       {personalizada && (
                         <>
                           <button

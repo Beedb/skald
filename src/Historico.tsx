@@ -1,3 +1,4 @@
+import { tocarAo } from "./android";
 import { useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { useVirtualizer } from "@tanstack/react-virtual";
@@ -125,7 +126,7 @@ export default function Historico({ versao, visivel, onTocar }: Props) {
                         : undefined
                     }
                     style={{ height: ALTURA_LINHA, transform: `translateY(${v.start}px)` }}
-                    onDoubleClick={() => tocavel && onTocar(e.media_id!)}
+                    {...tocarAo(() => tocavel && onTocar(e.media_id!))}
                     onContextMenu={(ev) => e && e.media_id !== null && abrirMenu(ev, e.media_id)}
                   >
                     {e ? (
