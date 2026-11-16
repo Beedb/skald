@@ -229,7 +229,6 @@ impl Player {
         Ok(())
     }
 
-    /// Alterna entre tocar e pausar (os dois decks, durante um crossfade).
     /// Os dois decks sem som, mas no ritmo real (`sync`).
     #[cfg(test)]
     pub(crate) fn silenciar_para_teste(&self) {
@@ -239,6 +238,7 @@ impl Player {
         }
     }
 
+    /// Alterna entre tocar e pausar (os dois decks, durante um crossfade).
     pub fn alternar_pausa(&self) -> Result<(), String> {
         let (ativo, saindo) = {
             let g = self.int.lock().unwrap();
