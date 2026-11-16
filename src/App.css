@@ -1833,12 +1833,23 @@ button.primario {
   padding: 0 0.3rem 0.9rem;
 }
 
+/* Temas claros com lateral escura: o acento e os cartões são feitos para o fundo claro,
+   então a marca, o cartão da música atual e a barra do player usam as cores da lateral
+   ou dos cartões (senão ficam escuro sobre escuro). */
+:root[data-tema="papel"],
+:root[data-tema="vidro"] {
+  --marca-cor: var(--lateral-ativo);
+  --player-fundo: var(--card);
+  --lateral-cartao: color-mix(in srgb, var(--lateral-ativo) 10%, var(--lateral));
+  --lateral-forte: var(--lateral-ativo);
+}
+
 .marca-nome {
   font-family: var(--fonte-marca);
   font-weight: 700;
   font-size: 1.7rem;
   line-height: 1;
-  color: var(--acento);
+  color: var(--marca-cor, var(--acento));
   letter-spacing: 0.04em;
   text-shadow: var(--sombra);
 }
@@ -1992,7 +2003,7 @@ button.primario {
   padding: 0.4rem;
   border-radius: var(--raio-p);
   border: 1px solid color-mix(in srgb, var(--acento) 60%, transparent);
-  background: color-mix(in srgb, var(--acento) 8%, var(--card));
+  background: color-mix(in srgb, var(--acento) 8%, var(--lateral-cartao, var(--card)));
   box-shadow: var(--sombra);
 }
 
@@ -2028,7 +2039,7 @@ button.primario {
 }
 
 .lateral-tocando .faixa strong {
-  color: var(--forte);
+  color: var(--lateral-forte, var(--forte));
   font-size: 0.85rem;
 }
 
@@ -2093,7 +2104,7 @@ button.primario {
   align-items: center;
   padding: 0.6rem 1.2rem;
   border-top: 1px solid var(--linha);
-  background: color-mix(in srgb, var(--lateral) 92%, transparent);
+  background: color-mix(in srgb, var(--player-fundo, var(--lateral)) 92%, transparent);
 }
 
 .player-faixa {
