@@ -6,6 +6,8 @@ import { formatarDuracao, type MediaRow } from "./Biblioteca";
 import { Capa } from "./PlayerBar";
 import type { PlaylistResumo } from "./Lateral";
 import { useMenuMusica } from "./MenuMusica";
+import AdicionarMusicas from "./AdicionarMusicas";
+import { EllipsisVertical, Play, Plus } from "lucide-react";
 
 type Item = MediaRow & { item_id: number };
 type Ordem = "personalizada" | "titulo" | "artista";
@@ -35,6 +37,8 @@ export default function PlaylistView({ playlist, versao, tocandoId, onExcluida, 
   const [renomeando, setRenomeando] = useState(false);
   const [nome, setNome] = useState(playlist.name);
   const [aviso, setAviso] = useState<string | null>(null);
+  const [adicionando, setAdicionando] = useState(false);
+  const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
   const fixa = playlist.kind === "curtidas";
   const finalizado = useRef(false);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -69,6 +73,8 @@ export default function PlaylistView({ playlist, versao, tocandoId, onExcluida, 
     setOrdem("personalizada");
     setRenomeando(false);
     setAviso(null);
+    setMenu(null);
+    setAdicionando(false);
     if (scrollRef.current) scrollRef.current.scrollTop = 0;
   }, [playlist.id]);
 
@@ -78,6 +84,30 @@ export default function PlaylistView({ playlist, versao, tocandoId, onExcluida, 
     estimateSize: () => ALTURA_LINHA,
     overscan: 20,
   });
+
+  // Menu ⋮: fecha ao clicar fora, rolar, perder o foco ou apertar Esc.
+  useEffect(() => {
+    if (!menu) return;
+    const fechar = () => setMenu(null);
+    const tecla = (e: KeyboardEvent) => e.key === "Escape" && fechar();
+    window.addEventListener("click", fechar);
+    window.addEventListener("blur", fechar);
+    window.addEventListener("keydown", tecla);
+    window.addEventListener("scroll", fechar, true);
+    return () => {
+      window.removeEventListener("click", fechar);
+      window.removeEventListener("blur", fechar);
+      window.removeEventListener("keydown", tecla);
+      window.removeEventListener("scroll", fechar, true);
+    };
+  }, [menu]);
+
+  function abrirMenuPlaylist(e: React.MouseEvent<HTMLButtonElement>) {
+    e.stopPropagation();
+    if (menu) return setMenu(null);
+    const r = e.currentTarget.getBoundingClientRect();
+    setMenu({ x: Math.max(4, Math.min(r.left, window.innerWidth - 230)), y: r.bottom + 4 });
+  }
 
   const acao = (cmd: string, args: Record<string, unknown>) => invoke(cmd, args).catch((e) => onErro(String(e)));
 
@@ -168,30 +198,22 @@ export default function PlaylistView({ playlist, versao, tocandoId, onExcluida, 
             {playlist.total > 0 && ` · ${duracaoTotal(playlist.duracao_ms)}`}
           </span>
           <div className="pl-acoes">
-            <button onClick={() => tocar(0)} disabled={itens.length === 0}>
-              ▶ Tocar
+            <button className="primario" onClick={() => tocar(0)} disabled={itens.length === 0}>
+              <Play size={15} aria-hidden="true" /> Tocar
+            </button>
+            <button onClick={() => setAdicionando(true)}>
+              <Plus size={15} aria-hidden="true" /> Adicionar músicas
             </button>
             <button
-              onClick={() => acao("queue_add_playlist", { id: playlist.id, ordem, aSeguir: true })}
-              disabled={itens.length === 0}
+              className="pl-mais"
+              onClick={abrirMenuPlaylist}
+              aria-label="Mais opções da playlist"
+              aria-haspopup="menu"
+              aria-expanded={menu !== null}
+              title="Mais opções"
             >
-              Tocar em seguida
+              <EllipsisVertical size={16} />
             </button>
-            <button
-              onClick={() => acao("queue_add_playlist", { id: playlist.id, ordem, aSeguir: false })}
-              disabled={itens.length === 0}
-            >
-              Adicionar à fila
-            </button>
-            {!fixa && <button onClick={abrirRenomear}>Renomear</button>}
-            <button onClick={escolherCapa}>Escolher capa</button>
-            {playlist.capa_escolhida && (
-              <button onClick={() => acao("playlist_clear_cover", { id: playlist.id })}>Usar capa automática</button>
-            )}
-            <button onClick={exportar} disabled={itens.length === 0}>
-              Exportar M3U
-            </button>
-            {!fixa && <button onClick={excluir}>Excluir</button>}
             <label>
               Ordem:{" "}
               <select value={ordem} onChange={(e) => setOrdem(e.target.value as Ordem)}>
@@ -205,11 +227,71 @@ export default function PlaylistView({ playlist, versao, tocandoId, onExcluida, 
         </div>
       </header>
 
+      {menu && (
+        <ul className="menu-contexto" role="menu" style={{ left: menu.x, top: menu.y }}>
+          <li
+            role="menuitem"
+            aria-disabled={itens.length === 0}
+            className={itens.length === 0 ? "desativado" : undefined}
+            onClick={() => itens.length > 0 && acao("queue_add_playlist", { id: playlist.id, ordem, aSeguir: true })}
+          >
+            Tocar em seguida
+          </li>
+          <li
+            role="menuitem"
+            aria-disabled={itens.length === 0}
+            className={itens.length === 0 ? "desativado" : undefined}
+            onClick={() => itens.length > 0 && acao("queue_add_playlist", { id: playlist.id, ordem, aSeguir: false })}
+          >
+            Adicionar à fila
+          </li>
+          <li role="separator" className="separador" />
+          {!fixa && (
+            <li role="menuitem" onClick={abrirRenomear}>
+              Renomear
+            </li>
+          )}
+          <li role="menuitem" onClick={escolherCapa}>
+            Escolher capa
+          </li>
+          {playlist.capa_escolhida && (
+            <li role="menuitem" onClick={() => acao("playlist_clear_cover", { id: playlist.id })}>
+              Usar capa automática
+            </li>
+          )}
+          <li
+            role="menuitem"
+            aria-disabled={itens.length === 0}
+            className={itens.length === 0 ? "desativado" : undefined}
+            onClick={() => itens.length > 0 && exportar()}
+          >
+            Exportar M3U
+          </li>
+          {!fixa && (
+            <>
+              <li role="separator" className="separador" />
+              <li role="menuitem" className="perigo" onClick={excluir}>
+                Excluir
+              </li>
+            </>
+          )}
+        </ul>
+      )}
+      {adicionando && (
+        <AdicionarMusicas
+          playlistId={playlist.id}
+          nome={playlist.name}
+          presentes={new Set(itens.map((i) => i.id))}
+          onFechar={() => setAdicionando(false)}
+          onErro={onErro}
+        />
+      )}
+
       {itens.length === 0 ? (
         <p className="vazio">
           {fixa
             ? "Nenhuma música curtida ainda. Clique no ♡ de uma música para curtir."
-            : "Playlist vazia. Na biblioteca, clique com o botão direito numa música e escolha “Adicionar à playlist”."}
+            : "Playlist vazia. Use “Adicionar músicas” ou, na biblioteca, clique com o botão direito numa música."}
         </p>
       ) : (
         <>

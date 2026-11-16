@@ -3007,3 +3007,125 @@ input[type="range"].trilha:disabled {
     min-height: 70vh;
   }
 }
+
+/* Etapa 39: menu ⋮ da playlist e "Adicionar músicas". */
+.pl-acoes button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.pl-acoes .pl-mais {
+  padding-left: 0.45rem;
+  padding-right: 0.45rem;
+}
+
+.menu-contexto .desativado {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.menu-contexto .desativado:hover {
+  background: none;
+}
+
+.modal.adicionar-musicas {
+  display: flex;
+  flex-direction: column;
+  height: min(40rem, calc(100vh - 2rem));
+  overflow: hidden;
+}
+
+.am-busca {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0.8rem 0 0.5rem;
+  padding: 0.35rem 0.7rem;
+  border: 1px solid var(--linha);
+  border-radius: var(--raio-p);
+  background: var(--fundo);
+  color: var(--fraco);
+}
+
+.am-busca input {
+  flex: 1;
+  border: none;
+  outline: none;
+  background: none;
+  color: var(--texto);
+  font: inherit;
+}
+
+.am-lista {
+  flex: 1;
+  overflow-y: auto;
+  border: 1px solid var(--linha);
+  border-radius: var(--raio-p);
+}
+
+.am-lista > .nota {
+  padding: 1rem;
+}
+
+.am-item {
+  position: absolute;
+  left: 0;
+  right: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0 0.7rem;
+  cursor: pointer;
+  border-bottom: 1px solid color-mix(in srgb, var(--linha) 50%, transparent);
+}
+
+.am-item:hover {
+  background: color-mix(in srgb, var(--forte) 6%, transparent);
+}
+
+.am-item.marcada {
+  background: color-mix(in srgb, var(--acento) 14%, transparent);
+}
+
+.am-item.ja {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.am-item .faixa {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  line-height: 1.2;
+}
+
+.am-item .faixa strong,
+.am-item .faixa span {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.am-item .faixa span,
+.am-item .tempo {
+  font-size: 0.8rem;
+  color: var(--fraco);
+}
+
+.modal.adicionar-musicas footer {
+  justify-content: space-between;
+}
+
+.modal.adicionar-musicas footer .nota {
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+  margin: 0;
+}
+
+.am-botoes {
+  display: flex;
+  gap: 0.5rem;
+}
