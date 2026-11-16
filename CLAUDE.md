@@ -160,12 +160,12 @@ Etapas:
 
 ### 7.3 Windows
 
-- [ ] 36. Retomar ao reabrir
-- [ ] 37. Fila clicável
-- [ ] 38. Continuar sozinho
-- [ ] 39. Playlist: adicionar músicas e menu ⋮
-- [ ] 40. Configurações mais bonitas
-- [ ] 41. Barra de progresso clicável/arrastável
+- [x] 36. Retomar ao reabrir
+- [x] 37. Fila clicável
+- [x] 38. Continuar sozinho
+- [x] 39. Playlist: adicionar músicas e menu ⋮
+- [x] 40. Configurações mais bonitas
+- [x] 41. Barra de progresso clicável/arrastável
 
 ## Fase 8 (Windows 10+)
 
@@ -178,13 +178,13 @@ Conferir o que já existe antes de cada etapa e marcar `[x]` só com teste feito
 - [x] 48. Controle de mídia: SMTC no lugar do MPRIS.
 - [x] 49. Sistema: autostart no registro, bandeja, notificação (toast).
 - [x] 50. Aparência: fontes, temas e cores dinâmicas no WebView2.
-- [ ] 51. Instalador `.exe` (NSIS) com GStreamer embutido, testado num Windows limpo. (Na tag v0.2.0 o job `teste-limpo` do CI instalou num `windows-latest` sem GStreamer/Rust/Node, abriu o Skáld por 25 s e conferiu banco e registro de plugins: passou. Falta só uma olhada à mão num Windows limpo, se quiser.)
+- [x] 51. Instalador `.exe` (NSIS) com GStreamer embutido, testado num Windows limpo. (Na tag v0.2.0 o job `teste-limpo` do CI instalou num `windows-latest` sem GStreamer/Rust/Node, abriu o Skáld por 25 s e conferiu banco e registro de plugins: passou. Falta só uma olhada à mão num Windows limpo, se quiser.)
 - [x] 52. CI no GitHub Actions (`windows-latest`) gerando o instalador a cada tag. (Tag v0.2.0: instalador, teste-limpo e release passaram em ~8 min; o `.exe` foi anexado sozinho.)
-- [ ] 53. Paridade final: todas as funções das etapas 1 a 43.
+- [x] 53. Paridade final: todas as funções das etapas 1 a 43. (1 a 35 pelos testes do Rust no Windows, 95 passando; 36 a 41 testadas no app instalado v0.2.0; 42 e 43 são só do Android.)
 
 ## Estado atual
 
-**MVP, Fase 2 (etapas 10 a 19), Fase 3 (20 a 23), Fase 4 (24 a 28), Fase 5 (29 a 32) e Fase 6 (33 a 35) concluídos; Fase 7 concluída no Linux (36 a 41) e no Android (36 a 43), falta testar no Windows (7.3); Fase 8 (Windows): 44 a 50 e 52. Versão atual: 0.2.0 (release v0.2.0).**
+**MVP, Fase 2 (etapas 10 a 19), Fase 3 (20 a 23), Fase 4 (24 a 28), Fase 5 (29 a 32) e Fase 6 (33 a 35) concluídos; Fase 7 concluída no Linux (36 a 41), no Android (36 a 43) e no Windows (36 a 41); Fase 8 (Windows) concluída (44 a 53). Versão atual: 0.2.0 (release v0.2.0).**
 
 ### Fase 7 (36 a 43; testada no Linux e no Android)
 
@@ -223,7 +223,7 @@ Conferir o que já existe antes de cada etapa e marcar `[x]` só com teste feito
 - **Testes no Windows (pegadinhas)**: `Command::new("gst-launch-1.0")` não acha o programa (o Rust só acrescenta `.exe` a nomes sem extensão, e "1.0" conta como uma); `teste_util::gst_launch` usa `gst-launch-1.0.exe`, tira do PATH a cópia embutida e troca `\` por `/` no `location=`. WAV de teste em `teste_util::wav`. `enriquecer::testes::grava_tags_enquanto_toca`: gravar tags com o arquivo aberto pelo player funciona no Windows.
 - **CI** (`.github/workflows/windows.yml`, etapa 52): `windows-latest` instala o GStreamer 1.28.8 (instalador Inno `.exe` único, `/VERYSILENT /TYPE=full /DIR=`, SHA-256 conferido, em cache), roda `npm run build:windows`; job `teste-limpo` numa máquina nova sem GStreamer instala com `/S`, abre o Skáld, confere processo vivo após 25 s, banco e registro do GStreamer embutido, e guarda uma captura da tela; job `release` (só tag `v*`) anexa o `.exe` à Release. Manual: `gh workflow run windows.yml`.
 - **Ainda não testados** no Windows: exportação de retrospectivas pelo app (a função `stats::salvar_png` tem teste).
-- **Windows pausado em 2026-11-16** a pedido do usuário. Onde parou: 51 (Windows limpo) — o job `teste-limpo` do CI foi escrito mas ainda não rodou; teste manual no Windows Sandbox depende de o usuário ativar a "Área Restrita do Windows" (`Enable-WindowsOptionalFeature -Online -FeatureName Containers-DisposableClientVM -All` como administrador + reiniciar; PC atende os requisitos) e de um `.wsb` a preparar. 52 (CI) — a execução manual 43932150911 passou pela instalação do GStreamer e estava gerando o instalador; conferir o resultado (`gh run view 43932150911`) e rodar de novo com o `teste-limpo` (`gh workflow run windows.yml`). 53 (paridade) — etapas 1 a 35 cobertas pelos testes no Windows (91 passando, nenhum pulado); 36 a 43 dependem da Fase 7.
+- **Fase 8 concluída em 2026-11-16**: 51 pelo job `teste-limpo` (execuções 43940034298 e a da tag v0.2.0; captura mostra a interface certa; o teste abre o app mas não toca música). 53: 36 a 41 testadas no app instalado pela depuração remota do WebView2 (`WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS=--remote-debugging-port=9333`, `Runtime.evaluate` chamando `window.__TAURI_INTERNALS__.invoke` e `Input.dispatchMouseEvent` para a barra): retomar após matar o processo (mesma faixa, pausada em 1:01, fila preservada), `queue_jump`, continuar tocando (mesmo artista, com crossfade; repetir fila tem prioridade), Adicionar músicas, menu ⋮ (fila, renomear, M3U em UTF-8 sem BOM; capa e excluir abrem diálogos nativos, só os comandos foram testados), cartões das Configurações, clique a 10/50/90% e arrasto. Pegadinha do CDP: aperto e soltura do mouse na mesma conexão perdem o `pointerup`; mandar cada evento numa conexão. Em 1 de 6 rodadas o `cargo test` falhou logo após compilar (avisos GStreamer-CRITICAL), como o intermitente do Linux. Para testar com a biblioteca real: copiar o banco antes, criar playlist temporária e restaurar aleatório/repetir no fim.
 - **Instalador sem assinatura** (SmartScreen avisa).
 - **Pendente**: `panic = "abort"` no release anula o `catch_unwind` da bandeja.
 - **Android** (preparação, ver `docs/android.md`): `tauri android init` em `src-tauri/gen/android`; áudio segue no GStreamer 1.28.9 (SDK em `~/Android/gstreamer/1.28.9`, NDK 27.3): `app/jni/Android.mk` gera `libgstreamer_android.so` (ndk-build rodado de dentro de `app/build/gstreamer` por `scripts/android.sh` e pela tarefa Gradle `gstreamerNdkBuild`), `build.rs` liga o Rust a ela, `SYSTEM_DEPS_*` desligam o pkg-config, `MainActivity` chama `GStreamer.init`. Bandeja/autostart/notificação em `#[cfg(desktop)]`.
@@ -270,5 +270,4 @@ Conferir o que já existe antes de cada etapa e marcar `[x]` só com teste feito
 
 ### Próximo
 
-- Windows: testar as etapas 36 a 41 (seção 7.3) e a paridade final (53); 51 só falta uma olhada à mão.
-- Depois: definir a próxima fase com o usuário (ex.: podcasts/audiolivros, itens fora de escopo, investigar o SIGSEGV intermitente do `cargo test`).
+- Definir a próxima fase com o usuário (ex.: podcasts/audiolivros, itens fora de escopo, investigar o SIGSEGV intermitente do `cargo test`, que também aparece no Windows).
