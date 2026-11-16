@@ -388,7 +388,7 @@ mod testes {
 
     #[test]
     fn arquivo_sumido_fica_marcado_e_registro_mantido() {
-        let dir = std::env::temp_dir().join(format!("skald-teste-sumidos-{}", std::process::id()));
+        let dir = crate::teste_util::pasta("skald-teste-sumidos");
         std::fs::create_dir_all(dir.join("sub")).unwrap();
         let fica = dir.join("fica.mp3");
         let some = dir.join("sub/some.mp3");
@@ -496,7 +496,7 @@ mod testes {
 
     #[test]
     fn hash_detecta_duplicados_e_movidos() {
-        let dir = std::env::temp_dir().join(format!("skald-teste-hash-{}", std::process::id()));
+        let dir = crate::teste_util::pasta("skald-teste-hash");
         std::fs::create_dir_all(&dir).unwrap();
         let arq = |nome: &str, conteudo: &[u8]| {
             let p = dir.join(nome);

@@ -6,6 +6,7 @@
 //! `about-to-finish` roda na thread do GStreamer e também trava `Interno`.
 
 use std::f64::consts::FRAC_PI_2;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -41,7 +42,16 @@ pub(crate) fn gst_iniciar() -> Result<(), gst::glib::Error> {
             }
         });
     }
-    gst::init()
+    gst::init()?;
+    // O `equalizer-10bands` registra o tipo das bandas na primeira criação, sem trava:
+    // duas threads criando o primeiro ao mesmo tempo dão "cannot register existing type
+    // 'GstIirEqualizerBand'" e acesso inválido (visto nos testes em paralelo). Cria um
+    // aqui, uma vez só, antes de qualquer outro.
+    static AQUECER: std::sync::Once = std::sync::Once::new();
+    AQUECER.call_once(|| {
+        let _ = gst::ElementFactory::make("equalizer-10bands").build();
+    });
+    Ok(())
 }
 
 #[derive(Serialize, Clone, Copy, PartialEq, Debug)]
@@ -118,6 +128,19 @@ pub struct Player {
     /// Equalizador de cada deck (ausente se o plugin não estiver instalado).
     eqs: [Option<gst::Element>; 2],
     int: Arc<Mutex<Interno>>,
+    /// Pede à thread de `vigiar` que termine (ao descartar o player).
+    encerrar: Arc<AtomicBool>,
+}
+
+/// No app o player vive até o fim; nos testes cada um é descartado. Sem isto a thread de
+/// `vigiar` e os `playbin` seguiriam vivos (e tocando) até o processo terminar.
+impl Drop for Player {
+    fn drop(&mut self) {
+        self.encerrar.store(true, Ordering::SeqCst);
+        for d in &self.decks {
+            let _ = d.set_state(gst::State::Null);
+        }
+    }
 }
 
 fn criar_deck() -> Result<(gst::Element, Option<gst::Element>), String> {
@@ -193,8 +216,9 @@ impl Player {
                 None
             });
         }
-        vigiar(avisar, decks.clone(), int.clone(), pedir);
-        Ok(Self { decks, eqs, int })
+        let encerrar = Arc::new(AtomicBool::new(false));
+        vigiar(avisar, decks.clone(), int.clone(), pedir, encerrar.clone());
+        Ok(Self { decks, eqs, int, encerrar })
     }
 
     fn ativo(&self) -> usize {
@@ -421,11 +445,12 @@ fn vigiar(
     decks: [gst::Element; 2],
     int: Arc<Mutex<Interno>>,
     pedir: Arc<Pedir>,
+    encerrar: Arc<AtomicBool>,
 ) {
     let buses = [decks[0].bus().expect("playbin sempre tem barramento"), decks[1].bus().expect("playbin sempre tem barramento")];
     std::thread::spawn(move || {
         let mut ultimo_envio = Instant::now();
-        loop {
+        while !encerrar.load(Ordering::SeqCst) {
             let mut envio_imediato = false;
             let mut erro = None;
             let mut fim = false;
@@ -658,8 +683,7 @@ mod testes {
     /// Toca a.wav e oferece b.wav (id 2) como próxima, uma vez. Devolve o que aconteceu.
     fn tocar_duas(nome: &str, buffers: u32, crossfade_ms: u64, mesmo_album: bool) -> Option<Resultado> {
         // Espaço e acento no caminho, como em "Música/Álbum de Fulano" (URIs no Windows).
-        let dir = std::env::temp_dir().join(format!("skald teste ção {nome}-{}", std::process::id()));
-        std::fs::create_dir_all(&dir).unwrap();
+        let dir = crate::teste_util::pasta(&format!("skald teste ção {nome}"));
         let (a, b) = (dir.join("faixa á.wav"), dir.join("faixa é.wav"));
         gerar_wav(&a, buffers);
         gerar_wav(&b, buffers);

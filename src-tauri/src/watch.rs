@@ -162,7 +162,7 @@ mod testes {
     /// pasta com espaço e acento: arquivo novo, renomeado, movido para subpasta e apagado.
     #[test]
     fn monitora_pasta_de_verdade() {
-        let base = std::env::temp_dir().join(format!("skald monitor ção-{}", std::process::id()));
+        let base = crate::teste_util::pasta("skald monitor ção");
         let pasta = base.join("Música");
         std::fs::create_dir_all(&pasta).unwrap();
         let db = Mutex::new(crate::db::open(&base.join("teste.db")).unwrap());

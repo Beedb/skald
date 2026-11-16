@@ -361,7 +361,7 @@ mod testes {
 
     #[test]
     fn salva_png_na_pasta_do_periodo() {
-        let base = std::env::temp_dir().join(format!("skald-teste-png-{}", std::process::id()));
+        let base = crate::teste_util::pasta("skald-teste-png");
         let png = b"\x89PNG\r\n\x1a\nresto";
         let arquivo = salvar_png(&base, "2026-10", png).unwrap();
         assert_eq!(arquivo, base.join("2026-10/retrospectiva-2026-10.png"));

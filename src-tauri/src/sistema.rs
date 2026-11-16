@@ -113,7 +113,7 @@ mod testes {
 
     #[test]
     fn autostart_cria_e_remove() {
-        let dir = std::env::temp_dir().join(format!("skald-autostart-{}", std::process::id()));
+        let dir = crate::teste_util::pasta("skald-autostart");
         assert!(!autostart_ativo(&dir));
         definir_autostart(&dir, Path::new("/opt/Meu App/skald"), true).unwrap();
         assert!(autostart_ativo(&dir));

@@ -166,7 +166,7 @@ mod testes {
 
     #[test]
     fn migra_v1_para_v2_e_preenche_busca() {
-        let dir = std::env::temp_dir().join(format!("skald-teste-migracao-{}", std::process::id()));
+        let dir = crate::teste_util::pasta("skald-teste-migracao");
         std::fs::create_dir_all(&dir).unwrap();
         let caminho = dir.join("v1.db");
         let _ = std::fs::remove_file(&caminho);

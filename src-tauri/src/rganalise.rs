@@ -224,7 +224,7 @@ mod testes {
 
     #[test]
     fn analisa_wav_e_guarda_no_banco() {
-        let dir = std::env::temp_dir().join(format!("skald rg ção-{}", std::process::id()));
+        let dir = crate::teste_util::pasta("skald rg ção");
         std::fs::create_dir_all(&dir).unwrap();
         let wav = dir.join("t.wav");
         crate::teste_util::wav(&wav, 200 * 1024, 0);

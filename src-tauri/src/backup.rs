@@ -80,7 +80,7 @@ mod testes {
 
     #[test]
     fn exporta_valida_e_restaura() {
-        let dir = std::env::temp_dir().join(format!("skald-backup-{}", std::process::id()));
+        let dir = crate::teste_util::pasta("skald-backup");
         std::fs::create_dir_all(&dir).unwrap();
         let mut conn = crate::db::open(&dir.join("atual.db")).unwrap();
         conn.execute("INSERT INTO media (path, title) VALUES ('/a.mp3', 'A')", []).unwrap();
@@ -111,6 +111,7 @@ mod testes {
         assert_eq!(tamanho(&[cache.clone()]), 100);
         assert_eq!(limpar(&[cache.clone(), dir.join("nao-existe")]).unwrap(), 100);
         assert!(!cache.exists());
+        drop((conn, c)); // no Windows, arquivo aberto não sai da pasta
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

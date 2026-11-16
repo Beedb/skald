@@ -569,7 +569,7 @@ mod testes {
 
     #[test]
     fn grava_tags_no_arquivo() {
-        let dir = std::env::temp_dir().join(format!("skald tags ção-{}", std::process::id()));
+        let dir = crate::teste_util::pasta("skald tags ção");
         std::fs::create_dir_all(&dir).unwrap();
         let wav = dir.join("t.wav");
         crate::teste_util::wav(&wav, 4410, 0);
@@ -581,7 +581,7 @@ mod testes {
     /// No Windows o arquivo aberto pelo player pode ficar travado para escrita.
     #[test]
     fn grava_tags_enquanto_toca() {
-        let dir = std::env::temp_dir().join(format!("skald tags tocando-{}", std::process::id()));
+        let dir = crate::teste_util::pasta("skald tags tocando");
         std::fs::create_dir_all(&dir).unwrap();
         let wav = dir.join("tocando.wav");
         crate::teste_util::wav(&wav, 44_100 * 6, 3);

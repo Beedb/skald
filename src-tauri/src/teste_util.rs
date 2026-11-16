@@ -1,5 +1,15 @@
 //! Utilidades só dos testes.
 
+/// Pasta temporária vazia para um teste: `<temp>/<nome>-<pid>`. Apaga antes o que tiver
+/// sobrado: o Windows reaproveita PIDs, e uma pasta que não pôde ser apagada no fim de uma
+/// rodada antiga (arquivo ainda aberto) faria o teste achar dados velhos.
+pub fn pasta(nome: &str) -> std::path::PathBuf {
+    let dir = std::env::temp_dir().join(format!("{nome}-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    dir
+}
+
 /// WAV PCM 16 bits mono, 44,1 kHz, com `amostras` amostras. Escrito em Rust: não depende
 /// do `gst-launch-1.0` nem do `audiotestsrc` (que não vão no GStreamer embutido do Windows).
 /// `semente` muda o conteúdo (arquivos com hash diferente).

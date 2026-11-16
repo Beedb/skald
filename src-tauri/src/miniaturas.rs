@@ -90,7 +90,7 @@ mod testes {
     fn ensaio_miniaturas() {
         let Ok(caminho) = std::env::var("SKALD_DB_ENSAIO") else { return };
         let db = std::sync::Mutex::new(crate::db::open(std::path::Path::new(&caminho)).unwrap());
-        let pasta = std::env::temp_dir().join(format!("skald-mini-{}", std::process::id()));
+        let pasta = crate::teste_util::pasta("skald-mini");
         let ids: Vec<i64> = db.lock().unwrap().prepare("SELECT id FROM media LIMIT 20").unwrap()
             .query_map([], |r| r.get(0)).unwrap().map(Result::unwrap).collect();
         let t = std::time::Instant::now();

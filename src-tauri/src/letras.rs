@@ -242,7 +242,7 @@ mod testes {
 
     #[test]
     fn acha_lrc_ao_lado_e_decodifica_latin1() {
-        let dir = std::env::temp_dir().join(format!("skald-teste-letras-{}", std::process::id()));
+        let dir = crate::teste_util::pasta("skald-teste-letras");
         std::fs::create_dir_all(&dir).unwrap();
         let musica = dir.join("Canção.flac");
         std::fs::write(&musica, b"").unwrap();
@@ -258,7 +258,7 @@ mod testes {
 
     #[test]
     fn cria_lrc_ao_lado_sem_substituir() {
-        let dir = std::env::temp_dir().join(format!("skald-teste-lrc-novo-{}", std::process::id()));
+        let dir = crate::teste_util::pasta("skald-teste-lrc-novo");
         std::fs::create_dir_all(&dir).unwrap();
         let musica = dir.join("faixa.mp3");
         std::fs::write(&musica, b"").unwrap();

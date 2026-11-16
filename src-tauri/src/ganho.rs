@@ -129,7 +129,7 @@ mod testes {
     /// FLAC com tags gerado pelo GStreamer; lido de volta pelo `lofty`.
     #[test]
     fn le_tags_de_um_flac() {
-        let dir = std::env::temp_dir().join(format!("skald-teste-rg-{}", std::process::id()));
+        let dir = crate::teste_util::pasta("skald-teste-rg");
         std::fs::create_dir_all(&dir).unwrap();
         let arquivo = dir.join("rg.flac");
         // O gst-launch trata "\" como escape; o Windows aceita "/".

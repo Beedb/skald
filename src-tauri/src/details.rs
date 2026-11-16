@@ -198,7 +198,7 @@ mod testes {
     /// Rodar com: SKALD_TEST_DIR=/pasta cargo test details -- --nocapture
     #[test]
     fn capa_salva_no_skald_vale_por_cima() {
-        let pasta = std::env::temp_dir().join(format!("skald-capas-{}", std::process::id()));
+        let pasta = crate::teste_util::pasta("skald-capas");
         definir_pasta_capas(pasta.clone());
         let id = 987_654; // id que nenhum outro teste usa (a pasta é global)
         assert!(capa_salva(id).is_none());
