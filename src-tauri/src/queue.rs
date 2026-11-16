@@ -210,6 +210,27 @@ impl Fila {
         self.manual.push_front(id);
     }
 
+    /// Clique na fila manual: toca a música `posicao`; as que vinham antes dela saem.
+    pub fn pular_manual(&mut self, posicao: usize) -> Option<i64> {
+        if posicao >= self.manual.len() {
+            return None;
+        }
+        self.manual.drain(..posicao);
+        let id = self.manual.pop_front()?;
+        self.atual = Some(id);
+        Some(id)
+    }
+
+    /// Clique em "A seguir": toca a `n`-ésima de `proximas_do_contexto` e a fila segue dali.
+    /// A fila manual continua antes do contexto.
+    pub fn pular_contexto(&mut self, n: usize) -> Option<i64> {
+        let i = self.indice.map_or(0, |i| i + 1) + n;
+        let id = self.contexto[*self.ordem.get(i)?];
+        self.indice = Some(i);
+        self.atual = Some(id);
+        Some(id)
+    }
+
     pub fn remover_manual(&mut self, posicao: usize) -> Option<i64> {
         self.manual.remove(posicao)
     }
@@ -271,6 +292,24 @@ mod testes {
         let volta: Fila = serde_json::from_str(&serde_json::to_string(&f).unwrap()).unwrap();
         assert_eq!(volta, f);
         assert_eq!(volta.atual(), Some(9));
+    }
+
+    #[test]
+    fn clicar_na_fila_toca_e_segue_dali() {
+        let mut f = Fila::default();
+        f.tocar_do_contexto(vec![1, 2, 3, 4, 5], 1);
+        f.adicionar_varios(&[7, 8, 9], false);
+        // Manual: 7 sai, 8 toca, 9 continua antes do contexto.
+        assert_eq!(f.pular_manual(1), Some(8));
+        assert_eq!(f.manual().collect::<Vec<_>>(), [9]);
+        assert_eq!(f.proximas_do_contexto(9), [2, 3, 4, 5]);
+        // Contexto: pula para o 4 (a terceira de "A seguir"); depois vêm 9 e então 5.
+        assert_eq!(f.pular_contexto(2), Some(4));
+        assert_eq!(f.proximas_do_contexto(9), [5]);
+        assert_eq!(f.proxima(), Some(9));
+        assert_eq!(f.proxima(), Some(5));
+        assert_eq!(f.pular_contexto(0), None);
+        assert_eq!(f.pular_manual(0), None);
     }
 
     #[test]

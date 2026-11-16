@@ -1062,6 +1062,20 @@ fn queue_clear(app: AppHandle, fila: State<FilaState>) -> Result<(), String> {
     Ok(())
 }
 
+/// Clique numa música da fila: `manual` = "Próximas na fila", senão "A seguir".
+#[tauri::command]
+fn queue_jump(app: AppHandle, fila: State<FilaState>, manual: bool, posicao: usize) -> Result<(), String> {
+    let id = {
+        let mut f = fila.0.lock().map_err(erro_db)?;
+        if manual { f.pular_manual(posicao) } else { f.pular_contexto(posicao) }
+    };
+    let _ = app.emit(EVENTO_FILA, ());
+    match id {
+        Some(id) => tocar_id(&app, id),
+        None => Ok(()),
+    }
+}
+
 #[tauri::command]
 fn queue_remove(app: AppHandle, fila: State<FilaState>, posicao: usize) -> Result<(), String> {
     fila.0.lock().map_err(erro_db)?.remover_manual(posicao);
@@ -1890,6 +1904,7 @@ pub fn run() {
             previous_track,
             queue_add,
             queue_remove,
+            queue_jump,
             queue_add_many,
             queue_add_album,
             queue_add_playlist,

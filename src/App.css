@@ -2705,6 +2705,14 @@ input[type="range"].trilha:disabled {
   padding: 0.3rem 0.4rem;
 }
 
+.painel-fila li.clicavel {
+  cursor: pointer;
+}
+
+.painel-fila li.clicavel:hover {
+  background: color-mix(in srgb, var(--forte) 6%, transparent);
+}
+
 .painel-fila li.atual {
   background: color-mix(in srgb, var(--acento) 14%, transparent);
 }

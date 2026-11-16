@@ -30,6 +30,7 @@ function Item({
   arraste,
   classe = "",
   onMenu,
+  onTocar,
   atual = false,
 }: {
   m: MediaRow;
@@ -37,13 +38,15 @@ function Item({
   arraste?: Arraste;
   classe?: string;
   onMenu?: (e: React.MouseEvent) => void;
+  onTocar?: () => void;
   atual?: boolean;
 }) {
   return (
     <li
-      className={(m.missing ? "ausente " : "") + (atual ? "atual " : "") + classe}
-      title={m.missing ? "Arquivo não encontrado" : arraste ? "Arraste para reordenar" : undefined}
+      className={(m.missing ? "ausente " : "") + (atual ? "atual " : "") + (onTocar ? "clicavel " : "") + classe}
+      title={m.missing ? "Arquivo não encontrado" : arraste ? "Clique para tocar, arraste para reordenar" : onTocar ? "Clique para tocar" : undefined}
       {...arraste}
+      onClick={onTocar}
       onContextMenu={onMenu}
     >
       {arraste && (
@@ -62,7 +65,12 @@ function Item({
         <span className="tempo">{formatarDuracao(m.duration_ms)}</span>
       )}
       {onRemover && (
-        <button className="remover" onClick={onRemover} aria-label="Remover da fila" title="Remover da fila">
+        <button
+          className="remover"
+          onClick={(e) => {
+            e.stopPropagation();
+            onRemover();
+          }} aria-label="Remover da fila" title="Remover da fila">
           <X size={14} />
         </button>
       )}
@@ -144,6 +152,7 @@ export default function Fila({
                 classe={classeArraste(i)}
                 onMenu={(e) => abrirMenu(e, m.id)}
                 onRemover={() => acao("queue_remove", { posicao: i })}
+                onTocar={() => acao("queue_jump", { manual: true, posicao: i })}
               />
             ))}
           </ul>
@@ -153,8 +162,13 @@ export default function Fila({
         <section>
           <h3>A seguir</h3>
           <ul>
-            {fila.contexto.map((m) => (
-              <Item key={m.id} m={m} onMenu={(e) => abrirMenu(e, m.id)} />
+            {fila.contexto.map((m, i) => (
+              <Item
+                key={m.id}
+                m={m}
+                onMenu={(e) => abrirMenu(e, m.id)}
+                onTocar={() => acao("queue_jump", { manual: false, posicao: i })}
+              />
             ))}
           </ul>
         </section>
