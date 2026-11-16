@@ -182,6 +182,28 @@ Conferir o que já existe antes de cada etapa e marcar `[x]` só com teste feito
 - [x] 52. CI no GitHub Actions (`windows-latest`) gerando o instalador a cada tag. (Tag v0.2.0: instalador, teste-limpo e release passaram em ~8 min; o `.exe` foi anexado sozinho.)
 - [x] 53. Paridade final: todas as funções das etapas 1 a 43. (1 a 35 pelos testes do Rust no Windows, 95 passando; 36 a 41 testadas no app instalado v0.2.0; 42 e 43 são só do Android.)
 
+## Fase 9 (avisos de novas versões) — em planejamento
+
+Objetivo: a pessoa cadastra o e-mail e é avisada quando sai uma versão nova. O Skáld é offline e sem servidor, então a lista e o envio ficam num serviço de fora; o app nunca guarda nem envia e-mail.
+
+Proposta:
+- **Lista e envio**: serviço de newsletter com "RSS para e-mail" apontado para `https://github.com/Beedb/skald/releases.atom` (cada release vira um e-mail automático). O serviço cuida da confirmação por e-mail (double opt-in) e do link de descadastro (LGPD). Página de inscrição linkada no README e nas notas da release.
+- **No app**: cartão "Novidades" em Configurações com o botão "Receber aviso de novas versões por e-mail", que abre a página de inscrição no navegador.
+- **Opcional**: verificação de atualização no app (desligada por padrão, para manter o "nada fala com a internet sem pedir"): ao abrir, consulta a última release do GitHub e mostra "Saiu a versão X" com o link.
+
+Decisões pendentes (perguntar ao usuário antes de codificar):
+1. **Serviço**: Buttondown (grátis até 100 inscritos, RSS automático; recomendado), Mailchimp (mais conhecido, mais pesado) ou Formulário do Google (planilha; envio manual a cada versão, com rascunho no Gmail em cópia oculta; descadastro manual).
+2. **Verificação dentro do app** (item opcional) entra junto ou fica só o e-mail por enquanto?
+
+Criar a conta no serviço é com o usuário (Claude não cria contas nem digita senhas); depois Claude configura RSS, texto do e-mail, link no README e o cartão no app.
+
+Etapas (numerar ao decidir):
+- [ ] Conta no serviço + página de inscrição (usuário).
+- [ ] RSS das releases → e-mail automático; texto do e-mail em pt-BR.
+- [ ] Link de inscrição no README e no modelo de notas da release ("Como lançar uma versão").
+- [ ] Cartão "Novidades" em Configurações (abre a página no navegador; todas as plataformas).
+- [ ] (Se aprovado) Verificar atualização no app, opção desligada por padrão.
+
 ## Estado atual
 
 **MVP, Fase 2 (etapas 10 a 19), Fase 3 (20 a 23), Fase 4 (24 a 28), Fase 5 (29 a 32) e Fase 6 (33 a 35) concluídos; Fase 7 concluída no Linux (36 a 41), no Android (36 a 43) e no Windows (36 a 41); Fase 8 (Windows) concluída (44 a 53). Versão atual: 0.2.0 (release v0.2.0).**
@@ -270,4 +292,5 @@ Conferir o que já existe antes de cada etapa e marcar `[x]` só com teste feito
 
 ### Próximo
 
-- Definir a próxima fase com o usuário (ex.: podcasts/audiolivros, itens fora de escopo).
+- Fase 9 (avisos de novas versões por e-mail): responder as duas decisões pendentes e começar.
+- Depois: outras ideias (ex.: podcasts/audiolivros, itens fora de escopo).
