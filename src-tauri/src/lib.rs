@@ -457,12 +457,25 @@ struct Pendente {
     antes: queue::Fila,
     depois: queue::Fila,
     id: i64,
+    /// A fila tinha acabado e `depois` já é a continuação ("Continuar tocando").
+    continuou: bool,
 }
 
 struct GaplessState(Mutex<Option<Pendente>>);
 
 /// Chamada pelo player pouco antes do fim da faixa: escolhe a seguinte numa cópia da fila
 /// (respeitando fila manual, aleatório e repetir) e pula arquivos ausentes.
+/// Fim da fila (sem repetir): com "Continuar tocando", as músicas que seguem depois de
+/// `ultima` (mesmo artista, mesmo gênero, biblioteca inteira).
+fn continuacao(app: &AppHandle, ultima: Option<i64>) -> Option<Vec<i64>> {
+    let db = app.state::<db::Db>();
+    let conn = db.0.lock().ok()?;
+    if !settings::carregar(&conn).ok()?.continuar_tocando {
+        return None;
+    }
+    colecao::continuacao(&conn, ultima?).ok().filter(|ids| !ids.is_empty())
+}
+
 fn preparar_proxima(app: &AppHandle) -> Option<player::Proxima> {
     // Temporizador "fim desta música": nada é emendado; a faixa termina e para.
     if app.state::<TemporizadorState>().0.lock().ok()?.fim_da_faixa() {
@@ -470,8 +483,17 @@ fn preparar_proxima(app: &AppHandle) -> Option<player::Proxima> {
     }
     let antes = app.state::<FilaState>().0.lock().ok()?.clone();
     let mut depois = antes.clone();
+    let mut continuou = false;
     for tentativa in 0..100 {
-        let id = if tentativa == 0 { depois.proxima_automatica() } else { depois.proxima() }?;
+        let id = match if tentativa == 0 { depois.proxima_automatica() } else { depois.proxima() } {
+            Some(id) => id,
+            None if !continuou => {
+                continuou = true;
+                let ids = continuacao(app, depois.atual())?;
+                depois.continuar_com(ids)?
+            }
+            None => return None,
+        };
         let proxima = {
             let db = app.state::<db::Db>();
             let conn = db.0.lock().ok()?;
@@ -486,7 +508,7 @@ fn preparar_proxima(app: &AppHandle) -> Option<player::Proxima> {
         if let Some((id, path, mesmo_album)) = proxima {
             let ganho = ganho_de(app, id, &path);
             let p = player::Proxima { id, path, mesmo_album, ganho };
-            *app.state::<GaplessState>().0.lock().ok()? = Some(Pendente { antes, depois, id });
+            *app.state::<GaplessState>().0.lock().ok()? = Some(Pendente { antes, depois, id, continuou });
             return Some(p);
         }
     }
@@ -502,6 +524,10 @@ fn concluir_transicao(app: &AppHandle, id: i64) {
         match pendente {
             Some(p) if p.id == id && *f == p.antes => {
                 *f = p.depois;
+                if p.continuou {
+                    // Faixas automáticas: a playlist de onde veio a fila não ganha nada.
+                    let _ = definir_origem(app, None);
+                }
                 None
             }
             // A fila mudou nesses segundos (ex.: música adicionada): vale a fila atual.
@@ -569,10 +595,21 @@ fn tocar_id(app: &AppHandle, id: i64) -> Result<(), String> {
 fn avancar(app: &AppHandle, automatica: bool) -> Result<(), String> {
     let fila = app.state::<FilaState>();
     let mut resultado = Ok(());
+    let mut continuou = false;
     for tentativa in 0..100 {
         let mut f = fila.0.lock().map_err(erro_db)?;
-        let proxima = if automatica && tentativa == 0 { f.proxima_automatica() } else { f.proxima() };
+        let ultima = f.atual();
+        let mut proxima = if automatica && tentativa == 0 { f.proxima_automatica() } else { f.proxima() };
         drop(f);
+        // Fila acabou (repetir desligado): "Continuar tocando" com relacionadas.
+        if proxima.is_none() && !continuou {
+            continuou = true;
+            if let Some(ids) = continuacao(app, ultima) {
+                proxima = fila.0.lock().map_err(erro_db)?.continuar_com(ids);
+                // Faixas automáticas: a playlist de onde veio a fila não ganha nada.
+                definir_origem(app, None)?;
+            }
+        }
         let Some(id) = proxima else { break };
         resultado = tocar_id(app, id);
         if resultado.is_ok() {
@@ -1620,6 +1657,12 @@ fn set_tray(app: AppHandle, ativo: bool) -> Result<(), String> {
 }
 
 #[tauri::command]
+fn set_continue(db: State<db::Db>, ativo: bool) -> Result<(), String> {
+    let conn = db.0.lock().map_err(erro_db)?;
+    settings::definir_continuar(&conn, ativo).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 fn set_notifications(db: State<db::Db>, ativo: bool) -> Result<(), String> {
     let conn = db.0.lock().map_err(erro_db)?;
     settings::definir_notificar(&conn, ativo).map_err(|e| e.to_string())
@@ -1976,6 +2019,7 @@ pub fn run() {
             metadata_lookup,
             metadata_apply,
             set_notifications,
+            set_continue,
             autostart_get,
             set_autostart,
             set_crossfade,

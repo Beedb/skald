@@ -256,6 +256,33 @@ pub fn ids_do_artista(conn: &Connection, nome: Option<&str>) -> rusqlite::Result
     ids.collect()
 }
 
+/// "Continuar tocando" depois de `id`: toda a música presente da biblioteca, em grupos
+/// embaralhados — primeiro do mesmo artista (qualquer participante), depois do mesmo
+/// gênero, depois o resto (Shuffle Bag da biblioteca inteira). `id` fica de fora.
+pub fn continuacao(conn: &Connection, id: i64) -> rusqlite::Result<Vec<i64>> {
+    let mut stmt = conn.prepare_cached(
+        "WITH base AS (SELECT artist, genre FROM media WHERE id = ?1)
+         SELECT m.id,
+                CASE
+                    WHEN EXISTS (SELECT 1 FROM base, json_each(ARTISTAS(m.artist)) a, json_each(ARTISTAS(base.artist)) b
+                                 WHERE a.value IS NOT NULL AND a.value = b.value COLLATE SEMACENTO) THEN 0
+                    WHEN m.genre IS NOT NULL AND m.genre = (SELECT genre FROM base) COLLATE SEMACENTO THEN 1
+                    ELSE 2
+                END
+         FROM media m
+         WHERE m.category = 'music' AND m.missing = 0 AND m.id != ?1",
+    )?;
+    let mut grupos: [Vec<i64>; 3] = Default::default();
+    for linha in stmt.query_map([id], |r| Ok((r.get::<_, i64>(0)?, r.get::<_, usize>(1)?)))? {
+        let (m, g) = linha?;
+        grupos[g.min(2)].push(m);
+    }
+    for g in &mut grupos {
+        fastrand::shuffle(g);
+    }
+    Ok(grupos.concat())
+}
+
 /// "Relacionados" do player completo: o resto do álbum e mais músicas dos artistas da faixa.
 #[derive(Serialize, Debug)]
 pub struct Relacionadas {
@@ -339,6 +366,22 @@ mod testes {
         assert_eq!(r.album.iter().map(|m| m.id).collect::<Vec<_>>(), [2]);
         assert_eq!(r.artistas, ["Rodrigo Zin", "GEO"]);
         assert_eq!(r.do_artista.iter().map(|m| m.id).collect::<Vec<_>>(), [3], "sem repetir as do álbum");
+    }
+
+    #[test]
+    fn continuacao_por_artista_genero_e_resto() {
+        let conn = crate::db::open(std::path::Path::new(":memory:")).unwrap();
+        conn.execute_batch(
+            "INSERT INTO media (id, path, title, artist, genre, missing) VALUES
+             (1, '/m/1.mp3', 't', 'Djavan', 'MPB', 0),
+             (2, '/m/2.mp3', 't', 'djavan feat. Gal', 'Pop', 0),
+             (3, '/m/3.mp3', 't', 'Gal', 'mpb', 0),
+             (4, '/m/4.mp3', 't', 'Outro', NULL, 0),
+             (5, '/m/5.mp3', 't', 'Djavan', 'MPB', 1);",
+        )
+        .unwrap();
+        // Ausente (5) e a própria (1) ficam de fora; cada grupo tem um só aqui.
+        assert_eq!(continuacao(&conn, 1).unwrap(), [2, 3, 4]);
     }
 
     #[test]

@@ -15,6 +15,7 @@ type Config = {
   cores_dinamicas: boolean;
   bandeja: boolean;
   notificar: boolean;
+  continuar_tocando: boolean;
 };
 
 const PRESETS: [Preset, string][] = [
@@ -41,6 +42,7 @@ export default function Configuracoes({ onErro }: { onErro: (m: string) => void 
   const [coresDinamicas, setCoresDinamicas] = useState(true);
   const [bandeja, setBandeja] = useState(false);
   const [notificar, setNotificar] = useState(true);
+  const [continuar, setContinuar] = useState(true);
   const [autostart, setAutostart] = useState(false);
   const [cache, setCache] = useState<number | null>(null);
   const [mpris, setMpris] = useState<string | null | undefined>(undefined);
@@ -58,6 +60,7 @@ export default function Configuracoes({ onErro }: { onErro: (m: string) => void 
         setCoresDinamicas(c.cores_dinamicas);
         setBandeja(c.bandeja);
         setNotificar(c.notificar);
+        setContinuar(c.continuar_tocando);
       })
       .catch((e) => onErro(String(e)));
     invoke<boolean>("autostart_get")
@@ -138,6 +141,11 @@ export default function Configuracoes({ onErro }: { onErro: (m: string) => void 
       setBandeja(false);
       onErro(String(e));
     });
+  }
+
+  function gravarContinuar(ativo: boolean) {
+    setContinuar(ativo);
+    invoke("set_continue", { ativo }).catch((e) => onErro(String(e)));
   }
 
   function gravarNotificar(ativo: boolean) {
@@ -237,6 +245,14 @@ export default function Configuracoes({ onErro }: { onErro: (m: string) => void 
       <p className="nota">
         Sobrepõe o fim de uma música ao início da seguinte. Entre faixas do mesmo álbum não há crossfade: elas são
         emendadas sem pausa (gapless). Vale a partir da próxima troca de música.
+      </p>
+      <label className="opcao">
+        <span>Continuar tocando</span>
+        <input type="checkbox" checked={continuar} onChange={(e) => gravarContinuar(e.target.checked)} />
+      </label>
+      <p className="nota">
+        Quando a fila ou a playlist acaba, segue com músicas do mesmo artista, depois do mesmo gênero e depois da
+        biblioteca inteira em ordem aleatória. A playlist não muda. Repetir fila ou faixa tem prioridade.
       </p>
       <label className="opcao">
         <span>Normalização de volume (ReplayGain)</span>

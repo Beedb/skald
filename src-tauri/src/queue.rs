@@ -210,6 +210,15 @@ impl Fila {
         self.manual.push_front(id);
     }
 
+    /// "Continuar tocando": a fila acabou e `ids` (já na ordem a tocar) vira o novo
+    /// contexto. A fila manual, se houver, ainda vem antes. Devolve a primeira a tocar.
+    pub fn continuar_com(&mut self, ids: Vec<i64>) -> Option<i64> {
+        self.ordem = (0..ids.len()).collect();
+        self.contexto = ids;
+        self.indice = None;
+        self.proxima()
+    }
+
     /// Clique na fila manual: toca a música `posicao`; as que vinham antes dela saem.
     pub fn pular_manual(&mut self, posicao: usize) -> Option<i64> {
         if posicao >= self.manual.len() {
@@ -292,6 +301,19 @@ mod testes {
         let volta: Fila = serde_json::from_str(&serde_json::to_string(&f).unwrap()).unwrap();
         assert_eq!(volta, f);
         assert_eq!(volta.atual(), Some(9));
+    }
+
+    #[test]
+    fn continuar_com_troca_o_contexto() {
+        let mut f = Fila::default();
+        f.definir_aleatorio(true);
+        f.tocar_do_contexto(vec![1], 1);
+        assert_eq!(f.proxima(), None);
+        // A ordem dada (grupos já embaralhados) é mantida mesmo com aleatório.
+        assert_eq!(f.continuar_com(vec![5, 6, 7]), Some(5));
+        assert_eq!(f.proximas_do_contexto(9), [6, 7]);
+        assert_eq!(f.anterior(), None);
+        assert_eq!(f.continuar_com(vec![]), None);
     }
 
     #[test]
