@@ -174,17 +174,17 @@ Conferir o que já existe antes de cada etapa e marcar `[x]` só com teste feito
 - [x] 44. Ambiente e build (`npm run tauri dev` abre a janela).
 - [x] 45. Tocar de verdade: caminhos e URIs (`file:///C:/...`), gapless e crossfade.
 - [x] 46. Plugins GStreamer: equalizer-10bands, rganalysis, libav (M4A/AAC).
-- [ ] 47. Pastas e arquivos: `audio_dir`, `app_data_dir`, monitoramento (`notify`), arquivos movidos.
+- [x] 47. Pastas e arquivos: `audio_dir`, `app_data_dir`, monitoramento (`notify`), arquivos movidos.
 - [x] 48. Controle de mídia: SMTC no lugar do MPRIS.
 - [x] 49. Sistema: autostart no registro, bandeja, notificação (toast).
-- [ ] 50. Aparência: fontes, temas e cores dinâmicas no WebView2.
+- [x] 50. Aparência: fontes, temas e cores dinâmicas no WebView2.
 - [ ] 51. Instalador `.exe` (NSIS) com GStreamer embutido, testado num Windows limpo. (Instalador pronto e na release v0.1.0; falta o teste num Windows limpo.)
 - [ ] 52. CI no GitHub Actions (`windows-latest`) gerando o instalador a cada tag.
 - [ ] 53. Paridade final: todas as funções das etapas 1 a 43.
 
 ## Estado atual
 
-**MVP, Fase 2 (etapas 10 a 19), Fase 3 (20 a 23), Fase 4 (24 a 28) e Fase 5 (29 a 32) e Fase 6 (33 a 35) concluídos; Fase 8 (Windows): 44 a 46, 48 e 49.**
+**MVP, Fase 2 (etapas 10 a 19), Fase 3 (20 a 23), Fase 4 (24 a 28) e Fase 5 (29 a 32) e Fase 6 (33 a 35) concluídos; Fase 8 (Windows): 44 a 50.**
 
 ### Redesenho visual (a partir das imagens do usuário, concluído)
 
@@ -204,7 +204,12 @@ Conferir o que já existe antes de cada etapa e marcar `[x]` só com teste feito
 - **Toast** (testado): `sistema::app_id_windows` usa o AppUserModelID `com.skald.app` (o do atalho `Skald.lnk` que o instalador cria no Menu Iniciar; conferir com `Get-StartApps`); sem o atalho fica o id do PowerShell do notify-rust. A capa vai como imagem dentro do toast. Teste: `cargo test --lib ensaio_notificacao -- --ignored` e conferir em `[Windows.UI.Notifications.ToastNotificationManager]::History.GetHistory("com.skald.app")`.
 - **Testes no Windows** (etapas 45/46): o `cargo test` põe `target\debug` no PATH, onde o Tauri copia o GStreamer embutido; essa DLL não acha plugins sozinha e os testes pulavam calados. `player::gst_iniciar()` (usado também em `rganalise`) aponta, só em teste no Windows, para a pasta `gstreamer-1.0` embutida, com registro em `%TEMP%`; os WAVs de teste são escritos em Rust (o embutido não tem `audiotestsrc`) numa pasta com espaço e acento. Gapless, crossfade e mesmo álbum passam tocando de verdade. `ensaio_formatos` toca uma música de cada extensão do banco (`SKALD_DB_ENSAIO`) e cada arquivo de `SKALD_FORMATOS_DIR`: MP3, FLAC, M4A/AAC, OGG, Opus e WAV ok com o conjunto embutido.
 - **Bandeja e toast testados** pelo usuário no app instalado (`%LOCALAPPDATA%\Skald`).
-- **Ainda não testados** no Windows: monitoramento de pastas, exportação de retrospectivas.
+- **Etapa 47** (pastas): o SQL assumia `/` como separador. `library::SEP_SQL` e `library::PASTA_SQL` (Windows aceita `\` e `/`) são usados em `colecao` (álbum por pasta sem `album_artist`), `rganalise::album`, categoria da pasta monitorada em `import::gravar` e no critério "título vindo do nome do arquivo" de `reconciliar_movidos`. `watch::processar` recebe o `Mutex<Connection>` (testável); `watch::testes::monitora_pasta_de_verdade` usa o `notify` real numa pasta com acento: novo, renomeado, movido para subpasta (mesmo registro, por hash) e apagado (fica como não encontrado). `audio_dir` = `C:\Users\<u>\Music`.
+- **Etapa 50** (aparência no WebView2, Edge 157): testada pela depuração remota (`WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS=--remote-debugging-port=9333` e protocolo CDP com o WebSocket do Node): Cinzel/Lora carregam (pesos sob demanda), os 49 temas mudam as cores, cores da capa entram (`--acento`/`--capa` no `:root`). Corrigido (vale para todas as plataformas): nos temas `papel` e `vidro` (lateral escura, conteúdo claro) a marca, o cartão da música atual e a barra do player ficavam escuro sobre escuro; `App.css` define `--marca-cor`, `--player-fundo`, `--lateral-cartao`, `--lateral-forte` só nesses temas (os demais usam o fallback). Contraste medido com as cores renderizadas: nenhum dos 49 temas abaixo de 3 (marca) / 4,5 (texto do player).
+- **Testes no Windows (pegadinhas)**: `Command::new("gst-launch-1.0")` não acha o programa (o Rust só acrescenta `.exe` a nomes sem extensão, e "1.0" conta como uma); `teste_util::gst_launch` usa `gst-launch-1.0.exe`, tira do PATH a cópia embutida e troca `\` por `/` no `location=`. WAV de teste em `teste_util::wav`. `enriquecer::testes::grava_tags_enquanto_toca`: gravar tags com o arquivo aberto pelo player funciona no Windows.
+- **CI** (`.github/workflows/windows.yml`, etapa 52): `windows-latest` instala o GStreamer 1.28.8 (instalador Inno `.exe` único, `/VERYSILENT /TYPE=full /DIR=`, SHA-256 conferido, em cache), roda `npm run build:windows`; job `teste-limpo` numa máquina nova sem GStreamer instala com `/S`, abre o Skáld, confere processo vivo após 25 s, banco e registro do GStreamer embutido, e guarda uma captura da tela; job `release` (só tag `v*`) anexa o `.exe` à Release. Manual: `gh workflow run windows.yml`.
+- **Ainda não testados** no Windows: exportação de retrospectivas pelo app (a função `stats::salvar_png` tem teste).
+- **Windows pausado em 2026-11-16** a pedido do usuário. Onde parou: 51 (Windows limpo) — o job `teste-limpo` do CI foi escrito mas ainda não rodou; teste manual no Windows Sandbox depende de o usuário ativar a "Área Restrita do Windows" (`Enable-WindowsOptionalFeature -Online -FeatureName Containers-DisposableClientVM -All` como administrador + reiniciar; PC atende os requisitos) e de um `.wsb` a preparar. 52 (CI) — a execução manual 43932150911 passou pela instalação do GStreamer e estava gerando o instalador; conferir o resultado (`gh run view 43932150911`) e rodar de novo com o `teste-limpo` (`gh workflow run windows.yml`). 53 (paridade) — etapas 1 a 35 cobertas pelos testes no Windows (91 passando, nenhum pulado); 36 a 43 dependem da Fase 7.
 - **Instalador sem assinatura** (SmartScreen avisa).
 - **Pendente**: `panic = "abort"` no release anula o `catch_unwind` da bandeja.
 - **Android** (preparação, ver `docs/android.md`): `tauri android init` em `src-tauri/gen/android`; áudio segue no GStreamer 1.28.9 (SDK em `~/Android/gstreamer/1.28.9`, NDK 27.3): `app/jni/Android.mk` gera `libgstreamer_android.so` (ndk-build rodado de dentro de `app/build/gstreamer` por `scripts/android.sh` e pela tarefa Gradle `gstreamerNdkBuild`), `build.rs` liga o Rust a ela, `SYSTEM_DEPS_*` desligam o pkg-config, `MainActivity` chama `GStreamer.init`. Bandeja/autostart/notificação em `#[cfg(desktop)]`.

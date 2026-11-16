@@ -88,13 +88,72 @@ jobs:
           name: ${{ steps.exe.outputs.nome }}
           path: ${{ steps.exe.outputs.caminho }}
 
-      - name: Anexar à Release do tag
-        if: startsWith(github.ref, 'refs/tags/')
+    outputs:
+      nome: ${{ steps.exe.outputs.nome }}
+
+  # Máquina nova, sem GStreamer, Rust ou Node: instala o .exe e abre o Skáld.
+  teste-limpo:
+    needs: instalador
+    runs-on: windows-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: ${{ needs.instalador.outputs.nome }}
+
+      - name: Sem GStreamer no sistema
         shell: pwsh
+        run: |
+          if (Get-Command gst-launch-1.0.exe -ErrorAction SilentlyContinue) { throw "Esta máquina já tem GStreamer" }
+          if ($env:GSTREAMER_1_0_ROOT_MSVC_X86_64) { throw "GSTREAMER_1_0_ROOT_MSVC_X86_64 definido" }
+
+      - name: Instalar, abrir e conferir
+        shell: pwsh
+        run: |
+          $setup = Get-ChildItem *-setup.exe | Select-Object -First 1
+          $p = Start-Process $setup.FullName -ArgumentList '/S' -Wait -PassThru
+          if ($p.ExitCode -ne 0) { throw "Instalador saiu com $($p.ExitCode)" }
+          $exe = Join-Path $env:LOCALAPPDATA 'Skald\skald.exe'
+          if (-not (Test-Path $exe)) { Get-ChildItem $env:LOCALAPPDATA -Depth 1 | Select-Object FullName; throw "skald.exe não instalado" }
+          Get-ChildItem (Split-Path $exe) | Select-Object Name, Length | Format-Table -AutoSize | Out-String | Write-Host
+          $app = Start-Process $exe -PassThru
+          Start-Sleep 25
+          $app.Refresh()
+          if ($app.HasExited) { throw ("O Skáld fechou sozinho (código 0x{0:X})" -f $app.ExitCode) }
+          $banco = Join-Path $env:APPDATA 'com.skald.app\skald.db'
+          $registro = Join-Path $env:LOCALAPPDATA 'com.skald.app\gstreamer-registry.bin'
+          if (-not (Test-Path $banco)) { throw "Banco não criado em $banco" }
+          if (-not (Test-Path $registro)) { throw "GStreamer embutido não iniciou (sem $registro)" }
+          $kb = [math]::Round((Get-Item $registro).Length / 1KB)
+          Write-Host "Banco: ok. Registro do GStreamer embutido: $kb KB."
+          if ($kb -lt 50) { throw "Registro do GStreamer pequeno demais ($kb KB): plugins não carregaram" }
+          Add-Type -AssemblyName System.Windows.Forms, System.Drawing
+          $tela = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
+          $bmp = New-Object System.Drawing.Bitmap $tela.Width, $tela.Height
+          [System.Drawing.Graphics]::FromImage($bmp).CopyFromScreen($tela.Location, [System.Drawing.Point]::Empty, $tela.Size)
+          $bmp.Save("$PWD\skald-limpo.png")
+          Stop-Process -Id $app.Id
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: tela-windows-limpo
+          path: skald-limpo.png
+          if-no-files-found: ignore
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: [instalador, teste-limpo]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: ${{ needs.instalador.outputs.nome }}
+
+      - name: Anexar à Release do tag
         env:
           GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
         run: |
-          $tag = "${{ github.ref_name }}"
-          gh release view $tag *> $null
-          if ($LASTEXITCODE -ne 0) { gh release create $tag --title $tag --notes "Skáld $tag" }
-          gh release upload $tag "${{ steps.exe.outputs.caminho }}" --clobber
+          tag="${{ github.ref_name }}"
+          gh release view "$tag" > /dev/null 2>&1 || gh release create "$tag" --title "$tag" --notes "Skáld $tag"
+          gh release upload "$tag" ./*-setup.exe --clobber
