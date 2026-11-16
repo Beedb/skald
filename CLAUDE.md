@@ -178,15 +178,15 @@ Conferir o que já existe antes de cada etapa e marcar `[x]` só com teste feito
 - [x] 48. Controle de mídia: SMTC no lugar do MPRIS.
 - [x] 49. Sistema: autostart no registro, bandeja, notificação (toast).
 - [x] 50. Aparência: fontes, temas e cores dinâmicas no WebView2.
-- [ ] 51. Instalador `.exe` (NSIS) com GStreamer embutido, testado num Windows limpo. (Instalador pronto e na release v0.1.0; falta o teste num Windows limpo.)
-- [ ] 52. CI no GitHub Actions (`windows-latest`) gerando o instalador a cada tag.
+- [ ] 51. Instalador `.exe` (NSIS) com GStreamer embutido, testado num Windows limpo. (Na tag v0.2.0 o job `teste-limpo` do CI instalou num `windows-latest` sem GStreamer/Rust/Node, abriu o Skáld por 25 s e conferiu banco e registro de plugins: passou. Falta só uma olhada à mão num Windows limpo, se quiser.)
+- [x] 52. CI no GitHub Actions (`windows-latest`) gerando o instalador a cada tag. (Tag v0.2.0: instalador, teste-limpo e release passaram em ~8 min; o `.exe` foi anexado sozinho.)
 - [ ] 53. Paridade final: todas as funções das etapas 1 a 43.
 
 ## Estado atual
 
-**MVP, Fase 2 (etapas 10 a 19), Fase 3 (20 a 23), Fase 4 (24 a 28) e Fase 5 (29 a 32) e Fase 6 (33 a 35) concluídos; Fase 8 (Windows): 44 a 50.**
+**MVP, Fase 2 (etapas 10 a 19), Fase 3 (20 a 23), Fase 4 (24 a 28), Fase 5 (29 a 32) e Fase 6 (33 a 35) concluídos; Fase 7 concluída no Linux (36 a 41) e no Android (36 a 43), falta testar no Windows (7.3); Fase 8 (Windows): 44 a 50 e 52. Versão atual: 0.2.0 (release v0.2.0).**
 
-### Fase 7 (Linux: 36 a 41)
+### Fase 7 (36 a 43; testada no Linux e no Android)
 
 - **36 Retomar**: `Fila` e `Origem` serializáveis; configuração `retomar` (JSON `Retomar { fila, posicao_ms, origem }`) gravada por `acompanhar_retomar` (troca de faixa/estado e a cada 5 s tocando, numa thread) e no `RunEvent::Exit`. `retomar_reproducao` (thread no setup) restaura a fila (aleatório/repetir seguem as configurações) e chama `Player::carregar_pausado` (Paused, espera até 5 s, busca a posição). Sessão do histórico fica em `RetomarControle.sessao_pendente` e só começa ao tocar. Comando `player_state` (a tela pede ao abrir); `toggle_pause` sem faixa carregada toca a atual da fila.
 - **37 Fila clicável**: `Fila::pular_manual` (as anteriores saem) e `pular_contexto` (manual continua antes); comando `queue_jump(manual, posicao)`; classe `.clicavel` em `Fila.tsx`.
@@ -209,7 +209,8 @@ Conferir o que já existe antes de cada etapa e marcar `[x]` só com teste feito
 
 ### Publicação, Windows e Android (detalhes técnicos)
 
-- **Publicação**: repositório Beedb/skald público (GPL-3.0, README), release v0.1.0 com `.deb` e `.rpm` (`.rpm` com dependências do Fedora, ainda não testado). CLAUDE.md é versionado (sincroniza os PCs); docs/skald-v0.3.md não (.gitignore).
+- **Publicação**: repositório Beedb/skald público (GPL-3.0, README). CLAUDE.md é versionado (sincroniza os PCs); docs/skald-v0.3.md não (.gitignore). Releases: v0.1.0 e **v0.2.0** (atual, "Latest"; Fase 7), ambas com `.deb`, `.rpm`, `.exe` e `.apk` (`.rpm` com dependências do Fedora, ainda não testado num Fedora).
+- **Como lançar uma versão**: subir o número em `package.json`/`package-lock.json` (`npm version X --no-git-tag-version`), `src-tauri/tauri.conf.json`, `src-tauri/Cargo.toml` e no User-Agent `CLIENTE` de `enriquecer.rs` (o `versionName` do Android vem do `tauri.conf.json`); `npm run tauri build` (gera `.deb` e `.rpm` em `src-tauri/target/release/bundle/`); commit "Versão X", tag anotada `vX` e push da tag; `gh release create vX --notes-file …` com o `.deb` e o `.rpm`. A tag dispara `.github/workflows/windows.yml`, que anexa o `.exe` sozinho. O `.apk` sai de `scripts/android.sh build --apk --target aarch64` e é anexado à mão como `skald-X-android-arm64.apk`.
 - **Windows** (feito pelo usuário, commits 728685b e 0eb0405): instalador NSIS currentUser com GStreamer embutido (`scripts/gstreamer-windows.ps1`, `npm run build:windows`, `tauri.windows.conf.json`; `gstreamer_embutido()` em lib.rs), `.exe` na release v0.1.0. O panic ao abrir era `MediaControls::new` sem HWND.
 - **Controles de mídia** (etapa 48, commit 00686ef): `mpris.rs` vale para Linux e Windows (souvlaki em todo desktop; `mpris_stub.rs` só para iOS); no Windows `PlatformConfig.hwnd` = `get_webview_window("main").hwnd().0` e `INDISPONIVEL` muda o texto do erro. O SMTC mantém o campo anterior quando vem `None`: no Windows `campo()` manda "" e, sem capa, vai o ícone `icons/128x128.png` (`gravar_arquivo` no cache `mpris/`). Configurações diz "Teclas de mídia e controles do sistema". Testado: play/pausa, próxima, anterior, título/capa; "anterior" depois de 3 s volta ao início. Teste: script com `GlobalSystemMediaTransportControlsSessionManager` (WinRT pelo PowerShell).
 - `scripts/gstreamer-windows.ps1` copia 24 plugins e as DLLs de que dependem, achadas com `dumpbin /dependents` (30 DLLs, ~33 MB; `src-tauri/gstreamer/` no `.gitignore`). `gstreamer_embutido()` (só se existir `gstreamer-1.0/` ao lado do exe): `GST_PLUGIN_SYSTEM_PATH_1_0`, registro em `%LOCALAPPDATA%\com.skald.app\gstreamer-registry.bin`, `GST_REGISTRY_FORK=no`.
@@ -269,4 +270,5 @@ Conferir o que já existe antes de cada etapa e marcar `[x]` só com teste feito
 
 ### Próximo
 
-- roteiro do MVP + Fases 2 a 6 concluído; definir a próxima fase com o usuário (ex.: `.deb` de teste, podcasts/audiolivros, itens fora de escopo).
+- Windows: testar as etapas 36 a 41 (seção 7.3) e a paridade final (53); 51 só falta uma olhada à mão.
+- Depois: definir a próxima fase com o usuário (ex.: podcasts/audiolivros, itens fora de escopo, investigar o SIGSEGV intermitente do `cargo test`).
