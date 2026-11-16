@@ -37,7 +37,7 @@ mod search;
 
 use std::sync::Mutex;
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Manager, State};
 
 #[derive(Serialize)]
@@ -247,7 +247,7 @@ fn count_media(db: State<db::Db>, busca: Option<String>) -> Result<i64, String> 
 struct FilaState(Mutex<queue::Fila>);
 
 /// De onde veio o contexto da fila, para incluir nele músicas novas (Shuffle Bag).
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, PartialEq, Serialize, Deserialize)]
 enum Origem {
     Biblioteca,
     Playlist(i64, playlists::Ordem),
@@ -279,6 +279,93 @@ fn definir_origem(app: &AppHandle, origem: Option<Origem>) -> Result<(), String>
 }
 
 const EVENTO_FILA: &str = "fila-mudou";
+
+/// Retomar ao reabrir: o que fica gravado na configuração `retomar`.
+#[derive(Serialize, Deserialize)]
+struct Retomar {
+    fila: queue::Fila,
+    posicao_ms: u64,
+    origem: Option<Origem>,
+}
+
+#[derive(Default)]
+struct RetomarControle {
+    /// Último (faixa, estado) gravado e quando: grava ao mudar e a cada 5 s tocando.
+    ultimo: Option<(Option<i64>, player::Estado)>,
+    gravado_em: Option<std::time::Instant>,
+    /// Faixa carregada pausada ao abrir: a sessão do histórico só começa quando tocar.
+    sessao_pendente: Option<i64>,
+}
+
+struct RetomarState(Mutex<RetomarControle>);
+
+/// Grava fila, posição e origem. Falhas são ignoradas (a reprodução não depende disso).
+fn salvar_retomar(app: &AppHandle, posicao_ms: u64) {
+    let Ok(fila) = app.state::<FilaState>().0.lock().map(|f| f.clone()) else { return };
+    let Ok(origem) = app.state::<OrigemState>().0.lock().map(|o| *o) else { return };
+    let Ok(json) = serde_json::to_string(&Retomar { fila, posicao_ms, origem }) else { return };
+    if let Ok(conn) = app.state::<db::Db>().0.lock() {
+        let _ = settings::definir_retomar(&conn, &json);
+    }
+}
+
+/// Chamada a cada aviso do player: grava ao trocar de faixa ou de estado e a cada 5 s tocando.
+fn acompanhar_retomar(app: &AppHandle, estado: &player::EstadoPlayer) {
+    let estado_r = app.state::<RetomarState>();
+    let Ok(mut c) = estado_r.0.lock() else { return };
+    // Avisos de uma faixa que acabou de terminar: a próxima ainda vai ser escolhida.
+    if estado.fim || estado.erro.is_some() {
+        return;
+    }
+    let agora = (estado.id, estado.estado);
+    let mudou = c.ultimo != Some(agora);
+    let velho = c.gravado_em.is_none_or(|t| t.elapsed() >= std::time::Duration::from_secs(5));
+    if !(mudou || (estado.estado == player::Estado::Tocando && velho)) {
+        return;
+    }
+    c.ultimo = Some(agora);
+    c.gravado_em = Some(std::time::Instant::now());
+    drop(c);
+    let (h, posicao) = (app.clone(), estado.posicao_ms);
+    // Fora da thread do barramento: o banco pode estar ocupado com uma importação.
+    std::thread::spawn(move || salvar_retomar(&h, posicao));
+}
+
+/// Ao abrir: volta a fila e deixa a última música pausada no ponto em que parou.
+fn retomar_reproducao(app: &AppHandle) -> Result<(), String> {
+    let db = app.state::<db::Db>();
+    let json = {
+        let conn = db.0.lock().map_err(erro_db)?;
+        settings::retomar(&conn).map_err(|e| e.to_string())?
+    };
+    let Some(r) = json.and_then(|j| serde_json::from_str::<Retomar>(&j).ok()) else { return Ok(()) };
+    let atual = r.fila.atual();
+    {
+        let fila = app.state::<FilaState>();
+        let mut f = fila.0.lock().map_err(erro_db)?;
+        // Aleatório e repetir seguem o que está nas configurações.
+        let (aleatorio, repetir) = (f.aleatorio(), f.repetir());
+        *f = r.fila;
+        if f.aleatorio() != aleatorio {
+            f.definir_aleatorio(aleatorio);
+        }
+        f.definir_repetir(repetir);
+    }
+    definir_origem(app, r.origem)?;
+    let _ = app.emit(EVENTO_FILA, ());
+    let Some(id) = atual else { return Ok(()) };
+    let path = {
+        let conn = db.0.lock().map_err(erro_db)?;
+        match library::obter(&conn, id).map_err(|e| e.to_string())? {
+            Some((_, path)) if std::path::Path::new(&path).is_file() => path,
+            // Arquivo sumiu: a fila volta, e o play tenta de novo (e avisa).
+            _ => return Ok(()),
+        }
+    };
+    let ganho = ganho_de(app, id, &path);
+    app.state::<RetomarState>().0.lock().map_err(erro_db)?.sessao_pendente = Some(id);
+    app.state::<player::Player>().carregar_pausado(id, &path, ganho, r.posicao_ms)
+}
 
 fn erro_db<T>(_: T) -> String {
     "Banco de dados indisponível.".to_string()
@@ -342,6 +429,14 @@ fn iniciar_sessao(app: &AppHandle, media_id: i64) {
 fn acompanhar_sessao(app: &AppHandle, estado: &player::EstadoPlayer) {
     if estado.fim || estado.erro.is_some() {
         return encerrar_sessao(app, estado.fim);
+    }
+    if estado.estado == player::Estado::Tocando {
+        let pendente = app.state::<RetomarState>().0.lock().ok().and_then(|mut c| {
+            c.sessao_pendente.take_if(|p| Some(*p) == estado.id)
+        });
+        if let Some(id) = pendente {
+            iniciar_sessao(app, id);
+        }
     }
     let estado_hist = app.state::<HistoricoState>();
     let Ok(mut hist) = estado_hist.0.lock() else { return };
@@ -460,6 +555,9 @@ fn tocar_id(app: &AppHandle, id: i64) -> Result<(), String> {
         path
     };
     encerrar_sessao(app, false);
+    if let Ok(mut c) = app.state::<RetomarState>().0.lock() {
+        c.sessao_pendente = None;
+    }
     let ganho = ganho_de(app, id, &path);
     app.state::<player::Player>().tocar(id, &path, ganho)?;
     iniciar_sessao(app, id);
@@ -1206,8 +1304,20 @@ async fn get_track_details(app: AppHandle, id: i64) -> Result<Option<details::De
 }
 
 #[tauri::command]
-fn toggle_pause(player: State<player::Player>) -> Result<(), String> {
+fn toggle_pause(app: AppHandle, player: State<player::Player>) -> Result<(), String> {
+    // Retomada sem o arquivo carregado (sumiu ao abrir): tenta tocar a atual da fila.
+    if player.estado().id.is_none() {
+        if let Some(id) = app.state::<FilaState>().0.lock().map_err(erro_db)?.atual() {
+            return tocar_id(&app, id);
+        }
+    }
     player.alternar_pausa()
+}
+
+/// Estado do player agora (a interface pede ao abrir; os avisos vêm depois).
+#[tauri::command]
+fn player_state(player: State<player::Player>) -> player::EstadoPlayer {
+    player.estado()
 }
 
 #[tauri::command]
@@ -1666,6 +1776,7 @@ pub fn run() {
             app.manage(FilaState(Mutex::new(queue::Fila::default())));
             app.manage(HistoricoState(Mutex::new(None)));
             app.manage(OrigemState(Mutex::new(None)));
+            app.manage(RetomarState(Mutex::new(RetomarControle::default())));
             app.manage(GaplessState(Mutex::new(None)));
             app.manage(NotificadaState(Mutex::new(None)));
             app.manage(TemporizadorState(Mutex::new(temporizador::Temporizador::default())));
@@ -1681,6 +1792,7 @@ pub fn run() {
                     }
                 }
                 acompanhar_sessao(&handle, &estado);
+                acompanhar_retomar(&handle, &estado);
                 notificar_troca(&handle, &estado);
                 if let Some(m) = handle.try_state::<mpris::Mpris>() {
                     m.atualizar(&handle, &estado);
@@ -1715,6 +1827,13 @@ pub fn run() {
             // Sem D-Bus o app segue sem MPRIS e tenta de novo (o barramento pode subir depois).
             app.manage(MprisStatus(Mutex::new(Some("Conectando…".into()))));
             iniciar_mpris(app.handle().clone());
+            // Pode levar até alguns segundos (abrir o arquivo): fora do setup.
+            let h = app.handle().clone();
+            std::thread::spawn(move || {
+                if let Err(e) = retomar_reproducao(&h) {
+                    eprintln!("retomar: {e}");
+                }
+            });
             retomar_temporizador(app.handle());
             rganalise::iniciar(app.handle().clone());
             // Bandeja ligada: cria o ícone; iniciado com o sistema, abre só nela.
@@ -1817,6 +1936,7 @@ pub fn run() {
             retrospective_get,
             retrospective_save_png,
             toggle_pause,
+            player_state,
             set_volume,
             seek,
             get_settings,
@@ -1852,6 +1972,7 @@ pub fn run() {
         .run(|app, evento| {
             // Ao fechar, grava o tempo ouvido da faixa em andamento.
             if let tauri::RunEvent::Exit = evento {
+                salvar_retomar(app, app.state::<player::Player>().posicao_ms());
                 encerrar_sessao(app, false);
             }
         });

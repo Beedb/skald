@@ -27,7 +27,7 @@ pub struct Item {
     pub media: MediaRow,
 }
 
-#[derive(Deserialize, Clone, Copy, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq)]
 #[serde(rename_all = "lowercase")]
 pub enum Ordem {
     Personalizada,

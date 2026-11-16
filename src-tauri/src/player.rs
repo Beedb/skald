@@ -229,6 +229,49 @@ impl Player {
         Ok(())
     }
 
+    /// Carrega `id` pausado em `posicao_ms` (retomar ao reabrir). Espera o deck ficar pronto
+    /// (até 5 s) para poder buscar a posição.
+    pub fn carregar_pausado(&self, id: i64, path: &str, ganho: Ganho, posicao_ms: u64) -> Result<(), String> {
+        let uri = uri_de(path)?;
+        let (ativo, volume) = {
+            let mut g = self.int.lock().unwrap();
+            g.pendente = None;
+            g.cruzando = None;
+            g.escolha = Escolha::NaoPedida;
+            g.atual = Some(id);
+            let ativo = g.ativo;
+            g.ganhos[ativo] = ganho;
+            (ativo, g.alvo(ativo))
+        };
+        let deck = &self.decks[ativo];
+        deck.set_property("volume", volume);
+        deck.set_property("uri", uri.as_str());
+        deck.set_state(gst::State::Paused)
+            .map_err(|_| "Não foi possível abrir este arquivo.".to_string())?;
+        let (pronto, _, _) = deck.state(gst::ClockTime::from_seconds(5));
+        if pronto.is_err() {
+            let _ = deck.set_state(gst::State::Null);
+            self.int.lock().unwrap().atual = None;
+            return Err("Não foi possível abrir este arquivo.".into());
+        }
+        if posicao_ms > 0 {
+            let _ = deck.seek_simple(
+                gst::SeekFlags::FLUSH | gst::SeekFlags::KEY_UNIT,
+                gst::ClockTime::from_mseconds(posicao_ms),
+            );
+        }
+        Ok(())
+    }
+
+    /// Estado atual (para a interface ao abrir, antes do primeiro aviso).
+    pub fn estado(&self) -> EstadoPlayer {
+        let (ativo, atual) = {
+            let g = self.int.lock().unwrap();
+            (g.ativo, g.atual)
+        };
+        estado_de(&self.decks[ativo], atual)
+    }
+
     /// Os dois decks sem som, mas no ritmo real (`sync`).
     #[cfg(test)]
     pub(crate) fn silenciar_para_teste(&self) {

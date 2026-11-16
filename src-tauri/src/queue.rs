@@ -17,7 +17,7 @@ pub enum Repetir {
 /// - `ordem`: a sequência de posições do contexto a tocar. Em ordem normal é 0..n;
 ///   com aleatório é um Shuffle Bag: cada música uma vez por ciclo, a primeira protegida.
 /// - `indice`: posição atual em `ordem`; continua de onde parou depois da fila manual.
-#[derive(Default, Debug, Clone, PartialEq)]
+#[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Fila {
     manual: VecDeque<i64>,
     contexto: Vec<i64>,
@@ -258,6 +258,20 @@ impl Fila {
 #[cfg(test)]
 mod testes {
     use super::*;
+
+    /// Retomar ao reabrir: a fila gravada em JSON volta igual (ordem do aleatório inclusive).
+    #[test]
+    fn fila_volta_igual_do_json() {
+        let mut f = Fila::default();
+        f.definir_aleatorio(true);
+        f.definir_repetir(Repetir::Fila);
+        f.tocar_do_contexto(vec![1, 2, 3, 4, 5], 3);
+        f.adicionar(9);
+        f.proxima();
+        let volta: Fila = serde_json::from_str(&serde_json::to_string(&f).unwrap()).unwrap();
+        assert_eq!(volta, f);
+        assert_eq!(volta.atual(), Some(9));
+    }
 
     #[test]
     fn remover_ids_mantem_a_posicao() {

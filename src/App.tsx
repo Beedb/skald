@@ -147,6 +147,10 @@ function App() {
         .then(setFila)
         .catch((e) => setErro(String(e)));
     carregarFila();
+    // Música retomada ao abrir (pausada): o aviso dela pode ter saído antes de a tela ouvir.
+    invoke<EstadoPlayer>("player_state")
+      .then((e) => setEstado((atual) => atual ?? e))
+      .catch(() => {});
     const carregarPlaylists = () =>
       invoke<PlaylistResumo[]>("playlists_list")
         .then(setPlaylists)

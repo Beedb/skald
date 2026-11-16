@@ -14,6 +14,7 @@ const NOTIFICAR: &str = "notificar";
 const ALEATORIO: &str = "aleatorio";
 const REPETIR: &str = "repetir";
 const TEMPORIZADOR: &str = "temporizador";
+const RETOMAR: &str = "retomar";
 /// Tema padrão do Skáld (docs/temas.css).
 const TEMA_PADRAO: &str = "carmesim";
 /// Crossfade padrão: ligado, 5 s (desligado entre faixas do mesmo álbum).
@@ -100,6 +101,15 @@ pub fn definir_repetir(conn: &Connection, modo: crate::queue::Repetir) -> rusqli
 pub enum TemporizadorSalvo {
     FimDaFaixa,
     Ate(i64),
+}
+
+/// Fila, posição e origem da última reprodução (JSON), para retomar ao reabrir.
+pub fn retomar(conn: &Connection) -> rusqlite::Result<Option<String>> {
+    Ok(ler(conn, RETOMAR)?.filter(|v| !v.is_empty()))
+}
+
+pub fn definir_retomar(conn: &Connection, json: &str) -> rusqlite::Result<()> {
+    gravar(conn, RETOMAR, json)
 }
 
 pub fn temporizador(conn: &Connection) -> rusqlite::Result<Option<TemporizadorSalvo>> {
