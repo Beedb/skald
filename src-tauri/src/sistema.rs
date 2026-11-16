@@ -71,15 +71,33 @@ pub mod registro {
     }
 }
 
-/// Notificação de nova música (D-Bus). Falhas são ignoradas: o app segue sem ela.
+/// Windows: o toast sai em nome do AppUserModelID do atalho que o instalador cria no Menu
+/// Iniciar (o identificador do Tauri). Sem o atalho (rodando sem instalar) um id não
+/// registrado não aparece; aí fica o padrão do notify-rust (PowerShell).
+#[cfg(windows)]
+fn app_id_windows() -> Option<&'static str> {
+    let atalho = std::env::var_os("APPDATA")
+        .map(std::path::PathBuf::from)?
+        .join(r"Microsoft\Windows\Start Menu\Programs\Skald.lnk");
+    atalho.is_file().then_some("com.skald.app")
+}
+
+/// Notificação de nova música (D-Bus no Linux, toast no Windows). Falhas são ignoradas:
+/// o app segue sem ela.
 #[cfg(desktop)]
 pub fn notificar_musica(titulo: &str, artista: &str, capa: Option<&Path>) {
     let mut n = notify_rust::Notification::new();
     n.appname("Skáld").summary(titulo).body(artista).icon("skald").timeout(5000);
+    #[cfg(windows)]
+    if let Some(id) = app_id_windows() {
+        n.app_id(id);
+    }
     if let Some(c) = capa {
         n.image_path(&c.to_string_lossy());
     }
-    let _ = n.show();
+    if let Err(e) = n.show() {
+        eprintln!("notificação: {e}");
+    }
 }
 
 /// No Android a notificação de mídia virá com o serviço de reprodução em segundo plano.
@@ -102,5 +120,14 @@ mod testes {
         assert!(!autostart_ativo(&dir));
         definir_autostart(&dir, Path::new("/x"), false).unwrap();
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Mostra uma notificação de verdade: `cargo test ensaio_notificacao -- --ignored`.
+    #[test]
+    #[ignore]
+    fn ensaio_notificacao() {
+        let capa = Path::new(env!("CARGO_MANIFEST_DIR")).join("icons").join("128x128.png");
+        notificar_musica("Teste do Skáld", "Artista de teste", Some(&capa));
+        std::thread::sleep(std::time::Duration::from_secs(2));
     }
 }
