@@ -43,7 +43,7 @@ Reprodutor de áudio desktop para Linux, focado em arquivos locais e offline. Pl
 
 ## Fora de escopo por enquanto
 
-Pastas de playlists, playlists inteligentes, importar M3U, seletor de saída, equalizador manual, atalhos personalizáveis, ícones pixel art, podcasts e audiolivros.
+Pastas de playlists, playlists inteligentes, importar M3U, seletor de saída, equalizador manual, atalhos personalizáveis, ícones pixel art e audiolivros (podcasts: ver Fase 10).
 
 ## Como trabalhar (economizar tokens)
 
@@ -204,6 +204,31 @@ Etapas (numerar ao decidir):
 - [ ] Cartão "Novidades" em Configurações (abre a página no navegador; todas as plataformas).
 - [ ] (Se aprovado) Verificar atualização no app, opção desligada por padrão.
 
+## Fase 10 (podcasts) — planejada
+
+Decisões (2026-11-16): arquivos locais primeiro, assinatura por RSS depois (última etapa); nada é apagado do disco, nem episódio baixado pelo Skáld; "ouvido" = faltando ≤ 2 min ou ≥ 95% (ou marcado à mão); todas as plataformas, marcando `[x]` por plataforma depois de testar.
+
+Modelo:
+- `podcast_show` (título, autor, capa, descrição, pasta, `feed_url` opcional) e `podcast_episode` (programa, `guid`, título, data de publicação, descrição, duração, `media_id` nulo enquanto não baixado, `ouvido_em`, posição de retomada). O áudio é uma linha de `media` com `category = 'podcast'` (player, fila, MPRIS e retomar ao reabrir seguem iguais).
+- Diferenças da música: retomar posição por episódio; estados novo/em andamento/ouvido; pular −15 s/+30 s e velocidade 0,8×–2× sem mudar o tom (`scaletempo`); sem aleatório, crossfade nem ReplayGain de álbum; ao fim, "Continuar tocando" vai para o próximo não ouvido do mesmo programa; podcasts fora de retrospectivas, mixes, Máquina do Tempo e relacionadas de música (histórico guarda a categoria).
+
+Etapas:
+- 54. Migração (`podcast_show`, `podcast_episode`) e importar pasta como Podcasts (programa = álbum/pasta; data e descrição das tags).
+- 55. Telas Podcasts (grade de programas) e Programa (episódios do mais novo ao mais antigo, estado, filtro "não ouvidos"); item da lateral ativo.
+- 56. Retomar por episódio e marcar como ouvido (automático e à mão).
+- 57. Velocidade e pular −15/+30 s.
+- 58. Próximo episódio ao terminar, "Continuar ouvindo" no Início, podcasts separados das estatísticas de música.
+- 59. Assinar por RSS (internet só ao atualizar ou baixar, a pedido), download para a pasta do Skáld e tocar offline.
+
+| Etapa | Linux | Android | Windows |
+|---|---|---|---|
+| 54 | [ ] | [ ] | [ ] |
+| 55 | [ ] | [ ] | [ ] |
+| 56 | [ ] | [ ] | [ ] |
+| 57 | [ ] | [ ] | [ ] |
+| 58 | [ ] | [ ] | [ ] |
+| 59 | [ ] | [ ] | [ ] |
+
 ## Estado atual
 
 **MVP, Fase 2 (etapas 10 a 19), Fase 3 (20 a 23), Fase 4 (24 a 28), Fase 5 (29 a 32) e Fase 6 (33 a 35) concluídos; Fase 7 concluída no Linux (36 a 41), no Android (36 a 43) e no Windows (36 a 41); Fase 8 (Windows) concluída (44 a 53). Versão atual: 0.2.0 (release v0.2.0).**
@@ -293,4 +318,5 @@ Etapas (numerar ao decidir):
 ### Próximo
 
 - Fase 9 (avisos de novas versões por e-mail): responder as duas decisões pendentes e começar.
-- Depois: outras ideias (ex.: podcasts/audiolivros, itens fora de escopo).
+- Fase 10 (podcasts), começando pela etapa 54.
+- Depois: audiolivros e itens fora de escopo.
