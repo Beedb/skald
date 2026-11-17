@@ -9,6 +9,13 @@
     "core:default",
     "dialog:allow-open",
     "dialog:allow-ask",
-    "dialog:allow-save"
+    "dialog:allow-save",
+    {
+      "identifier": "opener:allow-open-url",
+      "allow": [
+        { "url": "https://buttondown.com/skald*" },
+        { "url": "https://github.com/Beedb/skald*" }
+      ]
+    }
   ]
 }

@@ -194,15 +194,15 @@ Decisões (2026-11-17):
 Etapas (numeradas depois das da Fase 11):
 - 66. Conta no Buttondown + página de inscrição. **Feita** (`https://buttondown.com/skald`).
 - 67. Rascunho automático do e-mail a cada release (API, não RSS). **Feita** (teste com v0.2.0 criou o rascunho).
-- 68. Link de inscrição no README e no modelo de notas da release ("Como lançar uma versão").
-- 69. Cartão "Novidades" em Configurações: botão "Receber aviso de novas versões por e-mail" (abre a página de inscrição).
+- 68. Link de inscrição no README e no modelo de notas da release ("Como lançar uma versão"). **Feita.**
+- 69. Cartão "Novidades" (primeiro das Configurações): botão "Receber avisos…" abre `buttondown.com/skald` com `openUrl` do `tauri-plugin-opener`; a permissão `opener:allow-open-url` em `capabilities/default.json` só aceita `buttondown.com/skald*` e `github.com/Beedb/skald*`.
 - 70. Verificar atualização ao abrir (opção no cartão Novidades, desligada por padrão).
 
 | Etapa | Linux | Android | Windows |
 |---|---|---|---|
 | 66 | [x] | — | — |
 | 67 | [x] | — | — |
-| 68 | — | — | — |
+| 68 | [x] | — | — |
 | 69 | [ ] | [ ] | [ ] |
 | 70 | [ ] | [ ] | [ ] |
 
@@ -288,7 +288,7 @@ Etapas:
 ### Publicação, Windows e Android (detalhes técnicos)
 
 - **Publicação**: repositório Beedb/skald público (GPL-3.0, README). CLAUDE.md é versionado (sincroniza os PCs); docs/skald-v0.3.md não (.gitignore). Releases: v0.1.0 e **v0.2.0** (atual, "Latest"; Fase 7), ambas com `.deb`, `.rpm`, `.exe` e `.apk` (`.rpm` com dependências do Fedora, ainda não testado num Fedora).
-- **Como lançar uma versão**: subir o número em `package.json`/`package-lock.json` (`npm version X --no-git-tag-version`), `src-tauri/tauri.conf.json`, `src-tauri/Cargo.toml` e no User-Agent `CLIENTE` de `enriquecer.rs` (o `versionName` do Android vem do `tauri.conf.json`); `npm run tauri build` (gera `.deb` e `.rpm` em `src-tauri/target/release/bundle/`); commit "Versão X", tag anotada `vX` e push da tag; `gh release create vX --notes-file …` com o `.deb` e o `.rpm`. A tag dispara `.github/workflows/windows.yml`, que anexa o `.exe` sozinho. O `.apk` sai de `scripts/android.sh build --apk --target aarch64` e é anexado à mão como `skald-X-android-arm64.apk`. Publicar a release dispara `aviso-email.yml` (rascunho no Buttondown): enviar o rascunho só depois que `.exe` e `.apk` estiverem anexados.
+- **Como lançar uma versão**: subir o número em `package.json`/`package-lock.json` (`npm version X --no-git-tag-version`), `src-tauri/tauri.conf.json`, `src-tauri/Cargo.toml` e no User-Agent `CLIENTE` de `enriquecer.rs` (o `versionName` do Android vem do `tauri.conf.json`); `npm run tauri build` (gera `.deb` e `.rpm` em `src-tauri/target/release/bundle/`); commit "Versão X", tag anotada `vX` e push da tag; `gh release create vX --notes-file …` com o `.deb` e o `.rpm`; as notas terminam com "📬 Receba um aviso por e-mail a cada versão nova: https://buttondown.com/skald" (essa linha não vai para o e-mail). A tag dispara `.github/workflows/windows.yml`, que anexa o `.exe` sozinho. O `.apk` sai de `scripts/android.sh build --apk --target aarch64` e é anexado à mão como `skald-X-android-arm64.apk`. Publicar a release dispara `aviso-email.yml` (rascunho no Buttondown): enviar o rascunho só depois que `.exe` e `.apk` estiverem anexados.
 - **Windows** (feito pelo usuário, commits 728685b e 0eb0405): instalador NSIS currentUser com GStreamer embutido (`scripts/gstreamer-windows.ps1`, `npm run build:windows`, `tauri.windows.conf.json`; `gstreamer_embutido()` em lib.rs), `.exe` na release v0.1.0. O panic ao abrir era `MediaControls::new` sem HWND.
 - **Controles de mídia** (etapa 48, commit 00686ef): `mpris.rs` vale para Linux e Windows (souvlaki em todo desktop; `mpris_stub.rs` só para iOS); no Windows `PlatformConfig.hwnd` = `get_webview_window("main").hwnd().0` e `INDISPONIVEL` muda o texto do erro. O SMTC mantém o campo anterior quando vem `None`: no Windows `campo()` manda "" e, sem capa, vai o ícone `icons/128x128.png` (`gravar_arquivo` no cache `mpris/`). Configurações diz "Teclas de mídia e controles do sistema". Testado: play/pausa, próxima, anterior, título/capa; "anterior" depois de 3 s volta ao início. Teste: script com `GlobalSystemMediaTransportControlsSessionManager` (WinRT pelo PowerShell).
 - `scripts/gstreamer-windows.ps1` copia 24 plugins e as DLLs de que dependem, achadas com `dumpbin /dependents` (30 DLLs, ~33 MB; `src-tauri/gstreamer/` no `.gitignore`). `gstreamer_embutido()` (só se existir `gstreamer-1.0/` ao lado do exe): `GST_PLUGIN_SYSTEM_PATH_1_0`, registro em `%LOCALAPPDATA%\com.skald.app\gstreamer-registry.bin`, `GST_REGISTRY_FORK=no`.

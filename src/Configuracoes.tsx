@@ -2,8 +2,9 @@ import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { ask, open, save } from "@tauri-apps/plugin-dialog";
 import { listen } from "@tauri-apps/api/event";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import { aplicarTema, ModoTema, temDuasVariantes, TEMAS } from "./tema";
-import { Database, FolderOpen, Library, Monitor, Palette, Play, type LucideIcon } from "lucide-react";
+import { Bell, Database, FolderOpen, Library, Monitor, Palette, Play, type LucideIcon } from "lucide-react";
 
 type Normalizacao = "desligada" | "faixa" | "album";
 type Preset = "desligado" | "grave" | "agudo" | "bateria" | "voz" | "instrumental";
@@ -34,6 +35,9 @@ function tamanho(bytes: number) {
 }
 
 /** Um cartão de seção, com ícone e título. */
+/** Página de inscrição nos avisos de novas versões (lista e envio ficam no Buttondown). */
+const PAGINA_AVISOS = "https://buttondown.com/skald";
+
 function Cartao({ icone: Icone, titulo, children }: { icone: LucideIcon; titulo: string; children: React.ReactNode }) {
   return (
     <section className="cfg-cartao" aria-label={titulo}>
@@ -254,6 +258,15 @@ export default function Configuracoes({ onErro }: { onErro: (m: string) => void 
   return (
     <section className="configuracoes">
       <h2>Configurações</h2>
+
+      <Cartao icone={Bell} titulo="Novidades">
+        <Linha
+          titulo="Aviso de novas versões por e-mail"
+          nota="Abre a página de inscrição no navegador. O cadastro é feito no Buttondown, com confirmação por e-mail e descadastro em qualquer aviso; o Skáld não guarda nem envia o seu e-mail."
+        >
+          <button onClick={() => openUrl(PAGINA_AVISOS)}>Receber avisos…</button>
+        </Linha>
+      </Cartao>
 
       <Cartao icone={Palette} titulo="Aparência">
         <Linha titulo="Tema">

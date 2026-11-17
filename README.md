@@ -75,6 +75,10 @@ sudo dnf install gstreamer1-plugin-libav
 
 Os pacotes são para computadores de 64 bits (x86_64).
 
+## Avisos de novas versões
+
+Quer saber quando sair uma versão nova? [Inscreva-se aqui](https://buttondown.com/skald) para receber um e-mail a cada lançamento, com as novidades e os links de download. Sem spam, e dá para sair a qualquer momento. O Skáld em si não guarda nem envia o seu e-mail; a lista fica no [Buttondown](https://buttondown.com). No app, o mesmo link está em Configurações → Novidades.
+
 ## Onde ficam os seus dados
 
 | O quê | Onde |

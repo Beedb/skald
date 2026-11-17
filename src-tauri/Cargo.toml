@@ -33,6 +33,7 @@ notify = "8.2.2"
 blake3 = { version = "1.8.7", features = ["std"] }
 image = { version = "0.25.10", default-features = false, features = ["jpeg", "png", "webp"] }
 ureq = "3"
+tauri-plugin-opener = "2"
 
 # Só no desktop: notificações (D-Bus/Windows), MPRIS (Linux, via zbus) e SMTC (Windows).
 # No Android isso virá com o serviço de mídia.

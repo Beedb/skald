@@ -2,6 +2,7 @@
 # Release publicada: cria um RASCUNHO no Buttondown com as notas da release.
 # Nada é enviado daqui: o rascunho é conferido e enviado à mão no Buttondown
 # (a chave BUTTONDOWN_API_KEY não tem permissão de envio).
+# A linha da release com o link de inscrição (buttondown.com/skald) não entra no e-mail.
 # "Run workflow" (manual): cria um rascunho de teste a partir de uma tag existente.
 name: Aviso por e-mail
 
@@ -44,7 +45,7 @@ jobs:
               subject: $assunto,
               status: "draft",
               body: ("Saiu a versão **" + $versao + "** do Skáld, o reprodutor de música local e offline.\n\n"
-                + $r[0].body
+                + ($r[0].body | split("\n") | map(select(test("buttondown.com/skald") | not)) | join("\n"))
                 + "\n\n**[Baixar a versão " + $versao + "](" + $r[0].url + ")**\n")
             }' > email.json
           resposta=$(curl -sS -w '\n%{http_code}' -X POST https://api.buttondown.com/v1/emails \
