@@ -5,6 +5,7 @@
 # A linha da release com o link de inscrição (buttondown.com/skald) não entra no e-mail.
 # Os links de download seguem os nomes dos arquivos da release (.exe e .apk são anexados depois:
 # enviar o rascunho só quando os quatro estiverem lá).
+# Também gera no resumo da execução um link do WhatsApp com a nota (scripts/aviso-whatsapp.sh).
 # "Run workflow" (manual): cria um rascunho de teste a partir de uma tag existente.
 name: Aviso por e-mail
 
@@ -67,3 +68,24 @@ jobs:
             echo "Buttondown respondeu $codigo:"; echo "$corpo"; exit 1
           fi
           echo "Rascunho criado: $(jq -r '.subject + " (" + .status + ")"' <<< "$corpo")"
+
+      - name: Nota para o WhatsApp
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ github.event.release.tag_name || inputs.tag }}
+        run: |
+          set -euo pipefail
+          gh api "repos/${GH_REPO}/contents/scripts/aviso-whatsapp.sh?ref=${TAG}" -q .content 2>/dev/null | base64 -d > aviso.sh \
+            || gh api "repos/${GH_REPO}/contents/scripts/aviso-whatsapp.sh" -q .content | base64 -d > aviso.sh
+          texto=$(SO_TEXTO=1 bash aviso.sh "$TAG")
+          url="https://wa.me/?text=$(jq -rn --arg t "$texto" '$t|@uri')"
+          {
+            echo "## Nota para o WhatsApp"
+            echo
+            echo "[Abrir no WhatsApp]($url) (escolha os contatos e envie)"
+            echo
+            echo '```'
+            echo "$texto"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
