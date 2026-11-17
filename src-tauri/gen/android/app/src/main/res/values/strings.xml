@@ -1,4 +1,10 @@
 <resources>
     <string name="app_name">"Skald"</string>
     <string name="main_activity_title">"Skald"</string>
+    <string name="widget_descricao">Música atual com anterior, tocar/pausar e próxima</string>
+    <string name="widget_parado">Nada tocando</string>
+    <string name="widget_anterior">Anterior</string>
+    <string name="widget_alternar">Tocar ou pausar</string>
+    <string name="widget_proxima">Próxima</string>
+    <string name="widget_capa">Capa</string>
 </resources>

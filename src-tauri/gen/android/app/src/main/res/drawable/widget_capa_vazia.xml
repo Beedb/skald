@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Sem capa: nota musical (como ic_notificacao) sobre o fundo do cartão. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="48dp" android:height="48dp"
+    android:viewportWidth="24" android:viewportHeight="24">
+  <path android:fillColor="@color/tema_linha" android:pathData="M0,0h24v24h-24z" />
+  <group android:scaleX="0.6" android:scaleY="0.6" android:pivotX="12" android:pivotY="12">
+    <path android:fillColor="@color/tema_fraco"
+        android:pathData="M9,4L9,15.27A3.5,3.5 0,1 0,11 18.5L11,8L17,6.5L17,13.27A3.5,3.5 0,1 0,19 16.5L19,2.5Z" />
+  </group>
+</vector>

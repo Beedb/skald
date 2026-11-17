@@ -244,7 +244,7 @@ Decisões (2026-11-17): widget só no Android (relógio e app Wear OS ficam para
   - Dados: identidade da música = hash; playlists com UUID, `atualizada_em` e marca de exclusão (vence a mais recente, itens por referência); curtidas por instante; histórico é união (hash + início). Precisa migração nova (UUIDs e datas). O `.db` nunca é copiado inteiro.
 
 Etapas:
-- 60. Widget Yx1 (player).
+- 60. Widget Yx1 (player). **Feita**: `WidgetPlayer.kt` (`AppWidgetProvider`; `RemoteViews` por tamanho no Android 12+, `OPTION_APPWIDGET_MIN_WIDTH` antes; ≥ 180 dp usa `widget_largo` com capa ≤ 192 px, título e artista, menor usa `widget_estreito` só com botões), `res/xml/widget_player.xml` (2 a 5 células, 1 linha), cores do carmesim em `values/colors.xml` (`tema_*`), ícones do lucide em `drawable/widget_*`. `Midia.atualizar` chama `WidgetPlayer.atualizar` só quando música, capa ou estado mudam; o estado fica em SharedPreferences `widget_player` (com o processo morto mostra pausado). Botões: broadcast `WIDGET_ACAO` → `Midia.comando` se o Rust está carregado (`Midia.contexto`), senão abre o app (o Android permite: `BAL_ALLOW_TOKEN`). Depois de "Forçar parada" o 1º toque só redesenha o widget (limitação do Android). Instalar por cima da release com o APK release (`scripts/android.sh build --apk --target aarch64`), nunca desinstalar.
 - 61. Widget Yx2 (player + playlists).
 - 62. Android Auto.
 - 63. Conta Google e pasta `Skáld` no Drive (Configurações → Sincronização).
@@ -253,7 +253,7 @@ Etapas:
 
 | Etapa | Linux | Android | Windows |
 |---|---|---|---|
-| 60 | — | [ ] | — |
+| 60 | — | [x] | — |
 | 61 | — | [ ] | — |
 | 62 | — | [ ] | — |
 | 63 | [ ] | [ ] | [ ] |
@@ -349,6 +349,6 @@ Etapas:
 ### Próximo
 
 - Fase 9: falta testar 69 e 70 no Android e no Windows (próxima release).
-- Fase 11 (widget, Android Auto, sincronização pelo Drive), começando pela etapa 60.
+- Fase 11 (widget, Android Auto, sincronização pelo Drive): próxima é a etapa 61 (widget Yx2).
 - Fase 10 (podcasts), começando pela etapa 54.
 - Depois: audiolivros e itens fora de escopo.

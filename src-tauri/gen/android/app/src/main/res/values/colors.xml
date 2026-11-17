@@ -7,4 +7,11 @@
     <color name="teal_700">#FF018786</color>
     <color name="black">#FF000000</color>
     <color name="white">#FFFFFFFF</color>
+    <!-- Widget: mesmas cores do tema carmesim (docs/temas.css). -->
+    <color name="tema_card">#FF141012</color>
+    <color name="tema_linha">#FF2C1D20</color>
+    <color name="tema_texto">#FFECE2E3</color>
+    <color name="tema_fraco">#FF9D8B8E</color>
+    <color name="tema_acento">#FFD61F30</color>
+    <color name="tema_acento_txt">#FFFFFFFF</color>
 </resources>

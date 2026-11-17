@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Largura de 2 a 5 células; 1 linha (a de 2 linhas vem na etapa 61). -->
+<appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
+    android:description="@string/widget_descricao"
+    android:initialLayout="@layout/widget_largo"
+    android:previewLayout="@layout/widget_largo"
+    android:minWidth="250dp" android:minHeight="40dp"
+    android:minResizeWidth="110dp" android:minResizeHeight="40dp"
+    android:maxResizeHeight="70dp"
+    android:targetCellWidth="4" android:targetCellHeight="1"
+    android:maxResizeWidth="400dp"
+    android:resizeMode="horizontal"
+    android:updatePeriodMillis="0"
+    android:widgetCategory="home_screen" />

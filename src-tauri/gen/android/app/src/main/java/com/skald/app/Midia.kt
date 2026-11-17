@@ -32,9 +32,14 @@ object Midia {
   @JvmStatic
   fun atualizar(titulo: String, artista: String, album: String, capa: String?, duracaoMs: Long, posicaoMs: Long, estado: Int) {
     val e = Estado(titulo, artista, album, capa, duracaoMs, posicaoMs, estado)
+    val antes = atual
     atual = e
     principal.post {
       Foco.aoMudar(contexto, e.estado)
+      // O widget só muda com música, capa ou estado (não a cada salto de posição).
+      if (antes == null || antes.titulo != e.titulo || antes.artista != e.artista ||
+        antes.capa != e.capa || antes.estado != e.estado
+      ) contexto?.let { WidgetPlayer.atualizar(it, e) }
       val servico = MidiaService.instancia
       when {
         e.estado == 0 -> servico?.encerrar()
