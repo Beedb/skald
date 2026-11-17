@@ -187,21 +187,21 @@ Conferir o que já existe antes de cada etapa e marcar `[x]` só com teste feito
 Objetivo: a pessoa cadastra o e-mail e é avisada quando sai uma versão nova. O Skáld é offline e sem servidor, então a lista e o envio ficam num serviço de fora; o app nunca guarda nem envia e-mail.
 
 Decisões (2026-11-17):
-- **Serviço**: Buttondown (grátis até 100 inscritos). "RSS para e-mail" apontado para `https://github.com/Beedb/skald/releases.atom`: cada release vira um e-mail automático. O Buttondown cuida da confirmação por e-mail (double opt-in) e do descadastro (LGPD). Criar a conta e entrar nela é com o usuário (Claude não cria contas nem digita senhas).
+- **Serviço**: Buttondown, plano grátis (até 100 inscritos), página `https://buttondown.com/skald` (conta do usuário). O RSS para e-mail é pago (US$ 9/mês), então o aviso sai pela API: `.github/workflows/aviso-email.yml` roda quando uma release é publicada e cria um **rascunho** (`status: "draft"`) com as notas da release e o link de download; o usuário confere e envia no Buttondown. Segredo `BUTTONDOWN_API_KEY` (chave "GitHub Actions": só Emails leitura/escrita, envio desligado, sem acesso aos inscritos). Teste manual: `gh workflow run aviso-email.yml -f tag=vX -f teste=true` (assunto com "[TESTE]"). Configurado: confirmação por e-mail, boas-vindas, sem UTM nem rastreio de abertura/clique, cor `#d61f30`.
 - **Verificação no app**: entra junto, desligada por padrão ("nada fala com a internet sem pedir"). Ligada, ao abrir consulta `https://api.github.com/repos/Beedb/skald/releases/latest` (`ureq`, mesmo agente de `enriquecer`) e, se a versão for maior que a do app, mostra "Saiu a versão X" com o link da release. Sem internet: fica calado.
 - Links abrem no navegador com `tauri-plugin-opener` (todas as plataformas).
 
 Etapas (numeradas depois das da Fase 11):
-- 66. Conta no Buttondown + página de inscrição (usuário; passar o endereço `https://buttondown.com/<nome>`).
-- 67. RSS das releases → e-mail automático; texto do e-mail em pt-BR.
+- 66. Conta no Buttondown + página de inscrição. **Feita** (`https://buttondown.com/skald`).
+- 67. Rascunho automático do e-mail a cada release (API, não RSS). **Feita** (teste com v0.2.0 criou o rascunho).
 - 68. Link de inscrição no README e no modelo de notas da release ("Como lançar uma versão").
 - 69. Cartão "Novidades" em Configurações: botão "Receber aviso de novas versões por e-mail" (abre a página de inscrição).
 - 70. Verificar atualização ao abrir (opção no cartão Novidades, desligada por padrão).
 
 | Etapa | Linux | Android | Windows |
 |---|---|---|---|
-| 66 | — | — | — |
-| 67 | — | — | — |
+| 66 | [x] | — | — |
+| 67 | [x] | — | — |
 | 68 | — | — | — |
 | 69 | [ ] | [ ] | [ ] |
 | 70 | [ ] | [ ] | [ ] |
@@ -288,7 +288,7 @@ Etapas:
 ### Publicação, Windows e Android (detalhes técnicos)
 
 - **Publicação**: repositório Beedb/skald público (GPL-3.0, README). CLAUDE.md é versionado (sincroniza os PCs); docs/skald-v0.3.md não (.gitignore). Releases: v0.1.0 e **v0.2.0** (atual, "Latest"; Fase 7), ambas com `.deb`, `.rpm`, `.exe` e `.apk` (`.rpm` com dependências do Fedora, ainda não testado num Fedora).
-- **Como lançar uma versão**: subir o número em `package.json`/`package-lock.json` (`npm version X --no-git-tag-version`), `src-tauri/tauri.conf.json`, `src-tauri/Cargo.toml` e no User-Agent `CLIENTE` de `enriquecer.rs` (o `versionName` do Android vem do `tauri.conf.json`); `npm run tauri build` (gera `.deb` e `.rpm` em `src-tauri/target/release/bundle/`); commit "Versão X", tag anotada `vX` e push da tag; `gh release create vX --notes-file …` com o `.deb` e o `.rpm`. A tag dispara `.github/workflows/windows.yml`, que anexa o `.exe` sozinho. O `.apk` sai de `scripts/android.sh build --apk --target aarch64` e é anexado à mão como `skald-X-android-arm64.apk`.
+- **Como lançar uma versão**: subir o número em `package.json`/`package-lock.json` (`npm version X --no-git-tag-version`), `src-tauri/tauri.conf.json`, `src-tauri/Cargo.toml` e no User-Agent `CLIENTE` de `enriquecer.rs` (o `versionName` do Android vem do `tauri.conf.json`); `npm run tauri build` (gera `.deb` e `.rpm` em `src-tauri/target/release/bundle/`); commit "Versão X", tag anotada `vX` e push da tag; `gh release create vX --notes-file …` com o `.deb` e o `.rpm`. A tag dispara `.github/workflows/windows.yml`, que anexa o `.exe` sozinho. O `.apk` sai de `scripts/android.sh build --apk --target aarch64` e é anexado à mão como `skald-X-android-arm64.apk`. Publicar a release dispara `aviso-email.yml` (rascunho no Buttondown): enviar o rascunho só depois que `.exe` e `.apk` estiverem anexados.
 - **Windows** (feito pelo usuário, commits 728685b e 0eb0405): instalador NSIS currentUser com GStreamer embutido (`scripts/gstreamer-windows.ps1`, `npm run build:windows`, `tauri.windows.conf.json`; `gstreamer_embutido()` em lib.rs), `.exe` na release v0.1.0. O panic ao abrir era `MediaControls::new` sem HWND.
 - **Controles de mídia** (etapa 48, commit 00686ef): `mpris.rs` vale para Linux e Windows (souvlaki em todo desktop; `mpris_stub.rs` só para iOS); no Windows `PlatformConfig.hwnd` = `get_webview_window("main").hwnd().0` e `INDISPONIVEL` muda o texto do erro. O SMTC mantém o campo anterior quando vem `None`: no Windows `campo()` manda "" e, sem capa, vai o ícone `icons/128x128.png` (`gravar_arquivo` no cache `mpris/`). Configurações diz "Teclas de mídia e controles do sistema". Testado: play/pausa, próxima, anterior, título/capa; "anterior" depois de 3 s volta ao início. Teste: script com `GlobalSystemMediaTransportControlsSessionManager` (WinRT pelo PowerShell).
 - `scripts/gstreamer-windows.ps1` copia 24 plugins e as DLLs de que dependem, achadas com `dumpbin /dependents` (30 DLLs, ~33 MB; `src-tauri/gstreamer/` no `.gitignore`). `gstreamer_embutido()` (só se existir `gstreamer-1.0/` ao lado do exe): `GST_PLUGIN_SYSTEM_PATH_1_0`, registro em `%LOCALAPPDATA%\com.skald.app\gstreamer-registry.bin`, `GST_REGISTRY_FORK=no`.
