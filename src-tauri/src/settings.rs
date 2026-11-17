@@ -17,6 +17,7 @@ const TEMPORIZADOR: &str = "temporizador";
 const RETOMAR: &str = "retomar";
 const CONTINUAR: &str = "continuar_tocando";
 const VERIFICAR_VERSAO: &str = "verificar_versao";
+const SYNC_ENVIAR: &str = "sync_enviar";
 /// Tema padrão do Skáld (docs/temas.css).
 const TEMA_PADRAO: &str = "carmesim";
 /// Crossfade padrão: ligado, 5 s (desligado entre faixas do mesmo álbum).
@@ -43,6 +44,8 @@ pub struct Configuracoes {
     pub continuar_tocando: bool,
     /// Consultar o GitHub ao abrir para avisar de versão nova (padrão: desligado).
     pub verificar_versao: bool,
+    /// "Sincronizar agora" também envia ao Drive (padrão: ligado; desligado = só baixar).
+    pub sync_enviar: bool,
 }
 
 fn ler(conn: &Connection, chave: &str) -> rusqlite::Result<Option<String>> {
@@ -83,6 +86,7 @@ pub fn carregar(conn: &Connection) -> rusqlite::Result<Configuracoes> {
     let notificar = ler(conn, NOTIFICAR)?.is_none_or(|v| v == "1");
     let continuar_tocando = ler(conn, CONTINUAR)?.is_none_or(|v| v == "1");
     let verificar_versao = verificar_versao(conn)?;
+    let sync_enviar = sync_enviar(conn)?;
     Ok(Configuracoes {
         crossfade_ms,
         normalizacao,
@@ -94,6 +98,7 @@ pub fn carregar(conn: &Connection) -> rusqlite::Result<Configuracoes> {
         notificar,
         continuar_tocando,
         verificar_versao,
+        sync_enviar,
     })
 }
 
@@ -288,4 +293,12 @@ pub fn aparelho_id(conn: &Connection) -> rusqlite::Result<String> {
     let id: String = conn.query_row("SELECT lower(hex(randomblob(8)))", [], |r| r.get(0))?;
     gravar(conn, "aparelho_id", &id)?;
     Ok(id)
+}
+
+pub fn sync_enviar(conn: &Connection) -> rusqlite::Result<bool> {
+    Ok(ler(conn, SYNC_ENVIAR)?.is_none_or(|v| v == "1"))
+}
+
+pub fn definir_sync_enviar(conn: &Connection, ativo: bool) -> rusqlite::Result<()> {
+    gravar(conn, SYNC_ENVIAR, if ativo { "1" } else { "0" })
 }

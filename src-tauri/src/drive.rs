@@ -548,14 +548,16 @@ fn baixar(acesso: &mut Acesso, remoto: &Remoto, pasta: &Path) -> Result<PathBuf,
     r.map(|()| destino)
 }
 
-/// "Sincronizar agora": sobe as músicas que o Drive não tem e baixa para `destino` as que o
-/// aparelho não tem (`conhecidos` = hashes de todos os registros, presentes ou não, para não
-/// baixar o que a pessoa só moveu). Nunca apaga nada. Devolve o resumo e os arquivos baixados.
+/// "Sincronizar agora": baixa para `destino` as músicas que o aparelho não tem (`conhecidos` =
+/// hashes de todos os registros, presentes ou não, para não baixar o que a pessoa só moveu),
+/// depois, se `enviar`, sobe as que o Drive não tem, e no fim confere o Drive de novo para baixar
+/// o que outro aparelho subiu enquanto isso. Nunca apaga nada. Devolve o resumo e os baixados.
 pub fn sincronizar_musicas(
     dados: &Path,
     locais: Vec<Local>,
-    conhecidos: std::collections::HashSet<String>,
+    mut conhecidos: std::collections::HashSet<String>,
     destino: &Path,
+    enviar: bool,
     mut progresso: impl FnMut(Progresso),
 ) -> Result<(ResumoSync, Vec<PathBuf>), String> {
     let conta = carregar(dados).ok_or("Entre com a conta do Google primeiro.")?;
@@ -563,66 +565,84 @@ pub fn sincronizar_musicas(
         return Err("A sincronização já está em andamento.".into());
     }
     CANCELAR.store(false, Ordering::SeqCst);
+    let mut resumo = ResumoSync::default();
+    let mut baixados = Vec::new();
     let r = (|| {
         progresso(Progresso { fase: "listando", feito: 0, total: 0, nome: String::new() });
         let mut acesso = Acesso::novo(&conta)?;
         let remotos = listar_musicas(&mut acesso, &conta.musicas)?;
-        let no_drive: std::collections::HashSet<&str> = remotos.iter().map(|r| r.hash.as_str()).collect();
+        let no_drive: std::collections::HashSet<String> = remotos.iter().map(|r| r.hash.clone()).collect();
 
-        let mut resumo = ResumoSync::default();
-        // Um arquivo por hash (cópias iguais no aparelho sobem uma vez).
-        let mut vistos = std::collections::HashSet::new();
-        let subir_lista: Vec<&Local> = locais
-            .iter()
-            .filter(|l| vistos.insert(l.hash.as_str()))
-            .filter(|l| {
-                let tem = no_drive.contains(l.hash.as_str());
-                if tem {
-                    resumo.iguais += 1;
-                }
-                !tem
-            })
-            .collect();
-        let baixar_lista: Vec<&Remoto> = {
+        // 1. Baixar primeiro: o que já está no Drive chega logo, mesmo com um envio grande depois.
+        if !baixar_faltantes(&mut acesso, &remotos, &mut conhecidos, destino, &mut resumo, &mut baixados, &mut progresso) {
+            return Ok(());
+        }
+
+        // 2. Subir as deste aparelho que o Drive não tem (uma por hash).
+        if enviar {
             let mut vistos = std::collections::HashSet::new();
-            remotos
+            let subir_lista: Vec<&Local> = locais
                 .iter()
-                .filter(|r| !conhecidos.contains(&r.hash) && vistos.insert(r.hash.as_str()))
-                .collect()
-        };
-
-        for (i, local) in subir_lista.iter().enumerate() {
-            if CANCELAR.load(Ordering::SeqCst) {
-                resumo.cancelado = true;
-                return Ok((resumo, Vec::new()));
-            }
-            let nome = local.caminho.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
-            progresso(Progresso { fase: "subindo", feito: i as u32, total: subir_lista.len() as u32, nome: nome.clone() });
-            match subir(&mut acesso, &conta.musicas, local) {
-                Ok(()) => resumo.subidas += 1,
-                Err(e) => resumo.falhou(&nome, e),
-            }
-        }
-
-        let mut baixados = Vec::new();
-        for (i, remoto) in baixar_lista.iter().enumerate() {
-            if CANCELAR.load(Ordering::SeqCst) {
-                resumo.cancelado = true;
-                break;
-            }
-            progresso(Progresso { fase: "baixando", feito: i as u32, total: baixar_lista.len() as u32, nome: remoto.nome.clone() });
-            match baixar(&mut acesso, remoto, destino) {
-                Ok(c) => {
-                    resumo.baixadas += 1;
-                    baixados.push(c);
+                .filter(|l| vistos.insert(l.hash.as_str()))
+                .filter(|l| {
+                    let tem = no_drive.contains(&l.hash);
+                    if tem {
+                        resumo.iguais += 1;
+                    }
+                    !tem
+                })
+                .collect();
+            for (i, local) in subir_lista.iter().enumerate() {
+                if CANCELAR.load(Ordering::SeqCst) {
+                    resumo.cancelado = true;
+                    return Ok(());
                 }
-                Err(e) => resumo.falhou(&remoto.nome, e),
+                let nome = local.caminho.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+                progresso(Progresso { fase: "subindo", feito: i as u32, total: subir_lista.len() as u32, nome: nome.clone() });
+                match subir(&mut acesso, &conta.musicas, local) {
+                    Ok(()) => resumo.subidas += 1,
+                    Err(e) => resumo.falhou(&nome, e),
+                }
             }
         }
-        Ok((resumo, baixados))
+
+        // 3. Outro aparelho pode ter subido músicas enquanto isso: confere de novo.
+        progresso(Progresso { fase: "listando", feito: 0, total: 0, nome: String::new() });
+        let remotos = listar_musicas(&mut acesso, &conta.musicas)?;
+        baixar_faltantes(&mut acesso, &remotos, &mut conhecidos, destino, &mut resumo, &mut baixados, &mut progresso);
+        Ok(())
     })();
     SINCRONIZANDO.store(false, Ordering::SeqCst);
-    r
+    r.map(|()| (resumo, baixados))
+}
+
+/// Baixa os `remotos` cujo hash não está em `conhecidos` (e os acrescenta lá, para a segunda
+/// passada não repetir, nem as que falharam). Devolve `false` se a pessoa pediu para parar.
+fn baixar_faltantes(
+    acesso: &mut Acesso,
+    remotos: &[Remoto],
+    conhecidos: &mut std::collections::HashSet<String>,
+    destino: &Path,
+    resumo: &mut ResumoSync,
+    baixados: &mut Vec<PathBuf>,
+    progresso: &mut impl FnMut(Progresso),
+) -> bool {
+    let lista: Vec<&Remoto> = remotos.iter().filter(|r| conhecidos.insert(r.hash.clone())).collect();
+    for (i, remoto) in lista.iter().enumerate() {
+        if CANCELAR.load(Ordering::SeqCst) {
+            resumo.cancelado = true;
+            return false;
+        }
+        progresso(Progresso { fase: "baixando", feito: i as u32, total: lista.len() as u32, nome: remoto.nome.clone() });
+        match baixar(acesso, remoto, destino) {
+            Ok(c) => {
+                resumo.baixadas += 1;
+                baixados.push(c);
+            }
+            Err(e) => resumo.falhou(&remoto.nome, e),
+        }
+    }
+    true
 }
 
 // ---------- Dados (etapa 65) ----------

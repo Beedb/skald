@@ -18,6 +18,7 @@ type Config = {
   bandeja: boolean;
   notificar: boolean;
   continuar_tocando: boolean;
+  sync_enviar: boolean;
   verificar_versao: boolean;
 };
 
@@ -119,8 +120,12 @@ function CartaoSincronizacao() {
   const [sincronizando, setSincronizando] = useState(false);
   const [progresso, setProgresso] = useState<ProgressoSync | null>(null);
   const [resultado, setResultado] = useState<string | null>(null);
+  const [enviar, setEnviar] = useState(true);
 
   useEffect(() => {
+    invoke<Config>("get_settings")
+      .then((c) => setEnviar(c.sync_enviar))
+      .catch(() => {});
     invoke<EstadoSync>("sync_status")
       .then((e) => {
         setEstado(e);
@@ -151,6 +156,11 @@ function CartaoSincronizacao() {
     setSincronizando(true);
     // O resultado chega pelo evento "sincronizacao-fim" (mesmo se a tela fechar e reabrir).
     invoke("sync_now").catch(() => {});
+  }
+
+  function mudarEnviar(ativo: boolean) {
+    setEnviar(ativo);
+    invoke("set_sync_upload", { ativo }).catch((e) => setErro(String(e)));
   }
 
   async function entrar() {
@@ -215,7 +225,7 @@ function CartaoSincronizacao() {
           nota={
             sincronizando
               ? textoProgresso(progresso)
-              : "Envia ao Drive as músicas que ele não tem e baixa as que faltam neste aparelho. Depois junta playlists, curtidas, histórico e apelidos de todos os aparelhos. Nenhuma música é apagada, nem aqui nem no Drive."
+              : `Baixa as músicas do Drive que faltam neste aparelho${enviar ? " e envia as que o Drive não tem" : ""}. Depois junta playlists, curtidas, histórico e apelidos de todos os aparelhos. Nenhuma música é apagada, nem aqui nem no Drive.`
           }
         >
           {sincronizando ? (
@@ -223,6 +233,14 @@ function CartaoSincronizacao() {
           ) : (
             <button onClick={sincronizar}>Sincronizar agora</button>
           )}
+        </Linha>
+      )}
+      {estado?.conectado && (
+        <Linha
+          titulo="Enviar músicas deste aparelho"
+          nota="Desligado, só baixa do Drive (útil num aparelho que já tem as mesmas músicas de outro). Playlists e histórico seguem sincronizando."
+        >
+          <Interruptor ligado={enviar} rotulo="Enviar músicas deste aparelho" onMudar={mudarEnviar} />
         </Linha>
       )}
       {sincronizando && progresso && progresso.total > 0 && (

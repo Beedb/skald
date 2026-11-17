@@ -1675,6 +1675,12 @@ fn set_continue(db: State<db::Db>, ativo: bool) -> Result<(), String> {
 }
 
 #[tauri::command]
+fn set_sync_upload(db: State<db::Db>, ativo: bool) -> Result<(), String> {
+    let conn = db.0.lock().map_err(erro_db)?;
+    settings::definir_sync_enviar(&conn, ativo).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 fn set_update_check(db: State<db::Db>, ativo: bool) -> Result<(), String> {
     let conn = db.0.lock().map_err(erro_db)?;
     settings::definir_verificar_versao(&conn, ativo).map_err(|e| e.to_string())
@@ -1733,8 +1739,8 @@ struct SyncResultado {
     dados: Option<sincdados::Mudancas>,
 }
 
-/// "Sincronizar agora": sobe as músicas que faltam no Drive e baixa as que faltam aqui para
-/// `<Música>/Skáld/Drive` (vira pasta monitorada). Progresso pelo evento `sincronizacao-progresso`.
+/// "Sincronizar agora": baixa as músicas que faltam aqui para `<Música>/Skáld/Drive` (vira pasta
+/// monitorada) e, se `sync_enviar`, sobe as que faltam no Drive. Progresso pelo evento `sincronizacao-progresso`.
 #[tauri::command]
 async fn sync_now(app: AppHandle) -> Result<SyncResultado, String> {
     let emissor = app.clone();
@@ -1760,7 +1766,7 @@ fn sincronizar_agora(app: AppHandle) -> Result<SyncResultado, String> {
             .join("Drive");
         // Hash das músicas que ainda não têm (as antigas e as recém-importadas).
         import::preencher_hashes(&app.state::<db::Db>().0)?;
-        let (locais, conhecidos) = {
+        let (locais, conhecidos, enviar) = {
             let db = app.state::<db::Db>();
             let conn = db.0.lock().map_err(erro_db)?;
             let mut st = conn
@@ -1784,11 +1790,12 @@ fn sincronizar_agora(app: AppHandle) -> Result<SyncResultado, String> {
                 .map_err(|e| e.to_string())?
                 .collect::<Result<std::collections::HashSet<_>, _>>()
                 .map_err(|e| e.to_string())?;
-            (locais, conhecidos)
+            let enviar = settings::sync_enviar(&conn).map_err(|e| e.to_string())?;
+            (locais, conhecidos, enviar)
         };
         let _acordado = TarefaLonga::nova("Sincronizando com o Google Drive…");
         let emissor = app.clone();
-        let (resumo, baixados) = drive::sincronizar_musicas(&dados, locais, conhecidos, &destino, move |p| {
+        let (resumo, baixados) = drive::sincronizar_musicas(&dados, locais, conhecidos, &destino, enviar, move |p| {
             if p.total > 0 {
                 let verbo = if p.fase == "subindo" { "Enviando" } else { "Baixando" };
                 TarefaLonga::texto(&format!("{verbo} {} de {}: {}", p.feito + 1, p.total, p.nome));
@@ -2236,6 +2243,7 @@ pub fn run() {
             sync_login,
             sync_cancel,
             sync_now,
+            set_sync_upload,
             sync_logout,
             autostart_get,
             set_autostart,
