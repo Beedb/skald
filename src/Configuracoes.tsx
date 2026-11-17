@@ -67,16 +67,68 @@ function Linha({ titulo, nota, children }: { titulo: React.ReactNode; nota?: Rea
 }
 
 type EstadoSync = { disponivel: boolean; conectado: boolean; email: string | null; nome: string | null };
+type ProgressoSync = { fase: "listando" | "subindo" | "baixando"; feito: number; total: number; nome: string };
+type ResultadoSync = {
+  subidas: number;
+  baixadas: number;
+  iguais: number;
+  falhas: string[];
+  total_falhas: number;
+  cancelado: boolean;
+  pasta: string;
+};
+
+function plural(n: number, um: string, varios: string) {
+  return `${n} ${n === 1 ? um : varios}`;
+}
+
+function textoProgresso(p: ProgressoSync | null) {
+  if (!p || p.fase === "listando") return "Conferindo o que há no Drive…";
+  const verbo = p.fase === "subindo" ? "Enviando" : "Baixando";
+  return `${verbo} ${p.feito + 1} de ${p.total}: ${p.nome}`;
+}
+
+function textoResultado(r: ResultadoSync) {
+  const partes = [];
+  if (r.subidas) partes.push(`${plural(r.subidas, "música enviada", "músicas enviadas")} ao Drive`);
+  if (r.baixadas) partes.push(`${plural(r.baixadas, "música baixada", "músicas baixadas")} para ${r.pasta}`);
+  if (!partes.length) partes.push("Tudo igual: nada para enviar nem baixar");
+  let t = partes.join("; ") + ".";
+  if (r.cancelado) t = "Sincronização interrompida. " + t;
+  if (r.total_falhas) t += ` ${plural(r.total_falhas, "arquivo falhou", "arquivos falharam")}: ${r.falhas.join("; ")}`;
+  return t;
+}
 
 /** Conta do Google Drive para sincronizar entre aparelhos (etapas 63 a 65). */
 function CartaoSincronizacao() {
   const [estado, setEstado] = useState<EstadoSync | null>(null);
   const [entrando, setEntrando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
+  const [sincronizando, setSincronizando] = useState(false);
+  const [progresso, setProgresso] = useState<ProgressoSync | null>(null);
+  const [resultado, setResultado] = useState<string | null>(null);
 
   useEffect(() => {
     invoke<EstadoSync>("sync_status").then(setEstado).catch(() => {});
+    const parar = listen<ProgressoSync>("sincronizacao-progresso", (e) => setProgresso(e.payload));
+    return () => {
+      parar.then((f) => f());
+    };
   }, []);
+
+  async function sincronizar() {
+    setErro(null);
+    setResultado(null);
+    setProgresso(null);
+    setSincronizando(true);
+    try {
+      setResultado(textoResultado(await invoke<ResultadoSync>("sync_now")));
+    } catch (e) {
+      setErro(String(e));
+    } finally {
+      setSincronizando(false);
+    }
+  }
 
   async function entrar() {
     setErro(null);
@@ -114,7 +166,9 @@ function CartaoSincronizacao() {
           }
           nota="A pasta “Skáld” está pronta no seu Google Drive. O Skáld só enxerga essa pasta. Sair desconecta este aparelho; nada no Drive é apagado."
         >
-          <button onClick={sair}>Sair</button>
+          <button onClick={sair} disabled={sincronizando}>
+            Sair
+          </button>
         </Linha>
       ) : (
         <Linha
@@ -132,6 +186,26 @@ function CartaoSincronizacao() {
           )}
         </Linha>
       )}
+      {estado?.conectado && (
+        <Linha
+          titulo="Músicas"
+          nota={
+            sincronizando
+              ? textoProgresso(progresso)
+              : "Envia ao Drive as músicas que ele não tem e baixa as que faltam neste aparelho. Nada é apagado, nem aqui nem no Drive."
+          }
+        >
+          {sincronizando ? (
+            <button onClick={() => invoke("sync_cancel").catch(() => {})}>Parar</button>
+          ) : (
+            <button onClick={sincronizar}>Sincronizar agora</button>
+          )}
+        </Linha>
+      )}
+      {sincronizando && progresso && progresso.total > 0 && (
+        <progress className="cfg-progresso" max={progresso.total} value={progresso.feito} />
+      )}
+      {resultado && <p className="nota destaque">{resultado}</p>}
       {erro && <p className="nota destaque">{erro}</p>}
     </Cartao>
   );

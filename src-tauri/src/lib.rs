@@ -65,8 +65,16 @@ fn db_status(app: tauri::AppHandle, db: State<db::Db>) -> Result<DbStatus, Strin
 
 #[tauri::command]
 async fn import_folder(app: tauri::AppHandle, path: String) -> Result<import::ImportResumo, String> {
-    tauri::async_runtime::spawn_blocking(move || {
-        let pasta = std::path::Path::new(&path);
+    tauri::async_runtime::spawn_blocking(move || importar_pasta(&app, &path))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+/// Registra a pasta como monitorada e importa o que há nela (botão "Importar pasta" e
+/// músicas baixadas do Drive).
+fn importar_pasta(app: &AppHandle, path: &str) -> Result<import::ImportResumo, String> {
+    {
+        let pasta = std::path::Path::new(path);
         if !pasta.is_dir() {
             return Err("A pasta selecionada não existe.".into());
         }
@@ -74,7 +82,7 @@ async fn import_folder(app: tauri::AppHandle, path: String) -> Result<import::Im
         {
             let db = app.state::<db::Db>();
             let conn = db.0.lock().map_err(erro_db)?;
-            watch::adicionar(&conn, &path).map_err(|e| e.to_string())?;
+            watch::adicionar(&conn, path).map_err(|e| e.to_string())?;
         }
         let mut resumo = import::importar(&app.state::<db::Db>().0, pasta)?;
         {
@@ -84,14 +92,12 @@ async fn import_folder(app: tauri::AppHandle, path: String) -> Result<import::Im
         }
         app.state::<watch::Vigia>().vigiar(pasta);
         resumo.duplicados += import::preencher_hashes(&app.state::<db::Db>().0)?;
-        reconciliar_movidos(&app, &mut resumo)?;
+        reconciliar_movidos(app, &mut resumo)?;
         if resumo.adicionados > 0 {
-            incluir_novas(&app, Origem::Biblioteca)?;
+            incluir_novas(app, Origem::Biblioteca)?;
         }
         Ok(resumo)
-    })
-    .await
-    .map_err(|e| e.to_string())?
+    }
 }
 
 /// Importa arquivos soltos escolhidos pelo usuário (não viram pasta monitorada). Arquivos
@@ -1692,6 +1698,70 @@ async fn sync_login(app: AppHandle) -> Result<drive::Estado, String> {
     .map_err(|e| e.to_string())?
 }
 
+/// Resumo de "Sincronizar agora" (músicas; a pasta de destino aparece na tela).
+#[derive(Serialize)]
+struct SyncResultado {
+    #[serde(flatten)]
+    resumo: drive::ResumoSync,
+    pasta: String,
+}
+
+/// "Sincronizar agora": sobe as músicas que faltam no Drive e baixa as que faltam aqui para
+/// `<Música>/Skáld/Drive` (vira pasta monitorada). Progresso pelo evento `sincronizacao-progresso`.
+#[tauri::command]
+async fn sync_now(app: AppHandle) -> Result<SyncResultado, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let dados = caminhos::dados(&app)?;
+        let destino = app
+            .path()
+            .audio_dir()
+            .map_err(|_| "Pasta de música do sistema não encontrada.".to_string())?
+            .join("Skáld")
+            .join("Drive");
+        // Hash das músicas que ainda não têm (as antigas e as recém-importadas).
+        import::preencher_hashes(&app.state::<db::Db>().0)?;
+        let (locais, conhecidos) = {
+            let db = app.state::<db::Db>();
+            let conn = db.0.lock().map_err(erro_db)?;
+            let mut st = conn
+                .prepare(
+                    "SELECT file_hash, path FROM media
+                     WHERE missing = 0 AND category = 'music' AND file_hash IS NOT NULL",
+                )
+                .map_err(|e| e.to_string())?;
+            let locais = st
+                .query_map([], |r| {
+                    Ok(drive::Local { hash: r.get(0)?, caminho: std::path::PathBuf::from(r.get::<_, String>(1)?) })
+                })
+                .map_err(|e| e.to_string())?
+                .collect::<Result<Vec<_>, _>>()
+                .map_err(|e| e.to_string())?;
+            let mut st = conn
+                .prepare("SELECT file_hash FROM media WHERE file_hash IS NOT NULL")
+                .map_err(|e| e.to_string())?;
+            let conhecidos = st
+                .query_map([], |r| r.get::<_, String>(0))
+                .map_err(|e| e.to_string())?
+                .collect::<Result<std::collections::HashSet<_>, _>>()
+                .map_err(|e| e.to_string())?;
+            (locais, conhecidos)
+        };
+        let emissor = app.clone();
+        let (resumo, baixados) = drive::sincronizar_musicas(&dados, locais, conhecidos, &destino, move |p| {
+            let _ = emissor.emit("sincronizacao-progresso", &p);
+        })?;
+        if !baixados.is_empty() {
+            let r = importar_pasta(&app, &destino.to_string_lossy())?;
+            if r.mudou_algo() {
+                let _ = app.emit(EVENTO_BIBLIOTECA, &r);
+            }
+        }
+        Ok(SyncResultado { resumo, pasta: destino.to_string_lossy().into_owned() })
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
 #[tauri::command]
 fn sync_cancel() {
     drive::cancelar();
@@ -2083,6 +2153,7 @@ pub fn run() {
             sync_status,
             sync_login,
             sync_cancel,
+            sync_now,
             sync_logout,
             autostart_get,
             set_autostart,

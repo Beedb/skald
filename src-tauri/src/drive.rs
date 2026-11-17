@@ -307,6 +307,321 @@ fn achar_ou_criar_pasta(acesso: &str, nome: &str, pai: &str) -> Result<String, S
     v["id"].as_str().map(str::to_string).ok_or_else(|| "O Google Drive não devolveu a pasta criada.".into())
 }
 
+// ---------- Músicas (etapa 64) ----------
+
+const UPLOAD: &str = "https://www.googleapis.com/upload/drive/v3/files";
+static SINCRONIZANDO: AtomicBool = AtomicBool::new(false);
+
+/// Agente para arquivos grandes: sem prazo total, só por leitura/escrita.
+fn agente_arquivos() -> ureq::Agent {
+    ureq::Agent::config_builder()
+        .timeout_connect(Some(Duration::from_secs(15)))
+        .timeout_per_read(Some(Duration::from_secs(60)))
+        .timeout_per_write(Some(Duration::from_secs(60)))
+        .user_agent(crate::enriquecer::CLIENTE)
+        .build()
+        .into()
+}
+
+/// Token de acesso renovado pelo refresh token (vale 1 h; renova antes de 45 min).
+struct Acesso {
+    id: &'static str,
+    segredo: &'static str,
+    refresh: String,
+    token: String,
+    desde: Instant,
+}
+
+impl Acesso {
+    fn novo(conta: &Conta) -> Result<Self, String> {
+        let (id, segredo) = credenciais().ok_or("A sincronização não está disponível nesta versão do Skáld.")?;
+        let mut a = Acesso { id, segredo, refresh: conta.refresh_token.clone(), token: String::new(), desde: Instant::now() };
+        a.renovar()?;
+        Ok(a)
+    }
+
+    fn renovar(&mut self) -> Result<(), String> {
+        let texto = crate::enriquecer::agente()
+            .post(TOKEN)
+            .send_form([
+                ("client_id", self.id),
+                ("client_secret", self.segredo),
+                ("refresh_token", self.refresh.as_str()),
+                ("grant_type", "refresh_token"),
+            ])
+            .map_err(erro)?
+            .body_mut()
+            .read_to_string()
+            .map_err(|e| e.to_string())?;
+        let t: Token = serde_json::from_str(&texto).map_err(|e| e.to_string())?;
+        self.token = t.access_token;
+        self.desde = Instant::now();
+        Ok(())
+    }
+
+    fn cabecalho(&mut self) -> Result<String, String> {
+        if self.desde.elapsed() > Duration::from_secs(45 * 60) {
+            self.renovar()?;
+        }
+        Ok(format!("Bearer {}", self.token))
+    }
+}
+
+/// Música do aparelho com hash conhecido.
+pub struct Local {
+    pub hash: String,
+    pub caminho: PathBuf,
+}
+
+#[derive(Serialize, Clone)]
+pub struct Progresso {
+    /// "listando", "subindo" ou "baixando".
+    pub fase: &'static str,
+    pub feito: u32,
+    pub total: u32,
+    pub nome: String,
+}
+
+#[derive(Serialize, Default, Debug)]
+pub struct ResumoSync {
+    pub subidas: u32,
+    pub baixadas: u32,
+    /// Já estavam nos dois lados.
+    pub iguais: u32,
+    /// Erros por arquivo (os primeiros); o resto continua.
+    pub falhas: Vec<String>,
+    pub total_falhas: u32,
+    pub cancelado: bool,
+}
+
+impl ResumoSync {
+    fn falhou(&mut self, nome: &str, e: String) {
+        self.total_falhas += 1;
+        if self.falhas.len() < 5 {
+            self.falhas.push(format!("{nome}: {e}"));
+        }
+    }
+}
+
+struct Remoto {
+    id: String,
+    hash: String,
+    nome: String,
+}
+
+/// Arquivos da pasta `musicas/` (nome original; hash em `appProperties.hash`).
+fn listar_musicas(acesso: &mut Acesso, pasta: &str) -> Result<Vec<Remoto>, String> {
+    let mut lista = Vec::new();
+    let mut pagina: Option<String> = None;
+    loop {
+        let q = format!("'{pasta}' in parents and trashed = false");
+        let mut pares = vec![
+            ("q", q.as_str()),
+            ("fields", "nextPageToken,files(id,name,appProperties)"),
+            ("pageSize", "1000"),
+            ("spaces", "drive"),
+        ];
+        if let Some(p) = &pagina {
+            pares.push(("pageToken", p.as_str()));
+        }
+        let consulta = form_urlencoded::Serializer::new(String::new()).extend_pairs(pares).finish();
+        let v = get_json_com(acesso, &format!("{API}/files?{consulta}"))?;
+        for f in v["files"].as_array().into_iter().flatten() {
+            let (Some(id), Some(nome_drive)) = (f["id"].as_str(), f["name"].as_str()) else { continue };
+            // Hash em `appProperties.hash`; os primeiros envios usavam `<hash>.<ext>` como nome.
+            let hash = f["appProperties"]["hash"]
+                .as_str()
+                .unwrap_or_else(|| nome_drive.split('.').next().unwrap_or(""));
+            if hash.len() != 64 || !hash.bytes().all(|b| b.is_ascii_hexdigit()) {
+                continue;
+            }
+            let nome = f["appProperties"]["nome"].as_str().unwrap_or(nome_drive).to_string();
+            lista.push(Remoto { id: id.into(), hash: hash.to_ascii_lowercase(), nome });
+        }
+        match v["nextPageToken"].as_str() {
+            Some(p) => pagina = Some(p.to_string()),
+            None => return Ok(lista),
+        }
+    }
+}
+
+fn get_json_com(acesso: &mut Acesso, url: &str) -> Result<serde_json::Value, String> {
+    let texto = crate::enriquecer::agente()
+        .get(url)
+        .header("Authorization", &acesso.cabecalho()?)
+        .call()
+        .map_err(erro)?
+        .body_mut()
+        .read_to_string()
+        .map_err(|e| e.to_string())?;
+    serde_json::from_str(&texto).map_err(|e| e.to_string())
+}
+
+/// Sobe um arquivo (envio retomável numa parte só) com o nome original; o hash vai em
+/// `appProperties.hash` (o Drive aceita nomes repetidos; quem identifica é o hash).
+fn subir(acesso: &mut Acesso, pasta: &str, local: &Local) -> Result<(), String> {
+    let nome = local.caminho.file_name().and_then(|n| n.to_str()).unwrap_or("musica").to_string();
+    let arquivo = std::fs::File::open(&local.caminho).map_err(|e| e.to_string())?;
+    let tamanho = arquivo.metadata().map_err(|e| e.to_string())?.len();
+    let meta = serde_json::json!({ "name": nome, "parents": [pasta], "appProperties": { "hash": local.hash } }).to_string();
+    let resposta = crate::enriquecer::agente()
+        .post(&format!("{UPLOAD}?uploadType=resumable&fields=id"))
+        .header("Authorization", &acesso.cabecalho()?)
+        .header("Content-Type", "application/json; charset=utf-8")
+        .header("X-Upload-Content-Length", &tamanho.to_string())
+        .send(meta)
+        .map_err(erro)?;
+    let destino = resposta
+        .headers()
+        .get("location")
+        .and_then(|v| v.to_str().ok())
+        .ok_or("O Google Drive não aceitou o envio.")?
+        .to_string();
+    agente_arquivos()
+        .put(&destino)
+        .header("Authorization", &acesso.cabecalho()?)
+        .send(&arquivo)
+        .map_err(erro)?;
+    Ok(())
+}
+
+/// Nome de arquivo seguro (sem separadores nem caracteres proibidos no Windows).
+fn nome_seguro(nome: &str) -> String {
+    let limpo: String = nome
+        .chars()
+        .map(|c| if c.is_control() || "/\\:*?\"<>|".contains(c) { '_' } else { c })
+        .collect();
+    let limpo = limpo.trim().trim_start_matches('.').to_string();
+    if limpo.is_empty() { "musica".into() } else { limpo }
+}
+
+/// Caminho livre em `pasta` para `nome` ("x.mp3", "x (2).mp3", ...).
+fn caminho_livre(pasta: &Path, nome: &str) -> PathBuf {
+    let p = Path::new(nome);
+    let base = p.file_stem().and_then(|s| s.to_str()).unwrap_or(nome);
+    let ext = p.extension().and_then(|e| e.to_str());
+    let mut n = 1;
+    loop {
+        let candidato = match (n, ext) {
+            (1, _) => pasta.join(nome),
+            (_, Some(e)) => pasta.join(format!("{base} ({n}).{e}")),
+            (_, None) => pasta.join(format!("{base} ({n})")),
+        };
+        if !candidato.exists() {
+            return candidato;
+        }
+        n += 1;
+    }
+}
+
+/// Baixa para `pasta` (arquivo `.parte` renomeado no fim) e confere o hash.
+fn baixar(acesso: &mut Acesso, remoto: &Remoto, pasta: &Path) -> Result<PathBuf, String> {
+    std::fs::create_dir_all(pasta).map_err(|e| e.to_string())?;
+    let destino = caminho_livre(pasta, &nome_seguro(&remoto.nome));
+    let parte = destino.with_extension(format!(
+        "{}.parte",
+        destino.extension().and_then(|e| e.to_str()).unwrap_or("")
+    ));
+    let r = (|| {
+        let mut resposta = agente_arquivos()
+            .get(&format!("{API}/files/{}?alt=media", remoto.id))
+            .header("Authorization", &acesso.cabecalho()?)
+            .call()
+            .map_err(erro)?;
+        let mut leitor = resposta.body_mut().with_config().limit(u64::MAX).reader();
+        let mut arquivo = std::fs::File::create(&parte).map_err(|e| e.to_string())?;
+        std::io::copy(&mut leitor, &mut arquivo).map_err(|e| e.to_string())?;
+        arquivo.sync_all().map_err(|e| e.to_string())?;
+        drop(arquivo);
+        let hash = crate::import::hash_arquivo(&parte).map_err(|e| e.to_string())?;
+        if hash != remoto.hash {
+            return Err("o arquivo baixado veio diferente do original".to_string());
+        }
+        std::fs::rename(&parte, &destino).map_err(|e| e.to_string())
+    })();
+    if r.is_err() {
+        let _ = std::fs::remove_file(&parte);
+    }
+    r.map(|()| destino)
+}
+
+/// "Sincronizar agora": sobe as músicas que o Drive não tem e baixa para `destino` as que o
+/// aparelho não tem (`conhecidos` = hashes de todos os registros, presentes ou não, para não
+/// baixar o que a pessoa só moveu). Nunca apaga nada. Devolve o resumo e os arquivos baixados.
+pub fn sincronizar_musicas(
+    dados: &Path,
+    locais: Vec<Local>,
+    conhecidos: std::collections::HashSet<String>,
+    destino: &Path,
+    mut progresso: impl FnMut(Progresso),
+) -> Result<(ResumoSync, Vec<PathBuf>), String> {
+    let conta = carregar(dados).ok_or("Entre com a conta do Google primeiro.")?;
+    if SINCRONIZANDO.swap(true, Ordering::SeqCst) {
+        return Err("A sincronização já está em andamento.".into());
+    }
+    CANCELAR.store(false, Ordering::SeqCst);
+    let r = (|| {
+        progresso(Progresso { fase: "listando", feito: 0, total: 0, nome: String::new() });
+        let mut acesso = Acesso::novo(&conta)?;
+        let remotos = listar_musicas(&mut acesso, &conta.musicas)?;
+        let no_drive: std::collections::HashSet<&str> = remotos.iter().map(|r| r.hash.as_str()).collect();
+
+        let mut resumo = ResumoSync::default();
+        // Um arquivo por hash (cópias iguais no aparelho sobem uma vez).
+        let mut vistos = std::collections::HashSet::new();
+        let subir_lista: Vec<&Local> = locais
+            .iter()
+            .filter(|l| vistos.insert(l.hash.as_str()))
+            .filter(|l| {
+                let tem = no_drive.contains(l.hash.as_str());
+                if tem {
+                    resumo.iguais += 1;
+                }
+                !tem
+            })
+            .collect();
+        let baixar_lista: Vec<&Remoto> = {
+            let mut vistos = std::collections::HashSet::new();
+            remotos
+                .iter()
+                .filter(|r| !conhecidos.contains(&r.hash) && vistos.insert(r.hash.as_str()))
+                .collect()
+        };
+
+        for (i, local) in subir_lista.iter().enumerate() {
+            if CANCELAR.load(Ordering::SeqCst) {
+                resumo.cancelado = true;
+                return Ok((resumo, Vec::new()));
+            }
+            let nome = local.caminho.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+            progresso(Progresso { fase: "subindo", feito: i as u32, total: subir_lista.len() as u32, nome: nome.clone() });
+            match subir(&mut acesso, &conta.musicas, local) {
+                Ok(()) => resumo.subidas += 1,
+                Err(e) => resumo.falhou(&nome, e),
+            }
+        }
+
+        let mut baixados = Vec::new();
+        for (i, remoto) in baixar_lista.iter().enumerate() {
+            if CANCELAR.load(Ordering::SeqCst) {
+                resumo.cancelado = true;
+                break;
+            }
+            progresso(Progresso { fase: "baixando", feito: i as u32, total: baixar_lista.len() as u32, nome: remoto.nome.clone() });
+            match baixar(&mut acesso, remoto, destino) {
+                Ok(c) => {
+                    resumo.baixadas += 1;
+                    baixados.push(c);
+                }
+                Err(e) => resumo.falhou(&remoto.nome, e),
+            }
+        }
+        Ok((resumo, baixados))
+    })();
+    SINCRONIZANDO.store(false, Ordering::SeqCst);
+    r
+}
+
 #[cfg(test)]
 mod testes {
     use super::*;
@@ -319,6 +634,18 @@ mod testes {
             "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM"
         );
         assert_eq!(aleatorio(48).unwrap().len(), 64);
+    }
+
+    #[test]
+    fn nomes_de_arquivo() {
+        assert_eq!(nome_seguro("AC/DC: Back?.mp3"), "AC_DC_ Back_.mp3");
+        assert_eq!(nome_seguro("../x.flac"), "_x.flac");
+        assert_eq!(nome_seguro("  "), "musica");
+        let pasta = crate::teste_util::pasta("skald-drive-nomes");
+        std::fs::write(pasta.join("a.mp3"), b"").unwrap();
+        std::fs::write(pasta.join("a (2).mp3"), b"").unwrap();
+        assert_eq!(caminho_livre(&pasta, "a.mp3"), pasta.join("a (3).mp3"));
+        assert_eq!(caminho_livre(&pasta, "b.mp3"), pasta.join("b.mp3"));
     }
 
     #[test]
