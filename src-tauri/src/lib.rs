@@ -1458,9 +1458,45 @@ fn alias_suggestions(db: State<db::Db>) -> Result<Vec<Vec<String>>, String> {
 }
 
 #[tauri::command]
-fn backup_export(db: State<db::Db>, destino: String) -> Result<(), String> {
-    let conn = db.0.lock().map_err(erro_db)?;
-    backup::exportar(&conn, std::path::Path::new(&destino))
+fn backup_export(app: AppHandle, destino: String) -> Result<(), String> {
+    let db = app.state::<db::Db>();
+    if !e_content(&destino) {
+        let conn = db.0.lock().map_err(erro_db)?;
+        return backup::exportar(&conn, std::path::Path::new(&destino));
+    }
+    // Android: o seletor devolve content://; exporta num arquivo temporário e copia pelo plugin fs.
+    let tmp = backup_temporario(&app)?;
+    {
+        let conn = db.0.lock().map_err(erro_db)?;
+        backup::exportar(&conn, &tmp)?;
+    }
+    let r = (|| {
+        use tauri_plugin_fs::FsExt;
+        let mut opcoes = tauri_plugin_fs::OpenOptions::new();
+        opcoes.write(true).create(true).truncate(true);
+        let caminho: tauri_plugin_fs::FilePath = destino.parse().unwrap_or_else(|e| match e {});
+        let mut saida = app.fs().open(caminho, opcoes).map_err(|e| format!("Não foi possível salvar o backup: {e}"))?;
+        let mut entrada = std::fs::File::open(&tmp).map_err(|e| e.to_string())?;
+        std::io::copy(&mut entrada, &mut saida).map_err(|e| format!("Não foi possível salvar o backup: {e}"))?;
+        saida.sync_all().ok();
+        Ok(())
+    })();
+    let _ = std::fs::remove_file(&tmp);
+    r
+}
+
+/// Endereço do seletor de arquivos do Android (não é um caminho do disco).
+fn e_content(caminho: &str) -> bool {
+    caminho.starts_with("content://")
+}
+
+/// Arquivo temporário (no cache) para passar backups de/para endereços content://.
+fn backup_temporario(app: &AppHandle) -> Result<std::path::PathBuf, String> {
+    let pasta = crate::caminhos::cache(app)?;
+    std::fs::create_dir_all(&pasta).map_err(|e| e.to_string())?;
+    let tmp = pasta.join("backup-temporario.db");
+    let _ = std::fs::remove_file(&tmp);
+    Ok(tmp)
 }
 
 /// Restaura um backup: a fila é esvaziada (os ids podem ser outros) e a tela recarrega.
@@ -1473,7 +1509,19 @@ fn backup_restore(app: AppHandle, origem: String) -> Result<String, String> {
     {
         let db = app.state::<db::Db>();
         let mut conn = db.0.lock().map_err(erro_db)?;
-        backup::restaurar(&mut conn, std::path::Path::new(&origem), &seguranca)?;
+        if e_content(&origem) {
+            // Android: copia o backup escolhido para um arquivo temporário antes de restaurar.
+            use tauri_plugin_fs::FsExt;
+            let caminho: tauri_plugin_fs::FilePath = origem.parse().unwrap_or_else(|e| match e {});
+            let bytes = app.fs().read(caminho).map_err(|e| format!("Não foi possível ler o backup: {e}"))?;
+            let tmp = backup_temporario(&app)?;
+            std::fs::write(&tmp, bytes).map_err(|e| e.to_string())?;
+            let r = backup::restaurar(&mut conn, &tmp, &seguranca);
+            let _ = std::fs::remove_file(&tmp);
+            r?;
+        } else {
+            backup::restaurar(&mut conn, std::path::Path::new(&origem), &seguranca)?;
+        }
     }
     *app.state::<FilaState>().0.lock().map_err(erro_db)? = queue::Fila::default();
     definir_origem(&app, None)?;
