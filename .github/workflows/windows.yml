@@ -72,6 +72,10 @@ jobs:
       - run: npm ci
 
       - name: Gerar o instalador
+        env:
+          # Credenciais do OAuth do Google (sincronização pelo Drive); sem elas o cartão diz "Indisponível".
+          SKALD_GOOGLE_CLIENT_ID: ${{ secrets.SKALD_GOOGLE_CLIENT_ID }}
+          SKALD_GOOGLE_CLIENT_SECRET: ${{ secrets.SKALD_GOOGLE_CLIENT_SECRET }}
         run: npm run build:windows
 
       - name: Localizar o .exe
