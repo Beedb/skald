@@ -182,27 +182,29 @@ Conferir o que já existe antes de cada etapa e marcar `[x]` só com teste feito
 - [x] 52. CI no GitHub Actions (`windows-latest`) gerando o instalador a cada tag. (Tag v0.2.0: instalador, teste-limpo e release passaram em ~8 min; o `.exe` foi anexado sozinho.)
 - [x] 53. Paridade final: todas as funções das etapas 1 a 43. (1 a 35 pelos testes do Rust no Windows, 95 passando; 36 a 41 testadas no app instalado v0.2.0; 42 e 43 são só do Android.)
 
-## Fase 9 (avisos de novas versões) — em planejamento
+## Fase 9 (avisos de novas versões)
 
 Objetivo: a pessoa cadastra o e-mail e é avisada quando sai uma versão nova. O Skáld é offline e sem servidor, então a lista e o envio ficam num serviço de fora; o app nunca guarda nem envia e-mail.
 
-Proposta:
-- **Lista e envio**: serviço de newsletter com "RSS para e-mail" apontado para `https://github.com/Beedb/skald/releases.atom` (cada release vira um e-mail automático). O serviço cuida da confirmação por e-mail (double opt-in) e do link de descadastro (LGPD). Página de inscrição linkada no README e nas notas da release.
-- **No app**: cartão "Novidades" em Configurações com o botão "Receber aviso de novas versões por e-mail", que abre a página de inscrição no navegador.
-- **Opcional**: verificação de atualização no app (desligada por padrão, para manter o "nada fala com a internet sem pedir"): ao abrir, consulta a última release do GitHub e mostra "Saiu a versão X" com o link.
+Decisões (2026-11-17):
+- **Serviço**: Buttondown (grátis até 100 inscritos). "RSS para e-mail" apontado para `https://github.com/Beedb/skald/releases.atom`: cada release vira um e-mail automático. O Buttondown cuida da confirmação por e-mail (double opt-in) e do descadastro (LGPD). Criar a conta e entrar nela é com o usuário (Claude não cria contas nem digita senhas).
+- **Verificação no app**: entra junto, desligada por padrão ("nada fala com a internet sem pedir"). Ligada, ao abrir consulta `https://api.github.com/repos/Beedb/skald/releases/latest` (`ureq`, mesmo agente de `enriquecer`) e, se a versão for maior que a do app, mostra "Saiu a versão X" com o link da release. Sem internet: fica calado.
+- Links abrem no navegador com `tauri-plugin-opener` (todas as plataformas).
 
-Decisões pendentes (perguntar ao usuário antes de codificar):
-1. **Serviço**: Buttondown (grátis até 100 inscritos, RSS automático; recomendado), Mailchimp (mais conhecido, mais pesado) ou Formulário do Google (planilha; envio manual a cada versão, com rascunho no Gmail em cópia oculta; descadastro manual).
-2. **Verificação dentro do app** (item opcional) entra junto ou fica só o e-mail por enquanto?
+Etapas (numeradas depois das da Fase 11):
+- 66. Conta no Buttondown + página de inscrição (usuário; passar o endereço `https://buttondown.com/<nome>`).
+- 67. RSS das releases → e-mail automático; texto do e-mail em pt-BR.
+- 68. Link de inscrição no README e no modelo de notas da release ("Como lançar uma versão").
+- 69. Cartão "Novidades" em Configurações: botão "Receber aviso de novas versões por e-mail" (abre a página de inscrição).
+- 70. Verificar atualização ao abrir (opção no cartão Novidades, desligada por padrão).
 
-Criar a conta no serviço é com o usuário (Claude não cria contas nem digita senhas); depois Claude configura RSS, texto do e-mail, link no README e o cartão no app.
-
-Etapas (numerar ao decidir):
-- [ ] Conta no serviço + página de inscrição (usuário).
-- [ ] RSS das releases → e-mail automático; texto do e-mail em pt-BR.
-- [ ] Link de inscrição no README e no modelo de notas da release ("Como lançar uma versão").
-- [ ] Cartão "Novidades" em Configurações (abre a página no navegador; todas as plataformas).
-- [ ] (Se aprovado) Verificar atualização no app, opção desligada por padrão.
+| Etapa | Linux | Android | Windows |
+|---|---|---|---|
+| 66 | — | — | — |
+| 67 | — | — | — |
+| 68 | — | — | — |
+| 69 | [ ] | [ ] | [ ] |
+| 70 | [ ] | [ ] | [ ] |
 
 ## Fase 10 (podcasts) — planejada
 
@@ -346,7 +348,7 @@ Etapas:
 
 ### Próximo
 
-- Fase 9 (avisos de novas versões por e-mail): responder as duas decisões pendentes e começar.
+- Fase 9 (avisos de novas versões): etapas 66 a 70 (Buttondown + verificação no app).
 - Fase 11 (widget, Android Auto, sincronização pelo Drive), começando pela etapa 60.
 - Fase 10 (podcasts), começando pela etapa 54.
 - Depois: audiolivros e itens fora de escopo.
