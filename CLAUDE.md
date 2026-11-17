@@ -229,6 +229,21 @@ Etapas:
 | 58 | [ ] | [ ] | [ ] |
 | 59 | [ ] | [ ] | [ ] |
 
+## Fase 11 (fora do app: widget, carro, nuvem) — em planejamento
+
+Ideias do usuário (2026-11-17). Decisões pendentes marcadas com **?**; perguntar antes de codificar.
+
+- **Widget Android**: `AppWidgetProvider` + `RemoteViews` em Kotlin (capa, título, artista, anterior/tocar-pausar/próxima), atualizado por `Midia.atualizar` e com os botões indo para `Java_com_skald_app_Midia_comando` (mesmo caminho da notificação). **?** Tamanhos: só 4×1 ou também 4×2/2×2.
+- **Relógio**: com a MediaSession atual o Wear OS já deve mostrar os controles do celular sem app próprio (testar quando houver relógio). App próprio para Wear OS fica para o futuro.
+- **Carro / Waze**: o caminho aberto é `MediaBrowserServiceCompat` (navegar biblioteca/playlists pelo Android Auto e pelo player do sistema). O Waze só lista players integrados ao programa de parceria dele (Waze Audio Kit); conferir se ainda aceita inscrição antes de prometer. **?** Android Auto entra junto.
+- **Google Drive / outros aparelhos**: regra "tudo offline" continua; a música sempre toca de arquivo local. Opções:
+  1. Sem código: pasta sincronizada pelo sistema (Windows: Google Drive para Desktop com "espelhar arquivos"; Linux: `rclone`/GNOME Contas Online) e importar como pasta monitorada. Só documentar e testar.
+  2. Integração própria: login Google (OAuth) a pedido, escolher pastas do Drive e baixar para a pasta do Skáld (mesmo modelo do download de podcasts, etapa 59). Internet só ao sincronizar.
+  3. Aparelhos: pastas de rede (SMB) ou cartão/USB/MTP.
+  **?** Qual opção (ou ordem) e se "aparelhos" quer dizer rede, USB ou sincronizar o Skáld entre os PCs e o celular (banco, playlists, histórico).
+
+Etapas: numerar a partir da 60 ao decidir. **?** Prioridade frente às Fases 9 e 10.
+
 ## Estado atual
 
 **MVP, Fase 2 (etapas 10 a 19), Fase 3 (20 a 23), Fase 4 (24 a 28), Fase 5 (29 a 32) e Fase 6 (33 a 35) concluídos; Fase 7 concluída no Linux (36 a 41), no Android (36 a 43) e no Windows (36 a 41); Fase 8 (Windows) concluída (44 a 53). Versão atual: 0.2.0 (release v0.2.0).**
