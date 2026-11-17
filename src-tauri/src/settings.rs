@@ -204,6 +204,24 @@ pub fn definir_crossfade(conn: &Connection, ms: u64) -> rusqlite::Result<u64> {
     Ok(ms)
 }
 
+pub fn sync_enviar(conn: &Connection) -> rusqlite::Result<bool> {
+    Ok(ler(conn, SYNC_ENVIAR)?.is_none_or(|v| v == "1"))
+}
+
+pub fn definir_sync_enviar(conn: &Connection, ativo: bool) -> rusqlite::Result<()> {
+    gravar(conn, SYNC_ENVIAR, if ativo { "1" } else { "0" })
+}
+
+/// Identificador deste aparelho na sincronização (nome do arquivo dele no Drive).
+pub fn aparelho_id(conn: &Connection) -> rusqlite::Result<String> {
+    if let Some(id) = ler(conn, "aparelho_id")? {
+        return Ok(id);
+    }
+    let id: String = conn.query_row("SELECT lower(hex(randomblob(8)))", [], |r| r.get(0))?;
+    gravar(conn, "aparelho_id", &id)?;
+    Ok(id)
+}
+
 #[cfg(test)]
 mod testes {
     use super::*;
@@ -283,22 +301,4 @@ mod testes {
         definir_equalizador(&conn, Preset::Voz).unwrap();
         assert_eq!(carregar(&conn).unwrap().equalizador, Preset::Voz);
     }
-}
-
-/// Identificador deste aparelho na sincronização (nome do arquivo dele no Drive).
-pub fn aparelho_id(conn: &Connection) -> rusqlite::Result<String> {
-    if let Some(id) = ler(conn, "aparelho_id")? {
-        return Ok(id);
-    }
-    let id: String = conn.query_row("SELECT lower(hex(randomblob(8)))", [], |r| r.get(0))?;
-    gravar(conn, "aparelho_id", &id)?;
-    Ok(id)
-}
-
-pub fn sync_enviar(conn: &Connection) -> rusqlite::Result<bool> {
-    Ok(ler(conn, SYNC_ENVIAR)?.is_none_or(|v| v == "1"))
-}
-
-pub fn definir_sync_enviar(conn: &Connection, ativo: bool) -> rusqlite::Result<()> {
-    gravar(conn, SYNC_ENVIAR, if ativo { "1" } else { "0" })
 }

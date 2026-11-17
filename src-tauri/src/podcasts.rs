@@ -10,6 +10,9 @@ use std::sync::Mutex;
 use lofty::prelude::*;
 use rusqlite::{params, Connection, OptionalExtension};
 
+/// Áudio de podcast ainda sem episódio: id, caminho, título, álbum, autor, duração e mtime.
+type Pendente = (i64, String, Option<String>, Option<String>, Option<String>, Option<i64>, Option<i64>);
+
 /// Episódio novo lido do disco antes de gravar.
 struct Novo {
     media_id: i64,
@@ -27,7 +30,7 @@ struct Novo {
 /// episódios locais cujo registro saiu da biblioteca e programas locais vazios.
 /// As tags são lidas sem travar o banco. Devolve quantos episódios foram criados.
 pub fn sincronizar(db: &Mutex<Connection>) -> Result<u32, String> {
-    let pendentes: Vec<(i64, String, Option<String>, Option<String>, Option<String>, Option<i64>, Option<i64>)> = {
+    let pendentes: Vec<Pendente> = {
         let conn = db.lock().map_err(|_| "Banco de dados indisponível.".to_string())?;
         let mut st = conn
             .prepare(
@@ -37,12 +40,10 @@ pub fn sincronizar(db: &Mutex<Connection>) -> Result<u32, String> {
                    AND NOT EXISTS (SELECT 1 FROM podcast_episode e WHERE e.media_id = m.id)",
             )
             .map_err(|e| e.to_string())?;
-        let v = st
-            .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?, r.get(5)?, r.get(6)?)))
+        st.query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?, r.get(5)?, r.get(6)?)))
             .map_err(|e| e.to_string())?
             .collect::<Result<_, _>>()
-            .map_err(|e| e.to_string())?;
-        v
+            .map_err(|e| e.to_string())?
     };
     let novos: Vec<Novo> = pendentes
         .into_iter()

@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { getVersion } from "@tauri-apps/api/app";
 import { ask, open, save } from "@tauri-apps/plugin-dialog";
 import { listen } from "@tauri-apps/api/event";
 import { openUrl } from "@tauri-apps/plugin-opener";
@@ -289,6 +290,7 @@ export default function Configuracoes({ onErro }: { onErro: (m: string) => void 
   const [ausentes, setAusentes] = useState(0);
   const [confirmarAusentes, setConfirmarAusentes] = useState(false);
   const [avisoPodcasts, setAvisoPodcasts] = useState<string | null>(null);
+  const [versao, setVersao] = useState<string | null>(null);
   const [importandoPodcasts, setImportandoPodcasts] = useState(false);
 
   useEffect(() => {
@@ -314,6 +316,9 @@ export default function Configuracoes({ onErro }: { onErro: (m: string) => void 
       .catch(() => {});
     invoke<{ media_count: number }>("db_status")
       .then((d) => setMusicas(d.media_count))
+      .catch(() => {});
+    getVersion()
+      .then(setVersao)
       .catch(() => {});
     invoke<number>("missing_count")
       .then(setAusentes)
@@ -503,6 +508,16 @@ export default function Configuracoes({ onErro }: { onErro: (m: string) => void 
       <h2>Configurações</h2>
 
       <Cartao icone={Bell} titulo="Novidades">
+        <Linha
+          titulo={
+            <>
+              Versão do Skáld: <strong>{versao ?? "…"}</strong>
+            </>
+          }
+          nota="O que mudou em cada versão está nas notas, no GitHub."
+        >
+          <button onClick={() => openUrl("https://github.com/Beedb/skald/releases")}>Notas das versões…</button>
+        </Linha>
         <Linha
           titulo="Aviso de novas versões por e-mail"
           nota="Abre a página de inscrição no navegador. O cadastro é feito no Buttondown, com confirmação por e-mail e descadastro em qualquer aviso; o Skáld não guarda nem envia o seu e-mail."

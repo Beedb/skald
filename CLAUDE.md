@@ -203,8 +203,8 @@ Etapas (numeradas depois das da Fase 11):
 | 66 | [x] | — | — |
 | 67 | [x] | — | — |
 | 68 | [x] | — | — |
-| 69 | [x] | [ ] | [ ] |
-| 70 | [x] | [ ] | [ ] |
+| 69 | [x] | [x] | [ ] |
+| 70 | [x] | [x] | [ ] |
 
 ## Fase 10 (podcasts) — planejada
 
@@ -349,7 +349,7 @@ Etapas:
 
 ### Próximo
 
-- Fase 9: falta testar 69 e 70 no Android e no Windows (próxima release).
+- Fase 9: 69 e 70 testadas no Android; falta o Windows (próxima release). O cartão Novidades mostra a versão do app (`getVersion`) e abre as notas das versões.
 - Android: exportar/restaurar backup aceitam `content://` (arquivo temporário no cache + `tauri_plugin_fs`); falta testar no aparelho.
 - Fase 11, sincronização pelo Drive (estado em 2026-11-17):
   - Linux e Android: login (63) e subir/baixar músicas (64) testados. Falta testar a 65 (dados) entre PC e celular. Configurações → Biblioteca tem "Músicas não encontradas (N)" → remover só os registros (`missing_count`/`remove_missing`).
