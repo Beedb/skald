@@ -1,5 +1,6 @@
 mod apelidos;
 mod caminhos;
+mod drive;
 mod artistas;
 mod backup;
 #[cfg(test)]
@@ -1673,6 +1674,38 @@ fn set_update_check(db: State<db::Db>, ativo: bool) -> Result<(), String> {
 }
 
 /// Versão nova no GitHub, só com a opção ligada; desligada ou sem internet devolve nada.
+/// Conta do Google Drive (sincronização): disponível nesta versão, conectada, e-mail.
+#[tauri::command]
+fn sync_status(app: AppHandle) -> Result<drive::Estado, String> {
+    Ok(drive::estado(&caminhos::dados(&app)?))
+}
+
+/// Abre o navegador para entrar com o Google e espera a autorização (ou "Cancelar").
+#[tauri::command]
+async fn sync_login(app: AppHandle) -> Result<drive::Estado, String> {
+    use tauri_plugin_opener::OpenerExt;
+    let dados = caminhos::dados(&app)?;
+    tauri::async_runtime::spawn_blocking(move || {
+        drive::entrar(&dados, |url| app.opener().open_url(url, None::<&str>).map_err(|e| e.to_string()))
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+fn sync_cancel() {
+    drive::cancelar();
+}
+
+/// Desconecta a conta neste aparelho (nada no Drive é apagado).
+#[tauri::command]
+async fn sync_logout(app: AppHandle) -> Result<drive::Estado, String> {
+    let dados = caminhos::dados(&app)?;
+    tauri::async_runtime::spawn_blocking(move || drive::sair(&dados))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
 #[tauri::command]
 async fn update_check(db: State<'_, db::Db>) -> Result<Option<novidades::NovaVersao>, String> {
     let ligado = {
@@ -2047,6 +2080,10 @@ pub fn run() {
             set_continue,
             set_update_check,
             update_check,
+            sync_status,
+            sync_login,
+            sync_cancel,
+            sync_logout,
             autostart_get,
             set_autostart,
             set_crossfade,

@@ -4,7 +4,7 @@ import { ask, open, save } from "@tauri-apps/plugin-dialog";
 import { listen } from "@tauri-apps/api/event";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { aplicarTema, ModoTema, temDuasVariantes, TEMAS } from "./tema";
-import { Bell, Database, FolderOpen, Library, Monitor, Palette, Play, type LucideIcon } from "lucide-react";
+import { Bell, Cloud, Database, FolderOpen, Library, Monitor, Palette, Play, type LucideIcon } from "lucide-react";
 
 type Normalizacao = "desligada" | "faixa" | "album";
 type Preset = "desligado" | "grave" | "agudo" | "bateria" | "voz" | "instrumental";
@@ -63,6 +63,77 @@ function Linha({ titulo, nota, children }: { titulo: React.ReactNode; nota?: Rea
       </div>
       {children && <div className="cfg-controle">{children}</div>}
     </div>
+  );
+}
+
+type EstadoSync = { disponivel: boolean; conectado: boolean; email: string | null; nome: string | null };
+
+/** Conta do Google Drive para sincronizar entre aparelhos (etapas 63 a 65). */
+function CartaoSincronizacao() {
+  const [estado, setEstado] = useState<EstadoSync | null>(null);
+  const [entrando, setEntrando] = useState(false);
+  const [erro, setErro] = useState<string | null>(null);
+
+  useEffect(() => {
+    invoke<EstadoSync>("sync_status").then(setEstado).catch(() => {});
+  }, []);
+
+  async function entrar() {
+    setErro(null);
+    setEntrando(true);
+    try {
+      setEstado(await invoke<EstadoSync>("sync_login"));
+    } catch (e) {
+      setErro(String(e));
+    } finally {
+      setEntrando(false);
+    }
+  }
+
+  async function sair() {
+    setErro(null);
+    try {
+      setEstado(await invoke<EstadoSync>("sync_logout"));
+    } catch (e) {
+      setErro(String(e));
+    }
+  }
+
+  return (
+    <Cartao icone={Cloud} titulo="Sincronização">
+      {!estado ? (
+        <Linha titulo="Google Drive" nota="…" />
+      ) : !estado.disponivel ? (
+        <Linha titulo="Google Drive" nota="Indisponível nesta versão do Skáld (compilada sem as credenciais do Google)." />
+      ) : estado.conectado ? (
+        <Linha
+          titulo={
+            <>
+              Conectado como <strong>{estado.email}</strong>
+            </>
+          }
+          nota="A pasta “Skáld” está pronta no seu Google Drive. O Skáld só enxerga essa pasta. Sair desconecta este aparelho; nada no Drive é apagado."
+        >
+          <button onClick={sair}>Sair</button>
+        </Linha>
+      ) : (
+        <Linha
+          titulo="Google Drive"
+          nota={
+            entrando
+              ? "Autorize no navegador que abriu e depois volte para cá."
+              : "Guarde músicas, playlists e histórico numa pasta “Skáld” no seu Google Drive para usar nos outros aparelhos. O Skáld só enxerga essa pasta, e nada sai do aparelho sem você pedir."
+          }
+        >
+          {entrando ? (
+            <button onClick={() => invoke("sync_cancel").catch(() => {})}>Cancelar</button>
+          ) : (
+            <button onClick={entrar}>Entrar com o Google</button>
+          )}
+        </Linha>
+      )}
+      {erro && <p className="nota destaque">{erro}</p>}
+    </Cartao>
   );
 }
 
@@ -438,6 +509,8 @@ export default function Configuracoes({ onErro }: { onErro: (m: string) => void 
           </strong>
         </Linha>
       </Cartao>
+
+      <CartaoSincronizacao />
 
       <Cartao icone={Database} titulo="Dados">
         <Linha
