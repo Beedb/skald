@@ -40,6 +40,17 @@ pub struct Mpris {
 impl Mpris {
     pub fn iniciar(app: AppHandle) -> Result<Self, String> {
         let _ = APP.set(app.clone());
+        // Widget: playlists recentes agora e a cada mudança (criar, tocar, capa, itens).
+        {
+            use tauri::Listener;
+            let a = app.clone();
+            std::thread::spawn(move || publicar_playlists(&a));
+            let a = app.clone();
+            app.listen(crate::EVENTO_PLAYLISTS, move |_| {
+                let a = a.clone();
+                std::thread::spawn(move || publicar_playlists(&a));
+            });
+        }
         let (envio, recebe) = mpsc::channel();
         std::thread::spawn(move || trabalhar(app, recebe));
         Ok(Self {
@@ -195,6 +206,83 @@ fn publicar(classe: &mut Option<GlobalRef>, m: &Meta, estado: i32, posicao_ms: i
     r.map_err(|e| e.to_string())
 }
 
+/// Quantas playlists o widget mostra no máximo (5×2).
+const PLAYLISTS_WIDGET: usize = 5;
+
+/// Playlists para o widget: não vazias, tocadas mais recentemente primeiro (as nunca
+/// tocadas seguem a ordem da lateral), com a capa escolhida ou a miniatura da primeira música.
+fn playlists_widget(app: &AppHandle) -> Vec<(i64, Option<String>)> {
+    let db = app.state::<crate::db::Db>();
+    let escolhidas: Vec<(i64, Option<String>, Option<i64>)> = {
+        let Ok(conn) = db.0.lock() else { return Vec::new() };
+        let Ok(mut lista) = crate::playlists::listar(&conn) else { return Vec::new() };
+        lista.retain(|p| p.total > 0);
+        lista.sort_by_key(|p| std::cmp::Reverse(p.tocada_em));
+        lista
+            .into_iter()
+            .take(PLAYLISTS_WIDGET)
+            .map(|p| {
+                let escolhida = if p.capa_escolhida { crate::playlists::capa(&conn, p.id).ok().flatten() } else { None };
+                (p.id, escolhida, p.primeira_media_id)
+            })
+            .collect()
+    };
+    let pasta = app.path().app_cache_dir().ok().map(crate::miniaturas::pasta);
+    escolhidas
+        .into_iter()
+        .map(|(id, escolhida, primeira)| {
+            let capa = escolhida.or_else(|| {
+                let (pasta, primeira) = (pasta.as_ref()?, primeira?);
+                crate::miniaturas::arquivo(&db.0, pasta, primeira).ok().flatten().map(|c| c.to_string_lossy().into_owned())
+            });
+            (id, capa)
+        })
+        .collect()
+}
+
+/// Manda ao widget uma linha por playlist: `id<TAB>caminho da capa` (caminho vazio = sem capa).
+fn publicar_playlists(app: &AppHandle) {
+    let texto: String = playlists_widget(app)
+        .into_iter()
+        .map(|(id, capa)| format!("{id}\t{}\n", capa.unwrap_or_default()))
+        .collect();
+    let r = com_midia(|env, c| {
+        let t = env.new_string(&texto)?;
+        env.call_static_method(c, "playlists", "(Ljava/lang/String;)V", &[JValue::Object(&t)])?;
+        Ok(())
+    });
+    if let Err(e) = r {
+        eprintln!("Widget (playlists): {e}");
+    }
+}
+
+/// Roda `f` com a classe `com.skald.app.Midia` (carregada pelo class loader da atividade).
+fn com_midia(f: impl FnOnce(&mut JNIEnv, &JClass) -> jni::errors::Result<()>) -> Result<(), String> {
+    let ctx = ndk_context::android_context();
+    if ctx.vm().is_null() || ctx.context().is_null() {
+        return Err("contexto do Android indisponível".into());
+    }
+    // SAFETY: ponteiros do JavaVM e da atividade fornecidos pelo tao (ndk_context).
+    let vm = unsafe { JavaVM::from_raw(ctx.vm().cast()) }.map_err(|e| e.to_string())?;
+    let mut env = vm.attach_current_thread().map_err(|e| e.to_string())?;
+    let r = (|| -> jni::errors::Result<()> {
+        // SAFETY: referência global da atividade, mantida pelo tao; não é apagada aqui.
+        let atividade = unsafe { JObject::from_raw(ctx.context().cast()) };
+        let loader = env.call_method(&atividade, "getClassLoader", "()Ljava/lang/ClassLoader;", &[])?.l()?;
+        let nome = env.new_string("com.skald.app.Midia")?;
+        let c = env
+            .call_method(&loader, "loadClass", "(Ljava/lang/String;)Ljava/lang/Class;", &[JValue::Object(&nome)])?
+            .l()?;
+        let c: JClass = c.into();
+        f(&mut env, &c)
+    })();
+    if r.is_err() && env.exception_check().unwrap_or(false) {
+        let _ = env.exception_describe();
+        let _ = env.exception_clear();
+    }
+    r.map_err(|e| e.to_string())
+}
+
 /// `Midia.comando(acao, valor)`: botões da notificação, tela de bloqueio e fones.
 /// Usa as mesmas funções dos botões do app, fora da thread do Android.
 #[unsafe(no_mangle)]
@@ -222,6 +310,13 @@ fn comando(app: &AppHandle, acao: &str, valor: u64) {
         "proxima" => crate::avancar(app, false),
         "anterior" => crate::voltar(app),
         "buscar" => player.buscar(valor),
+        "playlist" => crate::play_playlist(
+            app.clone(),
+            app.state::<crate::FilaState>(),
+            valor as i64,
+            crate::playlists::Ordem::Personalizada,
+            0,
+        ),
         _ => Ok(()),
     };
     if let Err(e) = resultado {

@@ -9,7 +9,8 @@ import androidx.core.content.ContextCompat
 /** Ponte nativa da reprodução: o Rust (midia_android.rs) chama `atualizar` e recebe os
  *  botões por `comando`. O serviço de mídia mostra a notificação e mantém o app vivo. */
 object Midia {
-  /** Ações: alternar, tocar, pausar, proxima, anterior, buscar (valor = posição em ms). */
+  /** Ações: alternar, tocar, pausar, proxima, anterior, buscar (valor = posição em ms),
+   *  playlist (valor = id da playlist). */
   @JvmStatic external fun comando(acao: String, valor: Long)
 
   data class Estado(
@@ -28,6 +29,12 @@ object Midia {
   @Volatile var contexto: Context? = null
 
   private val principal = Handler(Looper.getMainLooper())
+
+  /** Playlists recentes para o widget (do Rust): uma linha por playlist, `id<TAB>capa`. */
+  @JvmStatic
+  fun playlists(texto: String) {
+    principal.post { contexto?.let { WidgetPlayer.playlists(it, texto) } }
+  }
 
   @JvmStatic
   fun atualizar(titulo: String, artista: String, album: String, capa: String?, duracaoMs: Long, posicaoMs: Long, estado: Int) {

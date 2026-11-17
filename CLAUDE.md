@@ -245,7 +245,7 @@ Decisões (2026-11-17): widget só no Android (relógio e app Wear OS ficam para
 
 Etapas:
 - 60. Widget Yx1 (player). **Feita**: `WidgetPlayer.kt` (`AppWidgetProvider`; `RemoteViews` por tamanho no Android 12+, `OPTION_APPWIDGET_MIN_WIDTH` antes; ≥ 180 dp usa `widget_largo` com capa ≤ 192 px, título e artista, menor usa `widget_estreito` só com botões), `res/xml/widget_player.xml` (2 a 5 células, 1 linha), cores do carmesim em `values/colors.xml` (`tema_*`), ícones do lucide em `drawable/widget_*`. `Midia.atualizar` chama `WidgetPlayer.atualizar` só quando música, capa ou estado mudam; o estado fica em SharedPreferences `widget_player` (com o processo morto mostra pausado). Botões: broadcast `WIDGET_ACAO` → `Midia.comando` se o Rust está carregado (`Midia.contexto`), senão abre o app (o Android permite: `BAL_ALLOW_TOKEN`). Depois de "Forçar parada" o 1º toque só redesenha o widget (limitação do Android). Instalar por cima da release com o APK release (`scripts/android.sh build --apk --target aarch64`), nunca desinstalar.
-- 61. Widget Yx2 (player + playlists).
+- 61. Widget Yx2 (player + playlists). **Feita**: com altura ≥ 100 dp usa `widget_alto` (≥ 180 dp de largura) ou `widget_alto_estreito`: player em cima e uma faixa de capas quadradas pequenas (como no Spotify; `adjustViewBounds` + recorte quadrado), 3 capas em 2 células, 4 em 3, 5 a partir de 4; vagas sem playlist ficam invisíveis. `midia_android::publicar_playlists` (ao iniciar e a cada `EVENTO_PLAYLISTS`, via `app.listen`) manda até 5 playlists não vazias, tocadas mais recentemente primeiro, como `id<TAB>capa` (escolhida ou miniatura da primeira música) para `Midia.playlists` → SharedPreferences. Toque: `Midia.comando("playlist", id)` → `play_playlist` (ordem personalizada). Testado no S24+: 5×2 e toque na capa.
 - 62. Android Auto.
 - 63. Conta Google e pasta `Skáld` no Drive (Configurações → Sincronização).
 - 64. Subir e descer músicas.
@@ -254,7 +254,7 @@ Etapas:
 | Etapa | Linux | Android | Windows |
 |---|---|---|---|
 | 60 | — | [x] | — |
-| 61 | — | [ ] | — |
+| 61 | — | [x] | — |
 | 62 | — | [ ] | — |
 | 63 | [ ] | [ ] | [ ] |
 | 64 | [ ] | [ ] | [ ] |
@@ -349,6 +349,7 @@ Etapas:
 ### Próximo
 
 - Fase 9: falta testar 69 e 70 no Android e no Windows (próxima release).
-- Fase 11 (widget, Android Auto, sincronização pelo Drive): próxima é a etapa 61 (widget Yx2).
+- Pendente no Android: restaurar backup (Configurações → Dados) recebe `content://` do seletor; ler com `tauri_plugin_fs` como em `playlist_set_cover`.
+- Fase 11 (widget, Android Auto, sincronização pelo Drive): próxima é a etapa 62 (Android Auto).
 - Fase 10 (podcasts), começando pela etapa 54.
 - Depois: audiolivros e itens fora de escopo.
