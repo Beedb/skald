@@ -97,7 +97,11 @@ pub fn listar(conn: &Connection) -> Result<Vec<Resumo>, String> {
 }
 
 pub fn criar(conn: &Connection, nome: &str) -> Result<i64, String> {
-    conn.execute("INSERT INTO playlist (name) VALUES (?1)", [nome_valido(nome)?]).map_err(sql)?;
+    conn.execute(
+        "INSERT INTO playlist (name, uuid) VALUES (?1, lower(hex(randomblob(16))))",
+        [nome_valido(nome)?],
+    )
+    .map_err(sql)?;
     Ok(conn.last_insert_rowid())
 }
 
@@ -128,6 +132,14 @@ pub fn renomear(conn: &Connection, id: i64, nome: &str) -> Result<(), String> {
 /// Exclui só a playlist e suas referências; as músicas continuam na biblioteca.
 pub fn excluir(conn: &Connection, id: i64) -> Result<(), String> {
     exigir_comum(conn, id, "excluída")?;
+    // A marca faz a exclusão valer nos outros aparelhos (sincronização).
+    conn.execute(
+        "INSERT INTO playlist_removida (uuid, removida_em)
+         SELECT uuid, unixepoch() FROM playlist WHERE id = ?1 AND uuid IS NOT NULL
+         ON CONFLICT(uuid) DO UPDATE SET removida_em = excluded.removida_em",
+        [id],
+    )
+    .map_err(sql)?;
     conn.execute("DELETE FROM playlist WHERE id = ?1", [id]).map_err(sql)?;
     Ok(())
 }
@@ -175,6 +187,12 @@ pub fn itens(conn: &Connection, id: i64, ordem: Ordem) -> Result<Vec<Item>, Stri
 
 /// Remove a música desta playlist apenas (não da biblioteca nem de outras playlists).
 pub fn remover_item(conn: &Connection, item_id: i64) -> Result<(), String> {
+    conn.execute(
+        "UPDATE playlist SET updated_at = unixepoch()
+         WHERE id = (SELECT playlist_id FROM playlist_item WHERE id = ?1)",
+        [item_id],
+    )
+    .map_err(sql)?;
     conn.execute("DELETE FROM playlist_item WHERE id = ?1", [item_id]).map_err(sql)?;
     Ok(())
 }
@@ -203,6 +221,7 @@ pub fn mover_item(conn: &mut Connection, item_id: i64, nova_posicao: usize) -> R
             upd.execute(params![id, pos as i64]).map_err(sql)?;
         }
     }
+    tx.execute("UPDATE playlist SET updated_at = unixepoch() WHERE id = ?1", [playlist]).map_err(sql)?;
     tx.commit().map_err(sql)
 }
 
@@ -217,6 +236,7 @@ pub fn alternar_curtida(conn: &mut Connection, media_id: i64) -> Result<bool, St
         .execute("DELETE FROM playlist_item WHERE playlist_id = ?1 AND media_id = ?2", params![id, media_id])
         .map_err(sql)?;
     if removidas > 0 {
+        conn.execute("UPDATE playlist SET updated_at = unixepoch() WHERE id = ?1", [id]).map_err(sql)?;
         return Ok(false);
     }
     adicionar(conn, id, &[media_id])?;

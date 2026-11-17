@@ -18,7 +18,14 @@ object Midia {
   @JvmStatic external fun navegar(pai: String): String
 
   /** Guarda a máquina Java, esta classe e as pastas do app para o Rust (antes de ele iniciar). */
-  @JvmStatic external fun iniciarNativo(dados: String, cache: String)
+  /** Rust: liga (com o texto da notificação) ou desliga (null) o SyncService. */
+  @JvmStatic
+  fun segundoPlano(texto: String?) {
+    val ctx = contexto ?: return
+    principal.post { SyncService.definir(ctx, texto) }
+  }
+
+  @JvmStatic external fun iniciarNativo(dados: String, cache: String, musica: String)
 
   /** O Rust terminou de iniciar (banco, player, fila): a primeira lista de playlists chegou. */
   @Volatile var pronto = false

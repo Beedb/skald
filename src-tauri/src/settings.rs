@@ -279,3 +279,13 @@ mod testes {
         assert_eq!(carregar(&conn).unwrap().equalizador, Preset::Voz);
     }
 }
+
+/// Identificador deste aparelho na sincronização (nome do arquivo dele no Drive).
+pub fn aparelho_id(conn: &Connection) -> rusqlite::Result<String> {
+    if let Some(id) = ler(conn, "aparelho_id")? {
+        return Ok(id);
+    }
+    let id: String = conn.query_row("SELECT lower(hex(randomblob(8)))", [], |r| r.get(0))?;
+    gravar(conn, "aparelho_id", &id)?;
+    Ok(id)
+}

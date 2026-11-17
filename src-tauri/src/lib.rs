@@ -1,6 +1,7 @@
 mod apelidos;
 mod caminhos;
 mod drive;
+mod sincdados;
 mod artistas;
 mod backup;
 #[cfg(test)]
@@ -1686,12 +1687,36 @@ fn sync_status(app: AppHandle) -> Result<drive::Estado, String> {
     Ok(drive::estado(&caminhos::dados(&app)?))
 }
 
+/// Enquanto existir, o Android mantém o app acordado com uma notificação (SyncService);
+/// sem isso a Samsung congela o processo em segundo plano. Nas outras plataformas não faz nada.
+struct TarefaLonga;
+
+impl TarefaLonga {
+    fn nova(texto: &str) -> Self {
+        Self::texto(texto);
+        TarefaLonga
+    }
+
+    fn texto(_texto: &str) {
+        #[cfg(target_os = "android")]
+        mpris::segundo_plano(Some(_texto));
+    }
+}
+
+impl Drop for TarefaLonga {
+    fn drop(&mut self) {
+        #[cfg(target_os = "android")]
+        mpris::segundo_plano(None);
+    }
+}
+
 /// Abre o navegador para entrar com o Google e espera a autorização (ou "Cancelar").
 #[tauri::command]
 async fn sync_login(app: AppHandle) -> Result<drive::Estado, String> {
     use tauri_plugin_opener::OpenerExt;
     let dados = caminhos::dados(&app)?;
     tauri::async_runtime::spawn_blocking(move || {
+        let _acordado = TarefaLonga::nova("Entrando com o Google…");
         drive::entrar(&dados, |url| app.opener().open_url(url, None::<&str>).map_err(|e| e.to_string()))
     })
     .await
@@ -1704,18 +1729,33 @@ struct SyncResultado {
     #[serde(flatten)]
     resumo: drive::ResumoSync,
     pasta: String,
+    /// Playlists, escutas e apelidos que mudaram neste aparelho (nulo se parou antes).
+    dados: Option<sincdados::Mudancas>,
 }
 
 /// "Sincronizar agora": sobe as músicas que faltam no Drive e baixa as que faltam aqui para
 /// `<Música>/Skáld/Drive` (vira pasta monitorada). Progresso pelo evento `sincronizacao-progresso`.
 #[tauri::command]
 async fn sync_now(app: AppHandle) -> Result<SyncResultado, String> {
-    tauri::async_runtime::spawn_blocking(move || {
+    let emissor = app.clone();
+    let r = tauri::async_runtime::spawn_blocking(move || sincronizar_agora(app))
+        .await
+        .map_err(|e| e.to_string())?;
+    // A tela pode ter saído e voltado: o resultado também vai por evento.
+    let _ = emissor.emit(
+        "sincronizacao-fim",
+        &match &r {
+            Ok(v) => serde_json::json!({ "ok": v }),
+            Err(e) => serde_json::json!({ "erro": e }),
+        },
+    );
+    r
+}
+
+fn sincronizar_agora(app: AppHandle) -> Result<SyncResultado, String> {
+    {
         let dados = caminhos::dados(&app)?;
-        let destino = app
-            .path()
-            .audio_dir()
-            .map_err(|_| "Pasta de música do sistema não encontrada.".to_string())?
+        let destino = caminhos::musica(&app)?
             .join("Skáld")
             .join("Drive");
         // Hash das músicas que ainda não têm (as antigas e as recém-importadas).
@@ -1746,8 +1786,13 @@ async fn sync_now(app: AppHandle) -> Result<SyncResultado, String> {
                 .map_err(|e| e.to_string())?;
             (locais, conhecidos)
         };
+        let _acordado = TarefaLonga::nova("Sincronizando com o Google Drive…");
         let emissor = app.clone();
         let (resumo, baixados) = drive::sincronizar_musicas(&dados, locais, conhecidos, &destino, move |p| {
+            if p.total > 0 {
+                let verbo = if p.fase == "subindo" { "Enviando" } else { "Baixando" };
+                TarefaLonga::texto(&format!("{verbo} {} de {}: {}", p.feito + 1, p.total, p.nome));
+            }
             let _ = emissor.emit("sincronizacao-progresso", &p);
         })?;
         if !baixados.is_empty() {
@@ -1756,10 +1801,47 @@ async fn sync_now(app: AppHandle) -> Result<SyncResultado, String> {
                 let _ = app.emit(EVENTO_BIBLIOTECA, &r);
             }
         }
-        Ok(SyncResultado { resumo, pasta: destino.to_string_lossy().into_owned() })
-    })
-    .await
-    .map_err(|e| e.to_string())?
+        // Depois das músicas (as playlists já acham as baixadas): playlists, curtidas,
+        // histórico e apelidos.
+        let mut mudancas = None;
+        if !resumo.cancelado {
+            let _ = app.emit(
+                "sincronizacao-progresso",
+                &drive::Progresso { fase: "dados", feito: 0, total: 0, nome: String::new() },
+            );
+            TarefaLonga::texto("Sincronizando playlists e histórico…");
+            let aparelho = {
+                let db = app.state::<db::Db>();
+                let conn = db.0.lock().map_err(erro_db)?;
+                settings::aparelho_id(&conn).map_err(|e| e.to_string())?
+            };
+            drive::sincronizar_dados(&dados, &aparelho, |textos| {
+                let db = app.state::<db::Db>();
+                let mut conn = db.0.lock().map_err(erro_db)?;
+                let mut todos = vec![sincdados::exportar(&conn)?];
+                for t in textos {
+                    // Arquivo de versão mais nova ou estragado: ignora (não apaga nada).
+                    match serde_json::from_str::<sincdados::Dados>(&t) {
+                        Ok(d) if d.versao <= sincdados::VERSAO => todos.push(d),
+                        _ => {}
+                    }
+                }
+                let m = sincdados::aplicar(&mut conn, &sincdados::mesclar(&todos))?;
+                let meu = serde_json::to_string(&sincdados::exportar(&conn)?).map_err(|e| e.to_string())?;
+                mudancas = Some(m);
+                Ok(meu)
+            })?;
+            if let Some(m) = &mudancas {
+                if m.playlists > 0 {
+                    let _ = app.emit(EVENTO_PLAYLISTS, ());
+                }
+                if m.escutas > 0 {
+                    let _ = app.emit(EVENTO_HISTORICO, ());
+                }
+            }
+        }
+        Ok(SyncResultado { resumo, pasta: destino.to_string_lossy().into_owned(), dados: mudancas })
+    }
 }
 
 #[tauri::command]

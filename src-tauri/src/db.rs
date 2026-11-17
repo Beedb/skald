@@ -114,6 +114,16 @@ const MIGRATIONS: &[&str] = &[
         track_gain REAL,
         track_peak REAL
     );",
+    // v14: sincronização entre aparelhos (etapa 65). Cada playlist ganha um identificador
+    // global (Curtidas é sempre 'curtidas'); playlists excluídas deixam uma marca para a
+    // exclusão valer nos outros aparelhos.
+    "ALTER TABLE playlist ADD COLUMN uuid TEXT;
+    UPDATE playlist SET uuid = CASE kind WHEN 'curtidas' THEN 'curtidas' ELSE lower(hex(randomblob(16))) END;
+    CREATE UNIQUE INDEX idx_playlist_uuid ON playlist(uuid);
+    CREATE TABLE playlist_removida (
+        uuid        TEXT PRIMARY KEY,
+        removida_em INTEGER NOT NULL
+    );",
 ];
 
 pub fn open(path: &Path) -> rusqlite::Result<Connection> {

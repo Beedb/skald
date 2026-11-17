@@ -20,7 +20,9 @@ object Motor {
     GStreamer.init(app)
     System.loadLibrary("skald_lib")
     Midia.contexto = app
-    Midia.iniciarNativo(app.dataDir.absolutePath, app.cacheDir.absolutePath)
+    @Suppress("DEPRECATION")
+    val musica = android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_MUSIC)
+    Midia.iniciarNativo(app.dataDir.absolutePath, app.cacheDir.absolutePath, musica.absolutePath)
     preparado = true
   }
 }

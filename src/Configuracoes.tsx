@@ -66,8 +66,14 @@ function Linha({ titulo, nota, children }: { titulo: React.ReactNode; nota?: Rea
   );
 }
 
-type EstadoSync = { disponivel: boolean; conectado: boolean; email: string | null; nome: string | null };
-type ProgressoSync = { fase: "listando" | "subindo" | "baixando"; feito: number; total: number; nome: string };
+type EstadoSync = {
+  disponivel: boolean;
+  conectado: boolean;
+  email: string | null;
+  nome: string | null;
+  sincronizando: boolean;
+};
+type ProgressoSync = { fase: "listando" | "subindo" | "baixando" | "dados"; feito: number; total: number; nome: string };
 type ResultadoSync = {
   subidas: number;
   baixadas: number;
@@ -76,6 +82,7 @@ type ResultadoSync = {
   total_falhas: number;
   cancelado: boolean;
   pasta: string;
+  dados: { playlists: number; escutas: number; apelidos: number } | null;
 };
 
 function plural(n: number, um: string, varios: string) {
@@ -84,6 +91,7 @@ function plural(n: number, um: string, varios: string) {
 
 function textoProgresso(p: ProgressoSync | null) {
   if (!p || p.fase === "listando") return "Conferindo o que há no Drive…";
+  if (p.fase === "dados") return "Sincronizando playlists, curtidas e histórico…";
   const verbo = p.fase === "subindo" ? "Enviando" : "Baixando";
   return `${verbo} ${p.feito + 1} de ${p.total}: ${p.nome}`;
 }
@@ -92,7 +100,11 @@ function textoResultado(r: ResultadoSync) {
   const partes = [];
   if (r.subidas) partes.push(`${plural(r.subidas, "música enviada", "músicas enviadas")} ao Drive`);
   if (r.baixadas) partes.push(`${plural(r.baixadas, "música baixada", "músicas baixadas")} para ${r.pasta}`);
-  if (!partes.length) partes.push("Tudo igual: nada para enviar nem baixar");
+  const d = r.dados;
+  if (d?.playlists) partes.push(plural(d.playlists, "playlist atualizada", "playlists atualizadas"));
+  if (d?.escutas) partes.push(`${plural(d.escutas, "escuta", "escutas")} no histórico`);
+  if (d?.apelidos) partes.push(plural(d.apelidos, "apelido novo", "apelidos novos"));
+  if (!partes.length) partes.push("Tudo igual: nada mudou");
   let t = partes.join("; ") + ".";
   if (r.cancelado) t = "Sincronização interrompida. " + t;
   if (r.total_falhas) t += ` ${plural(r.total_falhas, "arquivo falhou", "arquivos falharam")}: ${r.falhas.join("; ")}`;
@@ -109,25 +121,36 @@ function CartaoSincronizacao() {
   const [resultado, setResultado] = useState<string | null>(null);
 
   useEffect(() => {
-    invoke<EstadoSync>("sync_status").then(setEstado).catch(() => {});
-    const parar = listen<ProgressoSync>("sincronizacao-progresso", (e) => setProgresso(e.payload));
+    invoke<EstadoSync>("sync_status")
+      .then((e) => {
+        setEstado(e);
+        // Saiu das Configurações e voltou no meio da sincronização: retoma o progresso.
+        if (e.sincronizando) setSincronizando(true);
+      })
+      .catch(() => {});
+    const progresso = listen<ProgressoSync>("sincronizacao-progresso", (e) => {
+      setSincronizando(true);
+      setProgresso(e.payload);
+    });
+    const fim = listen<{ ok?: ResultadoSync; erro?: string }>("sincronizacao-fim", (e) => {
+      setSincronizando(false);
+      setProgresso(null);
+      if (e.payload.ok) setResultado(textoResultado(e.payload.ok));
+      if (e.payload.erro) setErro(e.payload.erro);
+    });
     return () => {
-      parar.then((f) => f());
+      progresso.then((f) => f());
+      fim.then((f) => f());
     };
   }, []);
 
-  async function sincronizar() {
+  function sincronizar() {
     setErro(null);
     setResultado(null);
     setProgresso(null);
     setSincronizando(true);
-    try {
-      setResultado(textoResultado(await invoke<ResultadoSync>("sync_now")));
-    } catch (e) {
-      setErro(String(e));
-    } finally {
-      setSincronizando(false);
-    }
+    // O resultado chega pelo evento "sincronizacao-fim" (mesmo se a tela fechar e reabrir).
+    invoke("sync_now").catch(() => {});
   }
 
   async function entrar() {
@@ -188,11 +211,11 @@ function CartaoSincronizacao() {
       )}
       {estado?.conectado && (
         <Linha
-          titulo="Músicas"
+          titulo="Músicas e dados"
           nota={
             sincronizando
               ? textoProgresso(progresso)
-              : "Envia ao Drive as músicas que ele não tem e baixa as que faltam neste aparelho. Nada é apagado, nem aqui nem no Drive."
+              : "Envia ao Drive as músicas que ele não tem e baixa as que faltam neste aparelho. Depois junta playlists, curtidas, histórico e apelidos de todos os aparelhos. Nenhuma música é apagada, nem aqui nem no Drive."
           }
         >
           {sincronizando ? (

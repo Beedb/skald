@@ -252,13 +252,30 @@ fn com_midia(f: impl FnOnce(&mut JNIEnv, &JClass) -> jni::errors::Result<()>) ->
     r.map_err(|e| e.to_string())
 }
 
-/// `Midia.iniciarNativo(dados, cache)`: chamado pelo Kotlin antes de o Rust iniciar.
+/// Notificação de tarefa longa (login no Google, sincronização): `Some(texto)` liga o
+/// `SyncService` (o Android não congela o app), `None` desliga.
+pub fn segundo_plano(texto: Option<&str>) {
+    let r = com_midia(|env, c| {
+        let t: JObject = match texto {
+            Some(t) => env.new_string(t)?.into(),
+            None => JObject::null(),
+        };
+        env.call_static_method(c, "segundoPlano", "(Ljava/lang/String;)V", &[JValue::Object(&t)])?;
+        Ok(())
+    });
+    if let Err(e) = r {
+        eprintln!("SyncService: {e}");
+    }
+}
+
+/// `Midia.iniciarNativo(dados, cache, musica)`: chamado pelo Kotlin antes de o Rust iniciar.
 #[unsafe(no_mangle)]
 pub extern "system" fn Java_com_skald_app_Midia_iniciarNativo<'l>(
     mut env: JNIEnv<'l>,
     classe: JClass<'l>,
     dados: JString<'l>,
     cache: JString<'l>,
+    musica: JString<'l>,
 ) {
     if let Ok(vm) = env.get_java_vm() {
         let _ = JVM.set(vm);
@@ -269,8 +286,8 @@ pub extern "system" fn Java_com_skald_app_Midia_iniciarNativo<'l>(
         }
     }
     let texto = |env: &mut JNIEnv<'l>, s: &JString<'l>| -> Option<String> { env.get_string(s).ok().map(Into::into) };
-    if let (Some(d), Some(c)) = (texto(&mut env, &dados), texto(&mut env, &cache)) {
-        crate::caminhos::definir_android(d.into(), c.into());
+    if let (Some(d), Some(c), Some(m)) = (texto(&mut env, &dados), texto(&mut env, &cache), texto(&mut env, &musica)) {
+        crate::caminhos::definir_android(d.into(), c.into(), m.into());
     }
 }
 

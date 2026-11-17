@@ -55,6 +55,8 @@ pub struct Estado {
     pub conectado: bool,
     pub email: Option<String>,
     pub nome: Option<String>,
+    /// "Sincronizar agora" em andamento (a tela pode ter sido fechada e reaberta).
+    pub sincronizando: bool,
 }
 
 fn arquivo(dados: &Path) -> PathBuf {
@@ -86,6 +88,7 @@ pub fn estado(dados: &Path) -> Estado {
         conectado: conta.is_some(),
         email: conta.as_ref().map(|c| c.email.clone()),
         nome: conta.map(|c| c.nome),
+        sincronizando: SINCRONIZANDO.load(Ordering::SeqCst),
     }
 }
 
@@ -620,6 +623,82 @@ pub fn sincronizar_musicas(
     })();
     SINCRONIZANDO.store(false, Ordering::SeqCst);
     r
+}
+
+// ---------- Dados (etapa 65) ----------
+
+/// Lê os arquivos `aparelho-*.json` de `Skáld/dados`, passa o texto deles a `trocar` (que junta
+/// e aplica no banco e devolve o JSON deste aparelho) e grava `aparelho-<id>.json`.
+pub fn sincronizar_dados(
+    dados: &Path,
+    aparelho: &str,
+    trocar: impl FnOnce(Vec<String>) -> Result<String, String>,
+) -> Result<(), String> {
+    let conta = carregar(dados).ok_or("Entre com a conta do Google primeiro.")?;
+    let mut acesso = Acesso::novo(&conta)?;
+    let q = format!("'{}' in parents and trashed = false", conta.dados);
+    let consulta = form_urlencoded::Serializer::new(String::new())
+        .extend_pairs([("q", q.as_str()), ("fields", "files(id,name)"), ("pageSize", "1000"), ("spaces", "drive")])
+        .finish();
+    let v = get_json_com(&mut acesso, &format!("{API}/files?{consulta}"))?;
+    let meu_nome = format!("aparelho-{aparelho}.json");
+    let mut meu_id = None;
+    let mut textos = Vec::new();
+    for f in v["files"].as_array().into_iter().flatten() {
+        let (Some(id), Some(nome)) = (f["id"].as_str(), f["name"].as_str()) else { continue };
+        if !(nome.starts_with("aparelho-") && nome.ends_with(".json")) {
+            continue;
+        }
+        if nome == meu_nome {
+            meu_id = Some(id.to_string());
+        }
+        let mut resposta = agente_arquivos()
+            .get(&format!("{API}/files/{id}?alt=media"))
+            .header("Authorization", &acesso.cabecalho()?)
+            .call()
+            .map_err(erro)?;
+        let texto = resposta
+            .body_mut()
+            .with_config()
+            .limit(500 * 1024 * 1024)
+            .read_to_string()
+            .map_err(|e| e.to_string())?;
+        textos.push(texto);
+    }
+    let meu = trocar(textos)?;
+    match meu_id {
+        Some(id) => {
+            agente_arquivos()
+                .patch(&format!("{UPLOAD}/{id}?uploadType=media&fields=id"))
+                .header("Authorization", &acesso.cabecalho()?)
+                .header("Content-Type", "application/json; charset=utf-8")
+                .send(meu)
+                .map_err(erro)?;
+        }
+        None => {
+            let meta = serde_json::json!({ "name": meu_nome, "parents": [conta.dados] }).to_string();
+            let resposta = crate::enriquecer::agente()
+                .post(&format!("{UPLOAD}?uploadType=resumable&fields=id"))
+                .header("Authorization", &acesso.cabecalho()?)
+                .header("Content-Type", "application/json; charset=utf-8")
+                .header("X-Upload-Content-Type", "application/json")
+                .send(meta)
+                .map_err(erro)?;
+            let destino = resposta
+                .headers()
+                .get("location")
+                .and_then(|v| v.to_str().ok())
+                .ok_or("O Google Drive não aceitou o envio.")?
+                .to_string();
+            agente_arquivos()
+                .put(&destino)
+                .header("Authorization", &acesso.cabecalho()?)
+                .header("Content-Type", "application/json; charset=utf-8")
+                .send(meu)
+                .map_err(erro)?;
+        }
+    }
+    Ok(())
 }
 
 #[cfg(test)]
