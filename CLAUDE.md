@@ -215,7 +215,7 @@ Modelo:
 - Diferenças da música: retomar posição por episódio; estados novo/em andamento/ouvido; pular −15 s/+30 s e velocidade 0,8×–2× sem mudar o tom (`scaletempo`); sem aleatório, crossfade nem ReplayGain de álbum; ao fim, "Continuar tocando" vai para o próximo não ouvido do mesmo programa; podcasts fora de retrospectivas, mixes, Máquina do Tempo e relacionadas de música (histórico guarda a categoria).
 
 Etapas:
-- 54. Migração (`podcast_show`, `podcast_episode`) e importar pasta como Podcasts (programa = álbum/pasta; data e descrição das tags).
+- 54. Migração (`podcast_show`, `podcast_episode`) e importar pasta como Podcasts (programa = álbum/pasta; data e descrição das tags). **Código feito (falta testar no app)**: migração v15; `podcasts.rs` (`marcar_pasta` põe a pasta em `watched_folder` como `podcast` e passa o que já estava importado dentro dela; `sincronizar` cria um programa por pasta-mãe do arquivo, título = álbum da 1ª faixa ou nome da pasta, autor = `album_artist`/artista; episódio com guid `local:<media_id>`, data = `RecordingDate`/ano das tags ou `file_mtime`, descrição = `PodcastDescription`/`Description`/`Comment`; apaga episódios locais sem registro e programas locais vazios). Roda em `importar_pasta`, `biblioteca_mudou` e `remove_from_library`. Comando `import_podcast_folder`; botão provisório "Importar pasta de podcasts…" em Configurações → Biblioteca (as telas são a 55).
 - 55. Telas Podcasts (grade de programas) e Programa (episódios do mais novo ao mais antigo, estado, filtro "não ouvidos"); item da lateral ativo.
 - 56. Retomar por episódio e marcar como ouvido (automático e à mão).
 - 57. Velocidade e pular −15/+30 s.

@@ -63,3 +63,8 @@ pub fn gst_launch(args: &[&str]) -> Option<bool> {
         Ok(s) => Some(s.success()),
     }
 }
+
+/// "/m/a.mp3" com o separador do sistema ("\m\a.mp3" no Windows).
+pub fn nativo(p: &str) -> String {
+    p.replace('/', std::path::MAIN_SEPARATOR_STR)
+}

@@ -4,6 +4,7 @@ import { ask, open, save } from "@tauri-apps/plugin-dialog";
 import { listen } from "@tauri-apps/api/event";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { aplicarTema, ModoTema, temDuasVariantes, TEMAS } from "./tema";
+import { escolherPasta, garantirPermissao, noAndroid } from "./android";
 import { Bell, Cloud, Database, FolderOpen, Library, Monitor, Palette, Play, type LucideIcon } from "lucide-react";
 
 type Normalizacao = "desligada" | "faixa" | "album";
@@ -287,6 +288,8 @@ export default function Configuracoes({ onErro }: { onErro: (m: string) => void 
   const [musicas, setMusicas] = useState<number | null>(null);
   const [ausentes, setAusentes] = useState(0);
   const [confirmarAusentes, setConfirmarAusentes] = useState(false);
+  const [avisoPodcasts, setAvisoPodcasts] = useState<string | null>(null);
+  const [importandoPodcasts, setImportandoPodcasts] = useState(false);
 
   useEffect(() => {
     invoke<Config>("get_settings")
@@ -371,6 +374,34 @@ export default function Configuracoes({ onErro }: { onErro: (m: string) => void 
       window.location.reload();
     } catch (e) {
       onErro(String(e));
+    }
+  }
+
+  /** Etapa 54: importa uma pasta como Podcasts (cada subpasta vira um programa). */
+  async function importarPodcasts() {
+    let pasta: string | null = null;
+    if (noAndroid) {
+      if (!(await garantirPermissao())) {
+        onErro("Sem permissão para ler os arquivos. Libere em Configurações do Android → Apps → Skáld → Permissões.");
+        return;
+      }
+      pasta = await escolherPasta();
+    } else {
+      const p = await open({ directory: true, title: "Escolha a pasta de podcasts" });
+      pasta = typeof p === "string" ? p : null;
+    }
+    if (!pasta) return;
+    setImportandoPodcasts(true);
+    setAvisoPodcasts(null);
+    try {
+      const r = await invoke<{ adicionados: number; existentes: number }>("import_podcast_folder", { path: pasta });
+      const total = r.adicionados + r.existentes;
+      setAvisoPodcasts(`${total} ${total === 1 ? "episódio" : "episódios"} em Podcasts. A tela de podcasts chega na próxima versão.`);
+      invoke<string[]>("watched_folders").then(setPastas).catch(() => {});
+    } catch (e) {
+      onErro(String(e));
+    } finally {
+      setImportandoPodcasts(false);
     }
   }
 
@@ -620,6 +651,15 @@ export default function Configuracoes({ onErro }: { onErro: (m: string) => void 
           titulo={`Pastas monitoradas (${pastas.length})`}
           nota="Arquivos novos, movidos ou apagados nessas pastas são notados sozinhos. Ao importar uma pasta, ela passa a ser monitorada."
         />
+        <Linha
+          titulo="Podcasts"
+          nota="Importa uma pasta de episódios. Cada subpasta (ou a própria pasta) vira um programa, e os arquivos dela deixam de aparecer em Músicas. Nada é apagado nem movido."
+        >
+          <button onClick={importarPodcasts} disabled={importandoPodcasts}>
+            {importandoPodcasts ? "Importando…" : "Importar pasta de podcasts…"}
+          </button>
+        </Linha>
+        {avisoPodcasts && <p className="nota destaque">{avisoPodcasts}</p>}
         {pastas.length > 0 && (
           <ul className="cfg-pastas">
             {pastas.map((p) => (

@@ -22,6 +22,7 @@ mod mixes;
 mod novidades;
 mod player;
 mod playlists;
+mod podcasts;
 #[cfg(desktop)]
 mod mpris;
 #[cfg(target_os = "android")]
@@ -97,8 +98,30 @@ fn importar_pasta(app: &AppHandle, path: &str) -> Result<import::ImportResumo, S
         if resumo.adicionados > 0 {
             incluir_novas(app, Origem::Biblioteca)?;
         }
+        podcasts::sincronizar(&app.state::<db::Db>().0)?;
         Ok(resumo)
     }
+}
+
+/// "Importar pasta como Podcasts" (etapa 54): a pasta e o que já estava importado dentro
+/// dela passam à categoria Podcasts; cada subpasta (ou a própria pasta) vira um programa.
+#[tauri::command]
+async fn import_podcast_folder(app: tauri::AppHandle, path: String) -> Result<import::ImportResumo, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        if !std::path::Path::new(&path).is_dir() {
+            return Err("A pasta selecionada não existe.".to_string());
+        }
+        {
+            let db = app.state::<db::Db>();
+            let conn = db.0.lock().map_err(erro_db)?;
+            podcasts::marcar_pasta(&conn, &path).map_err(|e| e.to_string())?;
+        }
+        let r = importar_pasta(&app, &path)?;
+        let _ = app.emit(EVENTO_BIBLIOTECA, &r);
+        Ok(r)
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 /// Importa arquivos soltos escolhidos pelo usuário (não viram pasta monitorada). Arquivos
@@ -135,6 +158,11 @@ pub(crate) fn biblioteca_mudou(app: &AppHandle, mut resumo: import::ImportResumo
     }
     if resumo.adicionados + resumo.ausentes > 0 {
         let _ = reconciliar_movidos(app, &mut resumo);
+    }
+    if resumo.adicionados > 0 {
+        if let Err(e) = podcasts::sincronizar(&app.state::<db::Db>().0) {
+            eprintln!("Podcasts: {e}");
+        }
     }
     if !resumo.mudou_algo() {
         return;
@@ -197,6 +225,8 @@ fn remove_from_library(app: AppHandle, ids: Vec<i64>) -> Result<usize, String> {
     if atual_saiu {
         avancar(&app, false)?;
     }
+    // Episódios locais desses registros saem junto.
+    podcasts::sincronizar(&app.state::<db::Db>().0)?;
     let _ = app.emit(EVENTO_FILA, ());
     let _ = app.emit(EVENTO_PLAYLISTS, ());
     let _ = app.emit(EVENTO_HISTORICO, ());
@@ -2323,6 +2353,7 @@ pub fn run() {
             sync_login,
             sync_cancel,
             sync_now,
+            import_podcast_folder,
             missing_count,
             remove_missing,
             set_sync_upload,

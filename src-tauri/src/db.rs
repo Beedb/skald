@@ -124,6 +124,33 @@ const MIGRATIONS: &[&str] = &[
         uuid        TEXT PRIMARY KEY,
         removida_em INTEGER NOT NULL
     );",
+    // v15: podcasts (Fase 10, etapa 54). O áudio de cada episódio é uma linha de `media` com
+    // category = 'podcast' (nula enquanto não baixado, para a assinatura por RSS da etapa 59).
+    // Episódio local: guid 'local:<media_id>'. Datas em segundos Unix; posições em ms.
+    "CREATE TABLE podcast_show (
+        id          INTEGER PRIMARY KEY,
+        titulo      TEXT    NOT NULL,
+        autor       TEXT,
+        capa        TEXT,
+        descricao   TEXT,
+        pasta       TEXT    UNIQUE,
+        feed_url    TEXT    UNIQUE,
+        criado_em   INTEGER NOT NULL
+    );
+    CREATE TABLE podcast_episode (
+        id            INTEGER PRIMARY KEY,
+        show_id       INTEGER NOT NULL REFERENCES podcast_show(id) ON DELETE CASCADE,
+        guid          TEXT    NOT NULL,
+        titulo        TEXT    NOT NULL,
+        publicado_em  INTEGER,
+        descricao     TEXT,
+        duracao_ms    INTEGER,
+        media_id      INTEGER UNIQUE REFERENCES media(id) ON DELETE SET NULL,
+        ouvido_em     INTEGER,
+        posicao_ms    INTEGER,
+        UNIQUE (show_id, guid)
+    );
+    CREATE INDEX idx_episodio_show ON podcast_episode(show_id, publicado_em);",
 ];
 
 pub fn open(path: &Path) -> rusqlite::Result<Connection> {
