@@ -711,21 +711,25 @@ fn liked_ids(db: State<db::Db>) -> Result<Vec<i64>, String> {
 /// Copia a imagem escolhida para a pasta de capas do Skáld (o original não é alterado).
 #[tauri::command]
 fn playlist_set_cover(app: AppHandle, id: i64, origem: String) -> Result<(), String> {
-    let origem = std::path::Path::new(&origem);
-    let ext = details::mime_imagem(origem)
-        .and(origem.extension())
-        .ok_or("Escolha uma imagem JPG, PNG ou WEBP.")?
-        .to_string_lossy()
-        .to_ascii_lowercase();
-    let tamanho = std::fs::metadata(origem).map_err(|_| "Imagem não encontrada.")?.len();
-    if tamanho as usize > details::CAPA_MAX {
+    // No Android o seletor devolve um endereço content:// (sem extensão): o plugin fs lê
+    // os dois casos, e o formato vem do conteúdo da imagem.
+    use tauri_plugin_fs::FsExt;
+    let caminho: tauri_plugin_fs::FilePath = origem.parse().unwrap_or_else(|e| match e {});
+    let bytes = app.fs().read(caminho).map_err(|_| "Imagem não encontrada.")?;
+    if bytes.len() > details::CAPA_MAX {
         return Err("A imagem é grande demais (máximo de 8 MB).".into());
     }
+    let ext = match image::guess_format(&bytes) {
+        Ok(image::ImageFormat::Jpeg) => "jpg",
+        Ok(image::ImageFormat::Png) => "png",
+        Ok(image::ImageFormat::WebP) => "webp",
+        _ => return Err("Escolha uma imagem JPG, PNG ou WEBP.".into()),
+    };
     let pasta = pasta_capas(&app)?;
     std::fs::create_dir_all(&pasta).map_err(|e| e.to_string())?;
     let agora = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_millis());
     let destino = pasta.join(format!("playlist-{id}-{agora}.{ext}"));
-    std::fs::copy(origem, &destino).map_err(|e| format!("Não foi possível copiar a imagem: {e}"))?;
+    std::fs::write(&destino, &bytes).map_err(|e| format!("Não foi possível copiar a imagem: {e}"))?;
     let destino_txt = destino.to_string_lossy().into_owned();
     match alterar_playlists(&app, |conn| playlists::definir_capa(conn, id, Some(&destino_txt))) {
         Ok(anterior) => {
@@ -1846,6 +1850,7 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_fs::init())
         .setup(|app| {
             let dir = app.path().app_data_dir()?;
             std::fs::create_dir_all(&dir)?;
