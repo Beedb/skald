@@ -1,0 +1,59 @@
+# Aviso de nova versão por e-mail (Buttondown).
+# Release publicada: cria um RASCUNHO no Buttondown com as notas da release.
+# Nada é enviado daqui: o rascunho é conferido e enviado à mão no Buttondown
+# (a chave BUTTONDOWN_API_KEY não tem permissão de envio).
+# "Run workflow" (manual): cria um rascunho de teste a partir de uma tag existente.
+name: Aviso por e-mail
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag da release (ex.: v0.2.0)"
+        required: true
+      teste:
+        description: "Marcar o assunto como [TESTE]"
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+jobs:
+  rascunho:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Criar rascunho no Buttondown
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          BUTTONDOWN_API_KEY: ${{ secrets.BUTTONDOWN_API_KEY }}
+          TAG: ${{ github.event.release.tag_name || inputs.tag }}
+          TESTE: ${{ inputs.teste && '[TESTE] ' || '' }}
+        run: |
+          set -euo pipefail
+          gh release view "$TAG" --json body,url > release.json
+          versao="${TAG#v}"
+          jq -n \
+            --arg assunto "${TESTE}Skáld ${versao}: nova versão" \
+            --arg versao "$versao" \
+            --slurpfile r release.json \
+            '{
+              subject: $assunto,
+              status: "draft",
+              body: ("Saiu a versão **" + $versao + "** do Skáld, o reprodutor de música local e offline.\n\n"
+                + $r[0].body
+                + "\n\n**[Baixar a versão " + $versao + "](" + $r[0].url + ")**\n")
+            }' > email.json
+          resposta=$(curl -sS -w '\n%{http_code}' -X POST https://api.buttondown.com/v1/emails \
+            -H "Authorization: Token ${BUTTONDOWN_API_KEY}" \
+            -H "Content-Type: application/json" \
+            --data @email.json)
+          codigo=$(tail -n1 <<< "$resposta")
+          corpo=$(sed '$d' <<< "$resposta")
+          if [ "$codigo" -ge 300 ]; then
+            echo "Buttondown respondeu $codigo:"; echo "$corpo"; exit 1
+          fi
+          echo "Rascunho criado: $(jq -r '.subject + " (" + .status + ")"' <<< "$corpo")"
