@@ -53,11 +53,23 @@
     <li>Sincronização opcional pelo seu Google Drive: músicas, playlists, curtidas e histórico entre os seus aparelhos.</li>
   </ul>
 
+  <section id="avisos" class="cartao">
+    <h2>Avisos de novas versões</h2>
+    <p>Receba um e-mail quando sair uma versão nova, com os links para baixar. Nada além disso.</p>
+    <form class="inscricao" action="https://buttondown.com/api/emails/embed-subscribe/skald" method="post" target="_blank">
+      <label for="email-aviso" class="oculto">Seu e-mail</label>
+      <input type="email" id="email-aviso" name="email" placeholder="seu@email.com" required autocomplete="email">
+      <input type="hidden" name="embed" value="1">
+      <button type="submit" class="botao">Inscrever</button>
+    </form>
+    <p class="nota">A lista fica no Buttondown. Você recebe um e-mail para confirmar a inscrição e pode sair a qualquer momento pelo link no fim de cada aviso. O Skáld não guarda o seu e-mail.</p>
+  </section>
+
   <h2>Sincronização pelo Google Drive</h2>
   <p>A sincronização é opcional e só acontece quando você entra com a sua conta Google e aperta “Sincronizar agora”. O Skáld cria uma pasta “Skáld” no seu Drive e só enxerga os arquivos que ele mesmo criou ali. Ele não lê nem altera o resto do seu Drive e nunca apaga nada. Os detalhes estão na <a href="privacidade.html">política de privacidade</a>.</p>
 
   <footer>
-    <p><a href="privacidade.html">Política de privacidade</a> · <a href="https://github.com/Beedb/skald/issues">Contato e suporte</a> · <a href="https://buttondown.com/skald">Avisos de novas versões</a></p>
+    <p><a href="privacidade.html">Política de privacidade</a> · <a href="https://github.com/Beedb/skald/issues">Contato e suporte</a> · <a href="#avisos">Avisos de novas versões</a></p>
   </footer>
 </main>
 <script>

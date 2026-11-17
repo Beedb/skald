@@ -193,8 +193,8 @@ Decisões (2026-11-17):
 
 Etapas (numeradas depois das da Fase 11):
 - 66. Conta no Buttondown + página de inscrição. **Feita** (`https://buttondown.com/skald`).
-- 67. Rascunho automático do e-mail a cada release (API, não RSS). **Feita** (teste com v0.2.0 criou o rascunho).
-- 68. Link de inscrição no README e no modelo de notas da release ("Como lançar uma versão"). **Feita.**
+- 67. Rascunho automático do e-mail a cada release (API, não RSS). **Feita** (teste com v0.2.0 criou o rascunho); o e-mail traz links diretos para .exe, .deb, .rpm e .apk pelos nomes padrão dos arquivos e o link do site).
+- 68. Link de inscrição no README, no modelo de notas da release ("Como lançar uma versão") e formulário no site (`site/index.html#avisos`, POST para `buttondown.com/api/emails/embed-subscribe/skald`). **Feita.**
 - 69. Cartão "Novidades" (primeiro das Configurações): botão "Receber avisos…" abre `buttondown.com/skald` com `openUrl` do `tauri-plugin-opener`; a permissão `opener:allow-open-url` em `capabilities/default.json` só aceita `buttondown.com/skald*` e `github.com/Beedb/skald*`.
 - 70. Verificar atualização ao abrir (opção no cartão Novidades, desligada por padrão). `novidades.rs` (`maior` compara versões numéricas; sufixo `-beta` não conta; `SKALD_VERSAO_FINGIDA` simula outra versão só em debug; ensaio: `cargo test ensaio_novidades -- --ignored --nocapture`), configuração `verificar_versao`, comandos `set_update_check`/`update_check` (async; desligado ou sem internet → nada). `src/AvisoVersao.tsx`: faixa `.aviso` no topo com "Ver novidades e baixar" (`openUrl`) e ✕ (localStorage `skald-versao-dispensada` guarda a versão fechada); ligar a opção dispara o evento de janela `verificar-versao`.
 

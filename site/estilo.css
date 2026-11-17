@@ -61,3 +61,11 @@ code { font-size: 0.9em; background: var(--card); padding: 1px 5px; border-radiu
 #baixar h2 { margin-top: 0.8em; }
 #versao { font-size: 0.8em; color: var(--fraco); }
 .nota { color: var(--fraco); font-size: 0.9rem; }
+.inscricao { display: flex; flex-wrap: wrap; gap: 10px; margin: 12px 0; }
+.inscricao input[type="email"] {
+  flex: 1 1 220px; min-width: 0; padding: 10px 14px; font: inherit; color: var(--forte);
+  background: var(--borda); border: 1px solid var(--linha); border-radius: var(--raio);
+}
+.inscricao input[type="email"]:focus { outline: 2px solid var(--acento); outline-offset: 1px; }
+.inscricao .botao { border: 0; font: inherit; font-weight: 600; cursor: pointer; }
+.oculto { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
