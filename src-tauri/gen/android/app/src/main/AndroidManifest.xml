@@ -34,10 +34,20 @@
             </intent-filter>
         </activity>
 
+        <!-- Também é o MediaBrowserService do Android Auto (por isso exported). -->
         <service
             android:name=".MidiaService"
-            android:exported="false"
-            android:foregroundServiceType="mediaPlayback" />
+            android:exported="true"
+            android:foregroundServiceType="mediaPlayback">
+            <intent-filter>
+                <action android:name="android.media.browse.MediaBrowserService" />
+            </intent-filter>
+        </service>
+
+        <!-- Android Auto: o Skáld aparece como app de música no carro. -->
+        <meta-data
+            android:name="com.google.android.gms.car.application"
+            android:resource="@xml/automotive_app_desc" />
 
         <!-- Widget do player na tela inicial. -->
         <receiver

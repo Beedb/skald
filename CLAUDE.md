@@ -246,7 +246,7 @@ Decisões (2026-11-17): widget só no Android (relógio e app Wear OS ficam para
 Etapas:
 - 60. Widget Yx1 (player). **Feita**: `WidgetPlayer.kt` (`AppWidgetProvider`; `RemoteViews` por tamanho no Android 12+, `OPTION_APPWIDGET_MIN_WIDTH` antes; ≥ 180 dp usa `widget_largo` com capa ≤ 192 px, título e artista, menor usa `widget_estreito` só com botões), `res/xml/widget_player.xml` (2 a 5 células, 1 linha), cores do carmesim em `values/colors.xml` (`tema_*`), ícones do lucide em `drawable/widget_*`. `Midia.atualizar` chama `WidgetPlayer.atualizar` só quando música, capa ou estado mudam; o estado fica em SharedPreferences `widget_player` (com o processo morto mostra pausado). Botões: broadcast `WIDGET_ACAO` → `Midia.comando` se o Rust está carregado (`Midia.contexto`), senão abre o app (o Android permite: `BAL_ALLOW_TOKEN`). Depois de "Forçar parada" o 1º toque só redesenha o widget (limitação do Android). Instalar por cima da release com o APK release (`scripts/android.sh build --apk --target aarch64`), nunca desinstalar.
 - 61. Widget Yx2 (player + playlists). **Feita**: com altura ≥ 100 dp usa `widget_alto` (≥ 180 dp de largura) ou `widget_alto_estreito`: player em cima e uma faixa de capas quadradas pequenas (como no Spotify; `adjustViewBounds` + recorte quadrado), 3 capas em 2 células, 4 em 3, 5 a partir de 4; vagas sem playlist ficam invisíveis. `midia_android::publicar_playlists` (ao iniciar e a cada `EVENTO_PLAYLISTS`, via `app.listen`) manda até 5 playlists não vazias, tocadas mais recentemente primeiro, como `id<TAB>capa` (escolhida ou miniatura da primeira música) para `Midia.playlists` → SharedPreferences. Toque: `Midia.comando("playlist", id)` → `play_playlist` (ordem personalizada). Testado no S24+: 5×2 e toque na capa.
-- 62. Android Auto.
+- 62. Android Auto. **Feita**: `MidiaService` é `MediaBrowserServiceCompat` (exported, intent-filter `MediaBrowserService`; `res/xml/automotive_app_desc.xml`). Árvore: raiz → Playlists, Álbuns (grade: dica `CONTENT_STYLE_PLAYABLE_HINT` no item da pasta), Artistas, Tocadas recentemente (30). `Midia.navegar(pai)` (JNI → `midia_android::navegar`, numa thread com `result.detach()`) devolve `id<TAB>título<TAB>subtítulo<TAB>capa<TAB>p|t`; capas por `FileProvider` (+ `files-path`) com `grantUriPermission` para `com.google.android.projection.gearhead`. Tocar: `onPlayFromMediaId` → `Midia.comando(id)` → `tocar_do_carro` (`playlist:`, `album:<json ChaveAlbum>`, `artista:<json>`, `recentes:<i>`). Sem o Rust (app não aberto neste processo) a raiz mostra "Abra o Skáld no celular" e `Midia.playlists` (o Rust subiu) chama `notifyChildrenChanged`. Abrir a atividade pelo serviço é barrado pelo Android (`BAL_BLOCK`). Teste: DHU 2.1 (`sdkmanager --channel=3 "extras;google;auto"`, precisa de `libc++1`), no Android Auto: modo desenvolvedor, "Fontes desconhecidas", "Iniciar servidor da unidade principal"; `adb forward tcp:5277 tcp:5277` e `tail -f /dev/null | ./desktop-head-unit` (sem stdin ele fecha). Testado no DHU com o S24+ (Android Auto 18).
 - 63. Conta Google e pasta `Skáld` no Drive (Configurações → Sincronização).
 - 64. Subir e descer músicas.
 - 65. Sincronizar playlists, curtidas, histórico e apelidos.
@@ -255,7 +255,7 @@ Etapas:
 |---|---|---|---|
 | 60 | — | [x] | — |
 | 61 | — | [x] | — |
-| 62 | — | [ ] | — |
+| 62 | — | [x] | — |
 | 63 | [ ] | [ ] | [ ] |
 | 64 | [ ] | [ ] | [ ] |
 | 65 | [ ] | [ ] | [ ] |

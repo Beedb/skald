@@ -283,6 +283,128 @@ fn com_midia(f: impl FnOnce(&mut JNIEnv, &JClass) -> jni::errors::Result<()>) ->
     r.map_err(|e| e.to_string())
 }
 
+// ---------- Android Auto: navegação pela biblioteca (MediaBrowserService) ----------
+
+/// Uma linha por item: `id<TAB>título<TAB>subtítulo<TAB>capa<TAB>tipo` (tipo `p` = pasta,
+/// `t` = tocável). Os ids tocáveis voltam por `Midia.comando(id, 0)`.
+fn item(id: &str, titulo: &str, subtitulo: &str, capa: Option<String>, pasta: bool) -> String {
+    let limpo = |t: &str| t.replace(['\t', '\n'], " ");
+    format!(
+        "{}\t{}\t{}\t{}\t{}\n",
+        limpo(id),
+        limpo(titulo),
+        limpo(subtitulo),
+        capa.unwrap_or_default(),
+        if pasta { "p" } else { "t" }
+    )
+}
+
+fn navegar(app: &AppHandle, pai: &str) -> String {
+    let db = app.state::<crate::db::Db>();
+    let pasta = app.path().app_cache_dir().ok().map(crate::miniaturas::pasta);
+    let capa = |id: i64| -> Option<String> {
+        let c = crate::miniaturas::arquivo(&db.0, pasta.as_ref()?, id).ok().flatten()?;
+        Some(c.to_string_lossy().into_owned())
+    };
+    let ler = || db.0.lock().ok();
+    match pai {
+        "raiz" => [
+            ("playlists", "Playlists"),
+            ("albuns", "Álbuns"),
+            ("artistas", "Artistas"),
+            ("recentes", "Tocadas recentemente"),
+        ]
+        .iter()
+        .map(|(id, nome)| item(id, nome, "", None, true))
+        .collect(),
+        "playlists" => {
+            let Some(lista) = ler().and_then(|c| crate::playlists::listar(&c).ok()) else { return String::new() };
+            lista
+                .into_iter()
+                .filter(|p| p.total > 0)
+                .map(|p| {
+                    let escolhida = p.capa_escolhida.then(|| ler().and_then(|c| crate::playlists::capa(&c, p.id).ok().flatten())).flatten();
+                    let c = escolhida.or_else(|| p.primeira_media_id.and_then(capa));
+                    let sub = if p.total == 1 { "1 música".to_string() } else { format!("{} músicas", p.total) };
+                    item(&format!("playlist:{}", p.id), &p.name, &sub, c, false)
+                })
+                .collect()
+        }
+        "albuns" => {
+            let Some(lista) = ler().and_then(|c| crate::colecao::albuns(&c, None).ok()) else { return String::new() };
+            lista
+                .into_iter()
+                .filter_map(|a| {
+                    let chave = serde_json::to_string(&a.chave).ok()?;
+                    let titulo = a.chave.album.clone().unwrap_or_else(|| "Sem álbum".into());
+                    let sub = a.artista.clone().unwrap_or_else(|| "Vários artistas".into());
+                    Some(item(&format!("album:{chave}"), &titulo, &sub, capa(a.capa_id), false))
+                })
+                .collect()
+        }
+        "artistas" => {
+            let Some(lista) = ler().and_then(|c| crate::colecao::artistas(&c).ok()) else { return String::new() };
+            lista
+                .into_iter()
+                .filter_map(|a| {
+                    let id = serde_json::to_string(&a.nome).ok()?;
+                    let nome = a.nome.clone().unwrap_or_else(|| "Desconhecido".into());
+                    let sub = if a.musicas == 1 { "1 música".to_string() } else { format!("{} músicas", a.musicas) };
+                    Some(item(&format!("artista:{id}"), &nome, &sub, capa(a.capa_id), false))
+                })
+                .collect()
+        }
+        "recentes" => {
+            let Some(lista) = ler().and_then(|c| crate::colecao::tocadas_recentes(&c, RECENTES).ok()) else { return String::new() };
+            lista
+                .into_iter()
+                .enumerate()
+                .map(|(i, m)| {
+                    let titulo = m.title.unwrap_or_else(|| "Sem título".into());
+                    item(&format!("recentes:{i}"), &titulo, m.artist.as_deref().unwrap_or(""), capa(m.id), false)
+                })
+                .collect()
+        }
+        _ => String::new(),
+    }
+}
+
+/// Quantas músicas a pasta "Tocadas recentemente" mostra (e vira a fila ao tocar uma).
+const RECENTES: usize = 30;
+
+/// `Midia.navegar(pai)`: filhos de um nó da árvore do Android Auto (chamado fora da thread principal).
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_skald_app_Midia_navegar<'l>(
+    mut env: JNIEnv<'l>,
+    _classe: JClass<'l>,
+    pai: JString<'l>,
+) -> jni::sys::jstring {
+    let pai: String = env.get_string(&pai).map(Into::into).unwrap_or_default();
+    let texto = APP.get().map(|app| navegar(app, &pai)).unwrap_or_default();
+    env.new_string(texto).map(|s| s.into_raw()).unwrap_or(std::ptr::null_mut())
+}
+
+/// Ids tocáveis do Android Auto (`playlist:`, `album:`, `artista:`, `recentes:`).
+fn tocar_do_carro(app: &AppHandle, id: &str) -> Option<Result<(), String>> {
+    let (tipo, valor) = id.split_once(':')?;
+    let fila = app.state::<crate::FilaState>();
+    Some(match tipo {
+        "playlist" => crate::play_playlist(app.clone(), fila, valor.parse().ok()?, crate::playlists::Ordem::Personalizada, 0),
+        "album" => crate::play_album(app.clone(), fila, serde_json::from_str(valor).ok()?, 0),
+        "artista" => crate::play_artist(app.clone(), fila, serde_json::from_str(valor).ok()?),
+        "recentes" => {
+            let indice: usize = valor.parse().ok()?;
+            let ids: Vec<i64> = {
+                let db = app.state::<crate::db::Db>();
+                let conn = db.0.lock().ok()?;
+                crate::colecao::tocadas_recentes(&conn, RECENTES).ok()?.into_iter().map(|m| m.id).collect()
+            };
+            crate::tocar_lista(app, &fila, ids, indice)
+        }
+        _ => return None,
+    })
+}
+
 /// `Midia.comando(acao, valor)`: botões da notificação, tela de bloqueio e fones.
 /// Usa as mesmas funções dos botões do app, fora da thread do Android.
 #[unsafe(no_mangle)]
@@ -317,7 +439,7 @@ fn comando(app: &AppHandle, acao: &str, valor: u64) {
             crate::playlists::Ordem::Personalizada,
             0,
         ),
-        _ => Ok(()),
+        outra => tocar_do_carro(app, outra).unwrap_or(Ok(())),
     };
     if let Err(e) = resultado {
         use tauri::Emitter;
