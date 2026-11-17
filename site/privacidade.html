@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Privacidade do Skáld</title>
+  <meta name="description" content="Política de privacidade do Skáld.">
+  <link rel="icon" href="icone.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600&family=Lora:wght@400;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="estilo.css">
+</head>
+<body>
+<main>
+  <header>
+    <a href="./"><img src="icone.png" alt="Skáld, página inicial"></a>
+    <h1>Política de privacidade</h1>
+    <p class="sub">Atualizada em 17 de novembro de 2026</p>
+  </header>
+
+  <p>O Skáld é um reprodutor de música que roda no seu aparelho. Ele não tem servidor, não tem conta própria, não coleta estatísticas de uso e não mostra anúncios. Esta página explica o que ele guarda e quando usa a internet.</p>
+
+  <h2>O que fica no seu aparelho</h2>
+  <p>A biblioteca, as playlists, as curtidas, o histórico de reprodução, as configurações, as letras e as capas que você escolhe ficam num banco de dados local, no próprio aparelho. Nada disso é enviado a ninguém, a não ser para o seu próprio Google Drive, se você ligar a sincronização.</p>
+
+  <h2>Quando o Skáld usa a internet</h2>
+  <p>Só quando você pede:</p>
+  <ul>
+    <li><strong>Completar informações e capas</strong>: consulta o MusicBrainz e o Cover Art Archive com o título, o artista e a duração da música.</li>
+    <li><strong>Buscar letras</strong>: consulta o LRCLIB com título, artista, álbum e duração.</li>
+    <li><strong>Verificar novas versões</strong> (desligado por padrão): consulta a lista de versões do Skáld no GitHub.</li>
+    <li><strong>Sincronização pelo Google Drive</strong>: descrita abaixo.</li>
+  </ul>
+  <p>Esses serviços recebem o seu endereço IP, como qualquer site, e têm as próprias políticas de privacidade. O Skáld não envia a eles nenhuma informação sua além da música consultada.</p>
+
+  <h2>Google Drive</h2>
+  <div class="cartao">
+    <p><strong>Acesso pedido.</strong> Ao entrar com a conta Google, o Skáld pede apenas a permissão <code>drive.file</code> (“ver, editar, criar e excluir apenas os arquivos do Google Drive que você usa com este app”). Com ela, o Skáld só enxerga os arquivos que ele mesmo criou. Ele também lê o e-mail e o nome da conta, só para mostrar em qual conta você entrou.</p>
+    <p><strong>O que é guardado no Drive.</strong> Uma pasta “Skáld” com as suas músicas (subpasta <code>musicas</code>) e um arquivo por aparelho com playlists, curtidas, histórico e apelidos de artistas (subpasta <code>dados</code>). Tudo fica na sua conta, e só você tem acesso.</p>
+    <p><strong>Como é usado.</strong> Esses dados servem apenas para copiar as suas músicas e listas entre os seus aparelhos quando você aperta “Sincronizar agora”. O Skáld nunca apaga arquivos do seu Drive nem do seu aparelho.</p>
+    <p><strong>Onde fica a autorização.</strong> O token de acesso fica num arquivo dentro da pasta de dados do Skáld no seu aparelho, legível apenas pelo seu usuário. Ele nunca é enviado a outro lugar além do Google.</p>
+    <p><strong>Compartilhamento.</strong> Os dados recebidos das APIs do Google não são vendidos, não são compartilhados com terceiros, não são usados para publicidade e não são usados para treinar modelos de inteligência artificial. O uso e a transferência de informações recebidas das APIs do Google pelo Skáld seguem a <a href="https://developers.google.com/terms/api-services-user-data-policy">Política de dados do usuário dos serviços de API do Google</a>, incluindo os requisitos de Uso Limitado.</p>
+    <p><strong>Como desconectar.</strong> Em Configurações → Sincronização, “Sair” revoga a autorização no Google e apaga o token do aparelho. Você também pode revogar o acesso em <a href="https://myaccount.google.com/permissions">myaccount.google.com/permissions</a>. A pasta “Skáld” continua no seu Drive até você mesmo apagá-la.</p>
+  </div>
+
+  <h2>Avisos por e-mail</h2>
+  <p>A lista de avisos de novas versões é um serviço à parte, no Buttondown, em que você se inscreve pelo navegador. O Skáld não guarda nem envia o seu e-mail.</p>
+
+  <h2>Crianças</h2>
+  <p>O Skáld não coleta dados de ninguém, inclusive de crianças.</p>
+
+  <h2>Mudanças e contato</h2>
+  <p>Mudanças nesta política aparecem nesta página, com a data no topo. Dúvidas: abra uma conversa em <a href="https://github.com/Beedb/skald/issues">github.com/Beedb/skald/issues</a>.</p>
+
+  <footer>
+    <p><a href="./">Página inicial do Skáld</a></p>
+  </footer>
+</main>
+</body>
+</html>
