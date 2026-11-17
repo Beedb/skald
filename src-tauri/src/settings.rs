@@ -16,6 +16,7 @@ const REPETIR: &str = "repetir";
 const TEMPORIZADOR: &str = "temporizador";
 const RETOMAR: &str = "retomar";
 const CONTINUAR: &str = "continuar_tocando";
+const VERIFICAR_VERSAO: &str = "verificar_versao";
 /// Tema padrão do Skáld (docs/temas.css).
 const TEMA_PADRAO: &str = "carmesim";
 /// Crossfade padrão: ligado, 5 s (desligado entre faixas do mesmo álbum).
@@ -40,6 +41,8 @@ pub struct Configuracoes {
     pub notificar: bool,
     /// No fim da fila ou playlist, tocar relacionadas (padrão: ligado).
     pub continuar_tocando: bool,
+    /// Consultar o GitHub ao abrir para avisar de versão nova (padrão: desligado).
+    pub verificar_versao: bool,
 }
 
 fn ler(conn: &Connection, chave: &str) -> rusqlite::Result<Option<String>> {
@@ -79,7 +82,19 @@ pub fn carregar(conn: &Connection) -> rusqlite::Result<Configuracoes> {
     let bandeja = ler(conn, BANDEJA)?.is_some_and(|v| v == "1");
     let notificar = ler(conn, NOTIFICAR)?.is_none_or(|v| v == "1");
     let continuar_tocando = ler(conn, CONTINUAR)?.is_none_or(|v| v == "1");
-    Ok(Configuracoes { crossfade_ms, normalizacao, equalizador, tema, modo_tema, cores_dinamicas, bandeja, notificar, continuar_tocando })
+    let verificar_versao = verificar_versao(conn)?;
+    Ok(Configuracoes {
+        crossfade_ms,
+        normalizacao,
+        equalizador,
+        tema,
+        modo_tema,
+        cores_dinamicas,
+        bandeja,
+        notificar,
+        continuar_tocando,
+        verificar_versao,
+    })
 }
 
 /// Modos da fila guardados entre execuções.
@@ -138,6 +153,14 @@ pub fn definir_bandeja(conn: &Connection, ativo: bool) -> rusqlite::Result<()> {
 
 pub fn definir_continuar(conn: &Connection, ativo: bool) -> rusqlite::Result<()> {
     gravar(conn, CONTINUAR, if ativo { "1" } else { "0" })
+}
+
+pub fn verificar_versao(conn: &Connection) -> rusqlite::Result<bool> {
+    Ok(ler(conn, VERIFICAR_VERSAO)?.is_some_and(|v| v == "1"))
+}
+
+pub fn definir_verificar_versao(conn: &Connection, ativo: bool) -> rusqlite::Result<()> {
+    gravar(conn, VERIFICAR_VERSAO, if ativo { "1" } else { "0" })
 }
 
 pub fn definir_notificar(conn: &Connection, ativo: bool) -> rusqlite::Result<()> {

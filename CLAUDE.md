@@ -182,7 +182,7 @@ Conferir o que já existe antes de cada etapa e marcar `[x]` só com teste feito
 - [x] 52. CI no GitHub Actions (`windows-latest`) gerando o instalador a cada tag. (Tag v0.2.0: instalador, teste-limpo e release passaram em ~8 min; o `.exe` foi anexado sozinho.)
 - [x] 53. Paridade final: todas as funções das etapas 1 a 43. (1 a 35 pelos testes do Rust no Windows, 95 passando; 36 a 41 testadas no app instalado v0.2.0; 42 e 43 são só do Android.)
 
-## Fase 9 (avisos de novas versões)
+## Fase 9 (avisos de novas versões) — concluída no Linux
 
 Objetivo: a pessoa cadastra o e-mail e é avisada quando sai uma versão nova. O Skáld é offline e sem servidor, então a lista e o envio ficam num serviço de fora; o app nunca guarda nem envia e-mail.
 
@@ -196,15 +196,15 @@ Etapas (numeradas depois das da Fase 11):
 - 67. Rascunho automático do e-mail a cada release (API, não RSS). **Feita** (teste com v0.2.0 criou o rascunho).
 - 68. Link de inscrição no README e no modelo de notas da release ("Como lançar uma versão"). **Feita.**
 - 69. Cartão "Novidades" (primeiro das Configurações): botão "Receber avisos…" abre `buttondown.com/skald` com `openUrl` do `tauri-plugin-opener`; a permissão `opener:allow-open-url` em `capabilities/default.json` só aceita `buttondown.com/skald*` e `github.com/Beedb/skald*`.
-- 70. Verificar atualização ao abrir (opção no cartão Novidades, desligada por padrão).
+- 70. Verificar atualização ao abrir (opção no cartão Novidades, desligada por padrão). `novidades.rs` (`maior` compara versões numéricas; sufixo `-beta` não conta; `SKALD_VERSAO_FINGIDA` simula outra versão só em debug; ensaio: `cargo test ensaio_novidades -- --ignored --nocapture`), configuração `verificar_versao`, comandos `set_update_check`/`update_check` (async; desligado ou sem internet → nada). `src/AvisoVersao.tsx`: faixa `.aviso` no topo com "Ver novidades e baixar" (`openUrl`) e ✕ (localStorage `skald-versao-dispensada` guarda a versão fechada); ligar a opção dispara o evento de janela `verificar-versao`.
 
 | Etapa | Linux | Android | Windows |
 |---|---|---|---|
 | 66 | [x] | — | — |
 | 67 | [x] | — | — |
 | 68 | [x] | — | — |
-| 69 | [ ] | [ ] | [ ] |
-| 70 | [ ] | [ ] | [ ] |
+| 69 | [x] | [ ] | [ ] |
+| 70 | [x] | [ ] | [ ] |
 
 ## Fase 10 (podcasts) — planejada
 
@@ -262,7 +262,7 @@ Etapas:
 
 ## Estado atual
 
-**MVP, Fase 2 (etapas 10 a 19), Fase 3 (20 a 23), Fase 4 (24 a 28), Fase 5 (29 a 32) e Fase 6 (33 a 35) concluídos; Fase 7 concluída no Linux (36 a 41), no Android (36 a 43) e no Windows (36 a 41); Fase 8 (Windows) concluída (44 a 53). Versão atual: 0.2.0 (release v0.2.0).**
+**MVP, Fase 2 (etapas 10 a 19), Fase 3 (20 a 23), Fase 4 (24 a 28), Fase 5 (29 a 32) e Fase 6 (33 a 35) concluídos; Fase 7 concluída no Linux (36 a 41), no Android (36 a 43) e no Windows (36 a 41); Fase 8 (Windows) concluída (44 a 53). Fase 9 concluída no Linux (66 a 70). Versão atual: 0.2.0 (release v0.2.0).**
 
 ### Fase 7 (36 a 43; testada no Linux e no Android)
 
@@ -348,7 +348,7 @@ Etapas:
 
 ### Próximo
 
-- Fase 9 (avisos de novas versões): etapas 66 a 70 (Buttondown + verificação no app).
+- Fase 9: falta testar 69 e 70 no Android e no Windows (próxima release).
 - Fase 11 (widget, Android Auto, sincronização pelo Drive), começando pela etapa 60.
 - Fase 10 (podcasts), começando pela etapa 54.
 - Depois: audiolivros e itens fora de escopo.

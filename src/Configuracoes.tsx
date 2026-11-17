@@ -18,6 +18,7 @@ type Config = {
   bandeja: boolean;
   notificar: boolean;
   continuar_tocando: boolean;
+  verificar_versao: boolean;
 };
 
 const PRESETS: [Preset, string][] = [
@@ -90,6 +91,7 @@ export default function Configuracoes({ onErro }: { onErro: (m: string) => void 
   const [bandeja, setBandeja] = useState(false);
   const [notificar, setNotificar] = useState(true);
   const [continuar, setContinuar] = useState(true);
+  const [verificarVersao, setVerificarVersao] = useState(false);
   const [autostart, setAutostart] = useState(false);
   const [cache, setCache] = useState<number | null>(null);
   const [mpris, setMpris] = useState<string | null | undefined>(undefined);
@@ -110,6 +112,7 @@ export default function Configuracoes({ onErro }: { onErro: (m: string) => void 
         setBandeja(c.bandeja);
         setNotificar(c.notificar);
         setContinuar(c.continuar_tocando);
+        setVerificarVersao(c.verificar_versao);
       })
       .catch((e) => onErro(String(e)));
     invoke<boolean>("autostart_get")
@@ -207,6 +210,13 @@ export default function Configuracoes({ onErro }: { onErro: (m: string) => void 
     });
   }
 
+  function gravarVerificarVersao(ativo: boolean) {
+    setVerificarVersao(ativo);
+    invoke("set_update_check", { ativo })
+      .then(() => ativo && window.dispatchEvent(new Event("verificar-versao")))
+      .catch((e) => onErro(String(e)));
+  }
+
   function gravarContinuar(ativo: boolean) {
     setContinuar(ativo);
     invoke("set_continue", { ativo }).catch((e) => onErro(String(e)));
@@ -265,6 +275,12 @@ export default function Configuracoes({ onErro }: { onErro: (m: string) => void 
           nota="Abre a página de inscrição no navegador. O cadastro é feito no Buttondown, com confirmação por e-mail e descadastro em qualquer aviso; o Skáld não guarda nem envia o seu e-mail."
         >
           <button onClick={() => openUrl(PAGINA_AVISOS)}>Receber avisos…</button>
+        </Linha>
+        <Linha
+          titulo="Verificar novas versões ao abrir"
+          nota="Consulta o GitHub ao abrir o Skáld e mostra um aviso no topo quando houver versão nova. É o único acesso à internet que o Skáld faz sozinho, por isso vem desligado."
+        >
+          <Interruptor ligado={verificarVersao} rotulo="Verificar novas versões ao abrir" onMudar={gravarVerificarVersao} />
         </Linha>
       </Cartao>
 

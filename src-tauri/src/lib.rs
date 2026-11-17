@@ -16,6 +16,7 @@ mod letras;
 mod library;
 mod miniaturas;
 mod mixes;
+mod novidades;
 mod player;
 mod playlists;
 #[cfg(desktop)]
@@ -1663,6 +1664,27 @@ fn set_continue(db: State<db::Db>, ativo: bool) -> Result<(), String> {
 }
 
 #[tauri::command]
+fn set_update_check(db: State<db::Db>, ativo: bool) -> Result<(), String> {
+    let conn = db.0.lock().map_err(erro_db)?;
+    settings::definir_verificar_versao(&conn, ativo).map_err(|e| e.to_string())
+}
+
+/// Versão nova no GitHub, só com a opção ligada; desligada ou sem internet devolve nada.
+#[tauri::command]
+async fn update_check(db: State<'_, db::Db>) -> Result<Option<novidades::NovaVersao>, String> {
+    let ligado = {
+        let conn = db.0.lock().map_err(erro_db)?;
+        settings::verificar_versao(&conn).map_err(|e| e.to_string())?
+    };
+    if !ligado {
+        return Ok(None);
+    }
+    tauri::async_runtime::spawn_blocking(novidades::verificar)
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
 fn set_notifications(db: State<db::Db>, ativo: bool) -> Result<(), String> {
     let conn = db.0.lock().map_err(erro_db)?;
     settings::definir_notificar(&conn, ativo).map_err(|e| e.to_string())
@@ -2021,6 +2043,8 @@ pub fn run() {
             metadata_apply,
             set_notifications,
             set_continue,
+            set_update_check,
+            update_check,
             autostart_get,
             set_autostart,
             set_crossfade,

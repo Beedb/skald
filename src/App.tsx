@@ -10,6 +10,7 @@ import Fila, { type VisaoFila } from "./Fila";
 import Lateral, { type PlaylistResumo, type Vista } from "./Lateral";
 import PlaylistView from "./PlaylistView";
 import Historico from "./Historico";
+import AvisoVersao from "./AvisoVersao";
 import Pastas from "./Pastas";
 import Duplicados from "./Duplicados";
 import { Albuns, AlbumView, Artistas, ArtistaView } from "./Colecao";
@@ -424,6 +425,7 @@ function App() {
               <Duplicados versao={versao} onErro={setErro} />
             </div>
           </header>
+          <AvisoVersao />
           {aviso && (
             <p className="aviso">
               {aviso}{" "}
