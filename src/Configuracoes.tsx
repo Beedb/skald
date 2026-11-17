@@ -285,6 +285,8 @@ export default function Configuracoes({ onErro }: { onErro: (m: string) => void 
   const [avisoDados, setAvisoDados] = useState<string | null>(null);
   const [pastas, setPastas] = useState<string[]>([]);
   const [musicas, setMusicas] = useState<number | null>(null);
+  const [ausentes, setAusentes] = useState(0);
+  const [confirmarAusentes, setConfirmarAusentes] = useState(false);
 
   useEffect(() => {
     invoke<Config>("get_settings")
@@ -309,6 +311,9 @@ export default function Configuracoes({ onErro }: { onErro: (m: string) => void 
       .catch(() => {});
     invoke<{ media_count: number }>("db_status")
       .then((d) => setMusicas(d.media_count))
+      .catch(() => {});
+    invoke<number>("missing_count")
+      .then(setAusentes)
       .catch(() => {});
     invoke<number>("cache_size")
       .then(setCache)
@@ -364,6 +369,17 @@ export default function Configuracoes({ onErro }: { onErro: (m: string) => void 
       const copia = await invoke<string>("backup_restore", { origem });
       sessionStorage.setItem("skald-aviso", `Backup restaurado. O banco anterior foi guardado em ${copia}`);
       window.location.reload();
+    } catch (e) {
+      onErro(String(e));
+    }
+  }
+
+  async function removerAusentes() {
+    setConfirmarAusentes(false);
+    try {
+      const n = await invoke<number>("remove_missing");
+      setAusentes(0);
+      setMusicas((m) => (m === null ? m : m - n));
     } catch (e) {
       onErro(String(e));
     }
@@ -581,6 +597,25 @@ export default function Configuracoes({ onErro }: { onErro: (m: string) => void 
           }
           nota="Importe pastas ou arquivos pelos botões do topo da biblioteca. Remover da biblioteca nunca apaga o arquivo."
         />
+        {ausentes > 0 && (
+          <Linha
+            titulo={`Músicas não encontradas (${ausentes})`}
+            nota={
+              confirmarAusentes
+                ? "Elas saem das playlists e das curtidas, e o histórico fica sem o vínculo com a música. Não dá para desfazer."
+                : "O arquivo dessas músicas sumiu do disco. Removê-las tira só o registro da biblioteca."
+            }
+          >
+            {confirmarAusentes ? (
+              <>
+                <button onClick={removerAusentes}>Remover {ausentes}</button>
+                <button onClick={() => setConfirmarAusentes(false)}>Cancelar</button>
+              </>
+            ) : (
+              <button onClick={() => setConfirmarAusentes(true)}>Remover da biblioteca…</button>
+            )}
+          </Linha>
+        )}
         <Linha
           titulo={`Pastas monitoradas (${pastas.length})`}
           nota="Arquivos novos, movidos ou apagados nessas pastas são notados sozinhos. Ao importar uma pasta, ela passa a ser monitorada."

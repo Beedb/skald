@@ -203,6 +203,38 @@ fn remove_from_library(app: AppHandle, ids: Vec<i64>) -> Result<usize, String> {
     Ok(n)
 }
 
+/// Músicas marcadas como não encontradas (arquivo sumiu do disco).
+#[tauri::command]
+fn missing_count(db: State<db::Db>) -> Result<i64, String> {
+    let conn = db.0.lock().map_err(erro_db)?;
+    conn.query_row("SELECT COUNT(*) FROM media WHERE missing = 1 AND category = 'music'", [], |r| r.get(0))
+        .map_err(|e| e.to_string())
+}
+
+/// "Remover músicas não encontradas": tira da biblioteca só os registros (o arquivo já não existe).
+#[tauri::command]
+fn remove_missing(app: AppHandle) -> Result<usize, String> {
+    let ids = {
+        let db = app.state::<db::Db>();
+        let conn = db.0.lock().map_err(erro_db)?;
+        let mut st = conn
+            .prepare("SELECT id FROM media WHERE missing = 1 AND category = 'music'")
+            .map_err(|e| e.to_string())?;
+        let ids = st
+            .query_map([], |r| r.get::<_, i64>(0))
+            .map_err(|e| e.to_string())?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|e| e.to_string())?;
+        ids
+    };
+    if ids.is_empty() {
+        return Ok(0);
+    }
+    let n = remove_from_library(app.clone(), ids)?;
+    let _ = app.emit(EVENTO_BIBLIOTECA, &import::ImportResumo::default());
+    Ok(n)
+}
+
 /// Arquivos idênticos na biblioteca (só aviso; nada é apagado).
 #[tauri::command]
 fn duplicates_list(db: State<db::Db>) -> Result<Vec<import::GrupoDuplicados>, String> {
@@ -2243,6 +2275,8 @@ pub fn run() {
             sync_login,
             sync_cancel,
             sync_now,
+            missing_count,
+            remove_missing,
             set_sync_upload,
             sync_logout,
             autostart_get,
