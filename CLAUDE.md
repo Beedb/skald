@@ -229,20 +229,34 @@ Etapas:
 | 58 | [ ] | [ ] | [ ] |
 | 59 | [ ] | [ ] | [ ] |
 
-## Fase 11 (fora do app: widget, carro, nuvem) — em planejamento
+## Fase 11 (widget, Android Auto e sincronização pelo Drive) — antes da Fase 10
 
-Ideias do usuário (2026-11-17). Decisões pendentes marcadas com **?**; perguntar antes de codificar.
+Decisões (2026-11-17): widget só no Android (relógio e app Wear OS ficam para o futuro); carro só pelo Android Auto (Waze fora); sincronização feita pelo próprio Skáld, que sobe e desce músicas e dados para o Google Drive, em todas as plataformas.
 
-- **Widget Android**: `AppWidgetProvider` + `RemoteViews` em Kotlin (capa, título, artista, anterior/tocar-pausar/próxima), atualizado por `Midia.atualizar` e com os botões indo para `Java_com_skald_app_Midia_comando` (mesmo caminho da notificação). **?** Tamanhos: só 4×1 ou também 4×2/2×2.
-- **Relógio**: com a MediaSession atual o Wear OS já deve mostrar os controles do celular sem app próprio (testar quando houver relógio). App próprio para Wear OS fica para o futuro.
-- **Carro / Waze**: o caminho aberto é `MediaBrowserServiceCompat` (navegar biblioteca/playlists pelo Android Auto e pelo player do sistema). O Waze só lista players integrados ao programa de parceria dele (Waze Audio Kit); conferir se ainda aceita inscrição antes de prometer. **?** Android Auto entra junto.
-- **Google Drive / outros aparelhos**: regra "tudo offline" continua; a música sempre toca de arquivo local. Opções:
-  1. Sem código: pasta sincronizada pelo sistema (Windows: Google Drive para Desktop com "espelhar arquivos"; Linux: `rclone`/GNOME Contas Online) e importar como pasta monitorada. Só documentar e testar.
-  2. Integração própria: login Google (OAuth) a pedido, escolher pastas do Drive e baixar para a pasta do Skáld (mesmo modelo do download de podcasts, etapa 59). Internet só ao sincronizar.
-  3. Aparelhos: pastas de rede (SMB) ou cartão/USB/MTP.
-  **?** Qual opção (ou ordem) e se "aparelhos" quer dizer rede, USB ou sincronizar o Skáld entre os PCs e o celular (banco, playlists, histórico).
+- **Widget** (60 e 61): redimensionável de 2×1 a 5×1 (só o player: capa, título/artista, anterior/tocar-pausar/próxima) e de 2×2 a 5×2 (player em cima, playlists embaixo; toque na playlist toca). Kotlin com `AppWidgetProvider`; layouts por tamanho (`RemoteViews(Map<SizeF, RemoteViews>)` no Android 12+, `onAppWidgetOptionsChanged` antes; `minSdk` 24). Atualizado por `Midia.atualizar`; botões vão por `Java_com_skald_app_Midia_comando`, como a notificação.
+- **Android Auto** (62): `MidiaService` vira `MediaBrowserServiceCompat` (`onGetRoot`/`onLoadChildren`: Playlists, Álbuns, Artistas, Tocadas recentemente; tocar por id), `automotive_app_desc.xml` e meta-data no manifesto. Testar com o Desktop Head Unit (DHU) e no carro; fora da Play Store o Android Auto exige "fontes desconhecidas" nas opções de desenvolvedor dele.
+- **Sincronização pelo Drive** (63 a 65):
+  - Conta: OAuth com PKCE (desktop: loopback; Android: redirecionamento próprio), escopo `drive.file` (o Skáld só vê o que ele mesmo criou; sem verificação restrita do Google). O projeto no Google Cloud e o ID do cliente são criados pelo usuário. Internet só quando a pessoa liga a sincronização ou pede para sincronizar.
+  - Pasta visível `Skáld` no Drive: `musicas/` (arquivos identificados pelo hash BLAKE3) e `dados/` (playlists, curtidas, histórico, apelidos).
+  - Músicas: sobe as que o Drive não tem e desce as que o aparelho não tem para a pasta do Skáld (vira pasta monitorada). Nunca apaga nada: nem do disco, nem do Drive; remover da biblioteca num aparelho não remove nos outros.
+  - Dados: identidade da música = hash; playlists com UUID, `atualizada_em` e marca de exclusão (vence a mais recente, itens por referência); curtidas por instante; histórico é união (hash + início). Precisa migração nova (UUIDs e datas). O `.db` nunca é copiado inteiro.
 
-Etapas: numerar a partir da 60 ao decidir. **?** Prioridade frente às Fases 9 e 10.
+Etapas:
+- 60. Widget Yx1 (player).
+- 61. Widget Yx2 (player + playlists).
+- 62. Android Auto.
+- 63. Conta Google e pasta `Skáld` no Drive (Configurações → Sincronização).
+- 64. Subir e descer músicas.
+- 65. Sincronizar playlists, curtidas, histórico e apelidos.
+
+| Etapa | Linux | Android | Windows |
+|---|---|---|---|
+| 60 | — | [ ] | — |
+| 61 | — | [ ] | — |
+| 62 | — | [ ] | — |
+| 63 | [ ] | [ ] | [ ] |
+| 64 | [ ] | [ ] | [ ] |
+| 65 | [ ] | [ ] | [ ] |
 
 ## Estado atual
 
@@ -333,5 +347,6 @@ Etapas: numerar a partir da 60 ao decidir. **?** Prioridade frente às Fases 9 e
 ### Próximo
 
 - Fase 9 (avisos de novas versões por e-mail): responder as duas decisões pendentes e começar.
+- Fase 11 (widget, Android Auto, sincronização pelo Drive), começando pela etapa 60.
 - Fase 10 (podcasts), começando pela etapa 54.
 - Depois: audiolivros e itens fora de escopo.
