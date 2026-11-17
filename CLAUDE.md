@@ -258,12 +258,12 @@ Etapas:
 | 61 | — | [x] | — |
 | 62 | — | [x] | — |
 | 63 | [x] | [ ] | [ ] |
-| 64 | [ ] | [ ] | [ ] |
+| 64 | [~] envio testado | [ ] | [ ] |
 | 65 | [ ] | [ ] | [ ] |
 
 ## Estado atual
 
-**MVP, Fase 2 (etapas 10 a 19), Fase 3 (20 a 23), Fase 4 (24 a 28), Fase 5 (29 a 32) e Fase 6 (33 a 35) concluídos; Fase 7 concluída no Linux (36 a 41), no Android (36 a 43) e no Windows (36 a 41); Fase 8 (Windows) concluída (44 a 53). Fase 9 concluída no Linux (66 a 70). Versão atual: 0.2.0 (release v0.2.0).**
+**MVP, Fase 2 (etapas 10 a 19), Fase 3 (20 a 23), Fase 4 (24 a 28), Fase 5 (29 a 32) e Fase 6 (33 a 35) concluídos; Fase 7 concluída no Linux (36 a 41), no Android (36 a 43) e no Windows (36 a 41); Fase 8 (Windows) concluída (44 a 53). Fase 9 concluída no Linux (66 a 70). Fase 11: widget (60, 61) e Android Auto (62) concluídos no Android; sincronização pelo Drive (63 a 65) feita, em teste entre Linux e Android. Versão atual: 0.2.0 (release v0.2.0); o `.deb` instalado no PC do Ded é o código de 2026-11-17 (etapa 65), ainda com o número 0.2.0.**
 
 ### Fase 7 (36 a 43; testada no Linux e no Android)
 
@@ -351,7 +351,13 @@ Etapas:
 
 - Fase 9: falta testar 69 e 70 no Android e no Windows (próxima release).
 - Pendente no Android: restaurar backup (Configurações → Dados) recebe `content://` do seletor; ler com `tauri_plugin_fs` como em `playlist_set_cover`.
-- Fase 11 (widget, Android Auto, sincronização pelo Drive): etapa 63 feita no Linux; próxima é a 64 (subir e descer músicas), depois 63 no Android/Windows.
+- Fase 11, sincronização pelo Drive (estado em 2026-11-17):
+  - Linux: login (63) e envio de músicas (64) testados; a 1ª sincronização completa (815 músicas, ~2,7 GB) foi interrompida algumas vezes e continua de onde parou. Falta testar a 65 (dados) entre PC e celular.
+  - Android: APK com 63 a 65 instalado no S24+; falta testar login (com o `SyncService`), baixar músicas para Música/Skáld/Drive e a 65.
+  - Windows (Ded faz no dia seguinte): criar os segredos `SKALD_GOOGLE_CLIENT_ID` e `SKALD_GOOGLE_CLIENT_SECRET` no repositório (`gh secret set`, lendo o JSON local) e passar os dois como `env` no passo de build de `.github/workflows/windows.yml`; para compilar na máquina Windows, copiar o JSON para `%USERPROFILE%\Android\chaves\google-oauth-desktop.json` ou definir as variáveis. Depois testar 63 a 65 lá.
+  - Publicar o app no Google (sair de "Testando", login hoje expira em 7 dias): política de privacidade + página no GitHub Pages, preencher Branding, sem logotipo.
+  - Opcional: substituir no Drive a versão antiga da música quando as tags são editadas no arquivo (hoje as duas ficam).
+  - Cópia do banco do PC antes da migração v14: `~/.local/share/com.skald.app/skald-antes-etapa65.db`.
 - Futuro (Android): motor fora do Tauri, para o Android Auto e o widget tocarem com o app fechado (ver etapa 62).
 - Fase 10 (podcasts), começando pela etapa 54.
 - Depois: audiolivros e itens fora de escopo.
