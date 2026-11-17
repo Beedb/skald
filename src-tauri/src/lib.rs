@@ -1,4 +1,5 @@
 mod apelidos;
+mod caminhos;
 mod artistas;
 mod backup;
 #[cfg(test)]
@@ -51,9 +52,7 @@ struct DbStatus {
 #[tauri::command]
 fn db_status(app: tauri::AppHandle, db: State<db::Db>) -> Result<DbStatus, String> {
     let conn = db.0.lock().map_err(|_| "Banco de dados indisponível.".to_string())?;
-    let path = app
-        .path()
-        .app_data_dir()
+    let path = crate::caminhos::dados(&app)
         .map(|d| d.join("skald.db").display().to_string())
         .unwrap_or_default();
     Ok(DbStatus {
@@ -685,7 +684,7 @@ fn playlist_delete(app: AppHandle, id: i64) -> Result<(), String> {
 
 /// Pasta onde o Skáld guarda cópias das capas escolhidas para playlists.
 fn pasta_capas(app: &AppHandle) -> Result<std::path::PathBuf, String> {
-    Ok(app.path().app_data_dir().map_err(|e| e.to_string())?.join("capas"))
+    Ok(crate::caminhos::dados(&app)?.join("capas"))
 }
 
 /// Apaga uma capa copiada pelo próprio Skáld. Nunca toca em arquivos fora da pasta de capas.
@@ -915,7 +914,7 @@ fn tocar_lista(app: &AppHandle, fila: &FilaState, ids: Vec<i64>, indice: usize) 
 #[tauri::command]
 async fn cover_thumb(app: AppHandle, id: i64) -> Result<Option<String>, String> {
     tauri::async_runtime::spawn_blocking(move || {
-        let pasta = miniaturas::pasta(app.path().app_cache_dir().map_err(|e| e.to_string())?);
+        let pasta = miniaturas::pasta(crate::caminhos::cache(&app)?);
         miniaturas::obter(&app.state::<db::Db>().0, &pasta, id)
     })
     .await
@@ -1428,7 +1427,7 @@ fn backup_export(db: State<db::Db>, destino: String) -> Result<(), String> {
 /// O banco anterior fica salvo ao lado do atual; o caminho volta para avisar o usuário.
 #[tauri::command]
 fn backup_restore(app: AppHandle, origem: String) -> Result<String, String> {
-    let pasta = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    let pasta = crate::caminhos::dados(&app)?;
     let seguranca = backup::copia_de_seguranca(&pasta, unix_agora());
     encerrar_sessao(&app, false);
     {
@@ -1443,7 +1442,7 @@ fn backup_restore(app: AppHandle, origem: String) -> Result<String, String> {
 }
 
 fn pastas_de_cache(app: &AppHandle) -> Result<Vec<std::path::PathBuf>, String> {
-    let cache = app.path().app_cache_dir().map_err(|e| e.to_string())?;
+    let cache = crate::caminhos::cache(&app)?;
     Ok(vec![miniaturas::pasta(cache.clone()), cache.join("mpris")])
 }
 
@@ -1762,9 +1761,7 @@ fn notificar_troca(app: &AppHandle, estado: &player::EstadoPlayer) {
             library::obter(&conn, id).ok().flatten().map(|(m, _)| m)
         };
         let Some(m) = musica else { return };
-        let capa = app
-            .path()
-            .app_cache_dir()
+        let capa = crate::caminhos::cache(&app)
             .ok()
             .and_then(|c| miniaturas::arquivo(&app.state::<db::Db>().0, &miniaturas::pasta(c), id).ok().flatten());
         sistema::notificar_musica(
@@ -1852,7 +1849,7 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_fs::init())
         .setup(|app| {
-            let dir = app.path().app_data_dir()?;
+            let dir = caminhos::dados(app.handle())?;
             std::fs::create_dir_all(&dir)?;
             let conn = db::open(&dir.join("skald.db"))?;
             app.manage(db::Db(Mutex::new(conn)));

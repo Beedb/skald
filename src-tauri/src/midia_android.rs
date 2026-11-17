@@ -97,7 +97,6 @@ struct Meta {
 /// arquivo, por isso fica fora da thread do player.
 fn trabalhar(app: AppHandle, recebe: Receiver<Pedido>) {
     let mut meta = Meta::default();
-    let mut classe: Option<GlobalRef> = None;
     while let Ok(mut pedido) = recebe.recv() {
         // Vários avisos acumulados: vale o mais recente.
         while let Ok(p) = recebe.try_recv() {
@@ -112,7 +111,7 @@ fn trabalhar(app: AppHandle, recebe: Receiver<Pedido>) {
             Estado::Pausado => 2,
         };
         let estado = if meta.id.is_none() { 0 } else { estado };
-        if let Err(e) = publicar(&mut classe, &meta, estado, pedido.posicao_ms as i64) {
+        if let Err(e) = publicar(&meta, estado, pedido.posicao_ms as i64) {
             eprintln!("Notificação de mídia: {e}");
         }
     }
@@ -146,7 +145,7 @@ fn gravar_capa(app: &AppHandle, id: i64, data_url: &str) -> Option<String> {
     let (cabecalho, dados) = data_url.strip_prefix("data:")?.split_once(";base64,")?;
     let ext = cabecalho.strip_prefix("image/").unwrap_or("jpg").replace("jpeg", "jpg");
     let bytes = STANDARD.decode(dados).ok()?;
-    let dir = app.path().app_cache_dir().ok()?.join("midia");
+    let dir = crate::caminhos::cache(app).ok()?.join("midia");
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).ok()?;
     let arquivo = dir.join(format!("capa-{id}.{ext}"));
@@ -154,28 +153,9 @@ fn gravar_capa(app: &AppHandle, id: i64, data_url: &str) -> Option<String> {
     Some(arquivo.to_string_lossy().into_owned())
 }
 
-/// Chama `com.skald.app.Midia.atualizar(...)`. A classe vem do class loader da atividade:
-/// numa thread nativa o `FindClass` só enxerga as classes do sistema.
-fn publicar(classe: &mut Option<GlobalRef>, m: &Meta, estado: i32, posicao_ms: i64) -> Result<(), String> {
-    let ctx = ndk_context::android_context();
-    if ctx.vm().is_null() || ctx.context().is_null() {
-        return Err("contexto do Android indisponível".into());
-    }
-    // SAFETY: ponteiros do JavaVM e da atividade fornecidos pelo tao (ndk_context).
-    let vm = unsafe { JavaVM::from_raw(ctx.vm().cast()) }.map_err(|e| e.to_string())?;
-    let mut env = vm.attach_current_thread().map_err(|e| e.to_string())?;
-    let r = (|| -> jni::errors::Result<()> {
-        if classe.is_none() {
-            // SAFETY: referência global da atividade, mantida pelo tao; não é apagada aqui.
-            let atividade = unsafe { JObject::from_raw(ctx.context().cast()) };
-            let loader = env.call_method(&atividade, "getClassLoader", "()Ljava/lang/ClassLoader;", &[])?.l()?;
-            let nome = env.new_string("com.skald.app.Midia")?;
-            let c = env
-                .call_method(&loader, "loadClass", "(Ljava/lang/String;)Ljava/lang/Class;", &[JValue::Object(&nome)])?
-                .l()?;
-            *classe = Some(env.new_global_ref(c)?);
-        }
-        let c: &JClass = classe.as_ref().unwrap().as_obj().into();
+/// Chama `com.skald.app.Midia.atualizar(...)`.
+fn publicar(m: &Meta, estado: i32, posicao_ms: i64) -> Result<(), String> {
+    com_midia(|env, c| {
         let titulo = env.new_string(&m.titulo)?;
         let artista = env.new_string(&m.artista)?;
         let album = env.new_string(&m.album)?;
@@ -198,12 +178,7 @@ fn publicar(classe: &mut Option<GlobalRef>, m: &Meta, estado: i32, posicao_ms: i
             ],
         )?;
         Ok(())
-    })();
-    if r.is_err() && env.exception_check().unwrap_or(false) {
-        let _ = env.exception_describe();
-        let _ = env.exception_clear();
-    }
-    r.map_err(|e| e.to_string())
+    })
 }
 
 /// Quantas playlists o widget mostra no máximo (5×2).
@@ -227,7 +202,7 @@ fn playlists_widget(app: &AppHandle) -> Vec<(i64, Option<String>)> {
             })
             .collect()
     };
-    let pasta = app.path().app_cache_dir().ok().map(crate::miniaturas::pasta);
+    let pasta = crate::caminhos::cache(app).ok().map(crate::miniaturas::pasta);
     escolhidas
         .into_iter()
         .map(|(id, escolhida, primeira)| {
@@ -256,31 +231,47 @@ fn publicar_playlists(app: &AppHandle) {
     }
 }
 
-/// Roda `f` com a classe `com.skald.app.Midia` (carregada pelo class loader da atividade).
+/// Máquina Java e classe `com.skald.app.Midia`, guardadas por `Midia.iniciarNativo` (o Kotlin
+/// chama antes de o Rust iniciar, com ou sem atividade). Numa thread nativa o `FindClass` só
+/// enxerga as classes do sistema; por isso a classe vem pronta.
+static JVM: OnceLock<JavaVM> = OnceLock::new();
+static CLASSE_MIDIA: OnceLock<GlobalRef> = OnceLock::new();
+
+/// Roda `f` com a classe `com.skald.app.Midia`, nesta thread anexada à máquina Java.
 fn com_midia(f: impl FnOnce(&mut JNIEnv, &JClass) -> jni::errors::Result<()>) -> Result<(), String> {
-    let ctx = ndk_context::android_context();
-    if ctx.vm().is_null() || ctx.context().is_null() {
-        return Err("contexto do Android indisponível".into());
-    }
-    // SAFETY: ponteiros do JavaVM e da atividade fornecidos pelo tao (ndk_context).
-    let vm = unsafe { JavaVM::from_raw(ctx.vm().cast()) }.map_err(|e| e.to_string())?;
+    let (Some(vm), Some(classe)) = (JVM.get(), CLASSE_MIDIA.get()) else {
+        return Err("Midia.iniciarNativo ainda não foi chamado".into());
+    };
     let mut env = vm.attach_current_thread().map_err(|e| e.to_string())?;
-    let r = (|| -> jni::errors::Result<()> {
-        // SAFETY: referência global da atividade, mantida pelo tao; não é apagada aqui.
-        let atividade = unsafe { JObject::from_raw(ctx.context().cast()) };
-        let loader = env.call_method(&atividade, "getClassLoader", "()Ljava/lang/ClassLoader;", &[])?.l()?;
-        let nome = env.new_string("com.skald.app.Midia")?;
-        let c = env
-            .call_method(&loader, "loadClass", "(Ljava/lang/String;)Ljava/lang/Class;", &[JValue::Object(&nome)])?
-            .l()?;
-        let c: JClass = c.into();
-        f(&mut env, &c)
-    })();
+    let c: &JClass = classe.as_obj().into();
+    let r = f(&mut env, c);
     if r.is_err() && env.exception_check().unwrap_or(false) {
         let _ = env.exception_describe();
         let _ = env.exception_clear();
     }
     r.map_err(|e| e.to_string())
+}
+
+/// `Midia.iniciarNativo(dados, cache)`: chamado pelo Kotlin antes de o Rust iniciar.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_skald_app_Midia_iniciarNativo<'l>(
+    mut env: JNIEnv<'l>,
+    classe: JClass<'l>,
+    dados: JString<'l>,
+    cache: JString<'l>,
+) {
+    if let Ok(vm) = env.get_java_vm() {
+        let _ = JVM.set(vm);
+    }
+    if CLASSE_MIDIA.get().is_none() {
+        if let Ok(g) = env.new_global_ref(&classe) {
+            let _ = CLASSE_MIDIA.set(g);
+        }
+    }
+    let texto = |env: &mut JNIEnv<'l>, s: &JString<'l>| -> Option<String> { env.get_string(s).ok().map(Into::into) };
+    if let (Some(d), Some(c)) = (texto(&mut env, &dados), texto(&mut env, &cache)) {
+        crate::caminhos::definir_android(d.into(), c.into());
+    }
 }
 
 // ---------- Android Auto: navegação pela biblioteca (MediaBrowserService) ----------
@@ -301,7 +292,7 @@ fn item(id: &str, titulo: &str, subtitulo: &str, capa: Option<String>, pasta: bo
 
 fn navegar(app: &AppHandle, pai: &str) -> String {
     let db = app.state::<crate::db::Db>();
-    let pasta = app.path().app_cache_dir().ok().map(crate::miniaturas::pasta);
+    let pasta = crate::caminhos::cache(app).ok().map(crate::miniaturas::pasta);
     let capa = |id: i64| -> Option<String> {
         let c = crate::miniaturas::arquivo(&db.0, pasta.as_ref()?, id).ok().flatten()?;
         Some(c.to_string_lossy().into_owned())

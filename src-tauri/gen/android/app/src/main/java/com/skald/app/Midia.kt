@@ -17,8 +17,12 @@ object Midia {
    *  (`id<TAB>título<TAB>subtítulo<TAB>capa<TAB>p|t`). Só com o Rust carregado. */
   @JvmStatic external fun navegar(pai: String): String
 
-  /** O Rust (e o GStreamer) só existem depois que a atividade abriu neste processo. */
-  val rustCarregado: Boolean get() = contexto != null
+  /** Guarda a máquina Java, esta classe e as pastas do app para o Rust (antes de ele iniciar). */
+  @JvmStatic external fun iniciarNativo(dados: String, cache: String)
+
+  /** O Rust terminou de iniciar (banco, player, fila): a primeira lista de playlists chegou. */
+  @Volatile var pronto = false
+    private set
 
   data class Estado(
     val titulo: String,
@@ -40,7 +44,10 @@ object Midia {
   /** Playlists recentes para o widget (do Rust): uma linha por playlist, `id<TAB>capa`. */
   @JvmStatic
   fun playlists(texto: String) {
+    val primeira = !pronto
+    pronto = true
     principal.post {
+      if (primeira) MidiaService.instancia?.motorPronto()
       contexto?.let { WidgetPlayer.playlists(it, texto) }
       // O Rust acabou de carregar (ou as playlists mudaram): o Android Auto relê a biblioteca.
       MidiaService.instancia?.notifyChildrenChanged(MidiaService.RAIZ)

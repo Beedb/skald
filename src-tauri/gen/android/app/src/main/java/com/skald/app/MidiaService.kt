@@ -72,7 +72,8 @@ class MidiaService : MediaBrowserServiceCompat() {
         override fun onSeekTo(pos: Long) = Midia.comando("buscar", pos)
         override fun onPlayFromMediaId(mediaId: String?, extras: Bundle?) {
           if (mediaId == null) return
-          if (Midia.rustCarregado) Midia.comando(mediaId, 0) else avisarAppFechado()
+          // App fechado: guarda a escolha e toca quando o Skáld abrir (motorPronto).
+          if (Midia.pronto) Midia.comando(mediaId, 0) else pendente = mediaId
         }
       })
       setSessionActivity(abrirApp())
@@ -83,8 +84,19 @@ class MidiaService : MediaBrowserServiceCompat() {
 
   // ---------- Android Auto ----------
 
+  /** Item escolhido no carro com o app fechado. */
+  private var pendente: String? = null
+
+  /** Chamado uma vez quando o Rust termina de iniciar. */
+  fun motorPronto() {
+    notifyChildrenChanged(RAIZ)
+    pendente?.let { Midia.comando(it, 0) }
+    pendente = null
+  }
+
   override fun onGetRoot(cliente: String, uid: Int, dicas: Bundle?): BrowserRoot {
-    if (!Midia.rustCarregado) avisarAppFechado()
+    // O motor (Tauri) só sobe com a tela: o Android barra abrir a atividade em segundo plano
+    // e os plugins do Tauri esperam uma atividade ao iniciar. Ver CLAUDE.md (etapa 62).
     return BrowserRoot(RAIZ, Bundle().apply {
       putInt(ESTILO_PASTA, LISTA)
       putInt(ESTILO_TOCAVEL, LISTA)
@@ -92,8 +104,8 @@ class MidiaService : MediaBrowserServiceCompat() {
   }
 
   override fun onLoadChildren(pai: String, resultado: Result<MutableList<MediaBrowserCompat.MediaItem>>) {
-    if (!Midia.rustCarregado) {
-      // Sem o Rust não há biblioteca: um item explica (e Midia.playlists recarrega ao abrir).
+    if (!Midia.pronto) {
+      // App fechado: um item avisa (motorPronto recarrega a raiz quando ele abrir).
       val aviso = MediaDescriptionCompat.Builder()
         .setMediaId("abrir")
         .setTitle("Abra o Skáld no celular")
@@ -136,15 +148,7 @@ class MidiaService : MediaBrowserServiceCompat() {
     uri
   }.getOrNull()
 
-  /** Sem o Rust neste processo não há como tocar: o Android Auto mostra a mensagem. */
-  private fun avisarAppFechado() {
-    sessao.setPlaybackState(
-      PlaybackStateCompat.Builder()
-        .setState(PlaybackStateCompat.STATE_ERROR, 0, 0f)
-        .setErrorMessage(PlaybackStateCompat.ERROR_CODE_APP_ERROR, "Abra o Skáld no celular para tocar no carro.")
-        .build()
-    )
-  }
+
 
   override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
     iniciado = true

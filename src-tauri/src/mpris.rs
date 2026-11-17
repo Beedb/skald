@@ -146,7 +146,7 @@ fn gravar_capa(app: &AppHandle, id: i64, data_url: &str) -> Option<String> {
 }
 
 fn gravar_arquivo(app: &AppHandle, nome: &str, bytes: &[u8]) -> Option<String> {
-    let dir = app.path().app_cache_dir().ok()?.join("mpris");
+    let dir = crate::caminhos::cache(app).ok()?.join("mpris");
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).ok()?;
     let arquivo = dir.join(nome);

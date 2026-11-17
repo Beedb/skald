@@ -183,7 +183,7 @@ class WidgetPlayer : AppWidgetProvider() {
   override fun onReceive(ctx: Context, intent: Intent) {
     if (intent.action != ACAO) return super.onReceive(ctx, intent)
     val nome = intent.getStringExtra(EXTRA) ?: return
-    if (Midia.contexto != null) {
+    if (Midia.pronto) {
       // O Rust está carregado (app aberto ou tocando em segundo plano).
       Midia.comando(nome, intent.getLongExtra(EXTRA_VALOR, 0))
     } else {

@@ -78,11 +78,8 @@ class MainActivity : TauriActivity() {
 
   override fun onCreate(savedInstanceState: Bundle?) {
     enableEdgeToEdge()
-    // O GStreamer precisa do Context (plugins estáticos, certificados, fontes) antes
-    // de o Rust criar o player; depois disso o gst::init() do Rust não faz nada.
-    System.loadLibrary("gstreamer_android")
-    GStreamer.init(this)
-    Midia.contexto = applicationContext
+    // GStreamer, Rust e pastas (talvez já feito pelo Android Auto, sem tela).
+    Motor.preparar(this)
     super.onCreate(savedInstanceState)
   }
 
