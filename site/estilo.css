@@ -49,3 +49,15 @@ ul { padding-left: 1.2em; }
 li { margin: 0.3em 0; }
 footer { margin-top: 56px; color: var(--fraco); font-size: 0.9rem; text-align: center; }
 code { font-size: 0.9em; background: var(--card); padding: 1px 5px; border-radius: 4px; overflow-wrap: anywhere; }
+.downloads { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; margin: 8px 0 4px; }
+.download {
+  display: flex; flex-direction: column; gap: 2px; padding: 14px 16px; border-radius: var(--raio);
+  background: var(--card); border: 1px solid var(--borda); color: var(--texto); text-decoration: none;
+}
+.download span { color: var(--fraco); font-size: 0.85rem; }
+.download:hover { color: var(--forte); border-color: var(--acento); }
+.download.sugerido { background: var(--acento); border-color: var(--acento); color: var(--acento-txt); box-shadow: var(--sombra); }
+.download.sugerido span { color: var(--acento-txt); opacity: 0.8; }
+#baixar h2 { margin-top: 0.8em; }
+#versao { font-size: 0.8em; color: var(--fraco); }
+.nota { color: var(--fraco); font-size: 0.9rem; }

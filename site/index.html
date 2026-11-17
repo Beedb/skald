@@ -18,10 +18,29 @@
     <h1>Skáld</h1>
     <p class="sub">Reprodutor de música para quem tem a própria coleção de arquivos.<br>Local, offline e sem conta.</p>
     <div class="botoes">
-      <a class="botao" href="https://github.com/Beedb/skald/releases/latest">Baixar</a>
+      <a class="botao" href="#baixar">Baixar</a>
       <a class="botao secundario" href="https://github.com/Beedb/skald">Código-fonte</a>
     </div>
   </header>
+
+  <section id="baixar" class="cartao">
+    <h2>Baixar <span id="versao"></span></h2>
+    <div class="downloads">
+      <a class="download" data-arquivo="setup\.exe$" href="https://github.com/Beedb/skald/releases/latest">
+        <strong>Windows</strong><span>10 ou mais novo · instalador .exe</span>
+      </a>
+      <a class="download" data-arquivo="\.deb$" href="https://github.com/Beedb/skald/releases/latest">
+        <strong>Linux · .deb</strong><span>Debian, Ubuntu, Zorin, Mint</span>
+      </a>
+      <a class="download" data-arquivo="\.rpm$" href="https://github.com/Beedb/skald/releases/latest">
+        <strong>Linux · .rpm</strong><span>Fedora</span>
+      </a>
+      <a class="download" data-arquivo="\.apk$" href="https://github.com/Beedb/skald/releases/latest">
+        <strong>Android</strong><span>APK (arm64)</span>
+      </a>
+    </div>
+    <p class="nota">O instalador do Windows ainda não tem assinatura digital: se o SmartScreen avisar, clique em “Mais informações” e “Executar assim mesmo”. No Android, permita instalar apps desta fonte. Todas as versões e notas: <a href="https://github.com/Beedb/skald/releases">página de versões</a>.</p>
+  </section>
 
   <p>O Skáld organiza e toca as músicas que estão no seu computador ou celular. Ele não faz streaming, não exige login e funciona sem internet. Está disponível para Linux (<code>.deb</code> e <code>.rpm</code>), Windows 10 ou mais novo e Android, e é software livre (GPL-3.0).</p>
 
@@ -41,5 +60,30 @@
     <p><a href="privacidade.html">Política de privacidade</a> · <a href="https://github.com/Beedb/skald/issues">Contato e suporte</a> · <a href="https://buttondown.com/skald">Avisos de novas versões</a></p>
   </footer>
 </main>
+<script>
+  // Links diretos para os arquivos da versão mais recente; sem resposta, ficam na página da release.
+  (function () {
+    var ua = navigator.userAgent;
+    var sistema = /Android/i.test(ua) ? "\\.apk$" : /Windows/i.test(ua) ? "setup\\.exe$" : /Fedora/i.test(ua) ? "\\.rpm$" : /Linux/i.test(ua) ? "\\.deb$" : null;
+    var botoes = document.querySelectorAll(".download");
+    botoes.forEach(function (b) {
+      if (b.dataset.arquivo === sistema) b.classList.add("sugerido");
+    });
+    fetch("https://api.github.com/repos/Beedb/skald/releases/latest")
+      .then(function (r) { return r.ok ? r.json() : Promise.reject(r.status); })
+      .then(function (rel) {
+        document.getElementById("versao").textContent = rel.tag_name;
+        botoes.forEach(function (b) {
+          var re = new RegExp(b.dataset.arquivo, "i");
+          var a = (rel.assets || []).find(function (x) { return re.test(x.name); });
+          if (a) {
+            b.href = a.browser_download_url;
+            b.title = a.name + " (" + (a.size / 1048576).toFixed(0) + " MB)";
+          }
+        });
+      })
+      .catch(function () {});
+  })();
+</script>
 </body>
 </html>
