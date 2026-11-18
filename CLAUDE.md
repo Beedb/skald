@@ -183,7 +183,7 @@ Conferir o que já existe antes de cada etapa e marcar `[x]` só com teste feito
 - [x] 52. CI no GitHub Actions (`windows-latest`) gerando o instalador a cada tag. (Tag v0.2.0: instalador, teste-limpo e release passaram em ~8 min; o `.exe` foi anexado sozinho.)
 - [x] 53. Paridade final: todas as funções das etapas 1 a 43. (1 a 35 pelos testes do Rust no Windows, 95 passando; 36 a 41 testadas no app instalado v0.2.0; 42 e 43 são só do Android.)
 
-## Fase 9 (avisos de novas versões) — concluída no Linux
+## Fase 9 (avisos de novas versões) — concluída (Linux, Android e Windows)
 
 Objetivo: a pessoa cadastra o e-mail e é avisada quando sai uma versão nova. O Skáld é offline e sem servidor, então a lista e o envio ficam num serviço de fora; o app nunca guarda nem envia e-mail.
 
@@ -204,8 +204,8 @@ Etapas (numeradas depois das da Fase 11):
 | 66 | [x] | — | — |
 | 67 | [x] | — | — |
 | 68 | [x] | — | — |
-| 69 | [x] | [x] | [ ] |
-| 70 | [x] | [x] | [ ] |
+| 69 | [x] | [x] | [x] |
+| 70 | [x] | [x] | [x] |
 
 ## Fase 10 (podcasts) — planejada
 
@@ -225,12 +225,12 @@ Etapas:
 
 | Etapa | Linux | Android | Windows |
 |---|---|---|---|
-| 54 | [ ] | [ ] | [ ] |
-| 55 | [ ] | [ ] | [ ] |
-| 56 | [ ] | [ ] | [ ] |
-| 57 | [ ] | [ ] | [ ] |
-| 58 | [ ] | [ ] | [ ] |
-| 59 | [ ] | [ ] | [ ] |
+| 54 | [ ] | [ ] | [x] |
+| 55 | [ ] | [ ] | [x] |
+| 56 | [ ] | [ ] | [x] |
+| 57 | [ ] | [ ] | [x] |
+| 58 | [ ] | [ ] | [x] |
+| 59 | [ ] | [ ] | [x] |
 
 ## Fase 11 (widget, Android Auto e sincronização pelo Drive) — antes da Fase 10
 
@@ -260,14 +260,14 @@ Etapas:
 | 60 | — | [x] | — |
 | 61 | — | [x] | — |
 | 62 | — | [x] | — |
-| 63 | [x] | [x] | [ ] |
-| 64 | [x] | [x] | [ ] |
+| 63 | [x] | [x] | [x] |
+| 64 | [x] | [x] | [x] |
 | 65 | [ ] | [ ] | [ ] |
 | 71 | [ ] | [ ] | [ ] |
 
 ## Estado atual
 
-**MVP, Fase 2 (etapas 10 a 19), Fase 3 (20 a 23), Fase 4 (24 a 28), Fase 5 (29 a 32) e Fase 6 (33 a 35) concluídos; Fase 7 concluída no Linux (36 a 41), no Android (36 a 43) e no Windows (36 a 41); Fase 8 (Windows) concluída (44 a 53). Fase 9 concluída no Linux e no Android (66 a 70; falta testar 69 e 70 no Windows). Fase 11: widget (60, 61) e Android Auto (62) concluídos no Android; login (63) e músicas (64) testados no Linux e no Android, 65 em teste; app do Google em produção. Fase 10: etapas 54 a 59 com código feito (inclui assinar por RSS), falta testar no app. Versão atual: **0.3.1** (release v0.3.1, 2026-11-18: Linux e Android, com a sincronização de dados por pasta; Windows "em breve", ver "Windows: o que falta"). Pendências do Windows: seção "Windows: o que falta" abaixo.**
+**MVP, Fase 2 (etapas 10 a 19), Fase 3 (20 a 23), Fase 4 (24 a 28), Fase 5 (29 a 32) e Fase 6 (33 a 35) concluídos; Fase 7 concluída no Linux (36 a 41), no Android (36 a 43) e no Windows (36 a 41); Fase 8 (Windows) concluída (44 a 53). Fase 9 concluída (66 a 70) no Linux, Android e Windows. Fase 11: widget (60, 61) e Android Auto (62) concluídos no Android; login (63) e músicas (64) testados no Linux e no Android, 65 em teste; app do Google em produção. Fase 10: etapas 54 a 59 (inclui assinar por RSS) testadas no Windows, falta testar no Linux e no Android. Versão atual: **0.3.1** (release v0.3.1, 2026-11-18: Linux e Android, com a sincronização de dados por pasta; Windows anexado em 2026-11-18 após o teste). Windows: seção "Windows (testado em 2026-11-18, v0.3.1)" abaixo.**
 
 ### Fase 7 (36 a 43; testada no Linux e no Android)
 
@@ -353,23 +353,22 @@ Etapas:
 
 ### Próximo
 
-### Windows: o que falta (atualizado em 2026-11-17)
+### Windows (testado em 2026-11-18, v0.3.1)
 
-Antes de testar: na máquina Windows, `git pull`, copiar `google-oauth-desktop.json` para `%USERPROFILE%\Android\chaves\` (ou definir `SKALD_GOOGLE_CLIENT_ID`/`_SECRET`), `npm install` e `npm run tauri dev` (ou `npm run build:windows` e instalar o `.exe`). O CI já compila com as credenciais (segredos no repositório; execução 44198947442 passou: instalador e teste-limpo).
+- 0.3.1 instalada por cima da 0.2.0 (`/S`): banco v13 → v16 sem perder nada; `gstaudiofx.dll` embutido; instalação de 43,5 → 51,9 MB (sem `panic = "abort"`). Bandeja conferida pelo usuário. `.exe` anexado à release v0.3.1 (marca `windows-em-breve` tirada das notas e job `release` rodado de novo).
+- 69/70: opener aceita `buttondown.com/skald` e recusa outros links; `update_check` com `SKALD_VERSAO_FINGIDA=0.1.0` (build dev) mostra a faixa "Saiu a versão 0.3.1".
+- Podcasts 54 a 59 testados no app instalado: pasta importada como Podcasts (acento/espaço), telas, 2× sem mudar o tom, −15/+30 s, retomar por episódio, ouvido automático/à mão, próximo episódio (com repetir desligado; repetir fila tem prioridade), "Continuar ouvindo", RSS (NPR News Now), download para `Music\Skáld\Podcasts\<Programa>\` (`|` → `_`) e tocar offline. **Pendente**: no Windows (GStreamer 1.28.8) o EOS a 2× chega ~1 s depois de a posição chegar ao fim (~1 s de silêncio no fim do episódio); `velocidade_e_retomar` mede a chegada ao fim.
+- 63/64: login com retorno em `127.0.0.1` ok; "Sincronizar agora" baixou 669 músicas (3,1 GB) para `Music\Skáld\Drive` sem falhas e a pasta virou monitorada (a execução foi parada pela tela antes do envio e dos dados).
+- "Músicas não encontradas (N)": o monitoramento marca e o cartão mostra (o botão Remover não foi exercitado com a biblioteca real). Retrospectiva: `retrospective_save_png` grava em `Music\Skáld\Retrospectivas\` (sem mês encerrado no histórico para gerar uma de verdade).
+- `cargo test` no Windows: 110 passando. Corrigido junto: `reconciliar_movidos` juntava duas faixas sem tags de mesmo tamanho/duração com hashes diferentes como "renomeada".
+- Falta no Windows: 65 e 71 (entre aparelhos). Fora do código: instalador sem assinatura (SmartScreen).
+- `build.rs` só vigia o JSON do Google quando ele existe: depois de copiá-lo, tocar no `build.rs` (ou mudar uma variável `SKALD_GOOGLE_*`) para recompilar com as credenciais.
 
-1. **Sincronização (63 a 65)**: Configurações → Sincronização → Entrar com o Google (retorno pelo navegador em `127.0.0.1`; conta em `%APPDATA%\com.skald.app\google.json`); "Sincronizar agora" baixa primeiro para `<Música>\Skáld\Drive` (`C:\Users\<u>\Music\Skáld\Drive`), depois envia (se "Enviar músicas deste aparelho" estiver ligado) e confere o Drive de novo; depois junta playlists, curtidas, histórico e apelidos. Conferir que a pasta baixada vira monitorada e que nada é apagado.
-2. **Avisos de versão (69 e 70)**: cartão Novidades (versão do app, "Notas das versões…", "Receber avisos…" abre `buttondown.com/skald`) e "Verificar novas versões ao abrir" (testar com `SKALD_VERSAO_FINGIDA=0.1.0` em debug).
-3. **Novidades de 2026-11-17 a conferir no Windows**: "Músicas não encontradas (N)" em Configurações → Biblioteca (remove só registros); "Importar pasta de podcasts…" (etapa 54: caminhos com `\` em `marcar_pasta`/`SEP_SQL`); release sem `panic = "abort"` (bandeja segue funcionando; ver se o instalador continua do mesmo tamanho aproximado).
-4. **Exportação de retrospectivas pelo app** (PNG em `C:\Users\<u>\Music\Skáld\Retrospectivas\`): ainda não testada no Windows.
-5. **Release v0.3.0** (publicada sem o `.exe`, marcada "em breve"): baixar o `.exe` do artefato da execução do CI da tag v0.3.0, testar por cima da 0.2.0 (banco migra para v16 sem perder nada); se ok, tirar a marca `windows-em-breve` das notas e rodar de novo o job `release` (ver "Como lançar uma versão"). O e-mail da 0.3.0 (rascunho no Buttondown, enviado por você) diz "Windows em breve"; avisar quando sair (e-mail novo ou WhatsApp).
-6. **Podcasts (54 a 59)**: código feito, valem para todas as plataformas. No Windows conferir: o plugin `audiofx` (`scaletempo`) entra no GStreamer embutido (`scripts/gstreamer-windows.ps1`; velocidade sem mudar o tom), −15/+30 s, retomar por episódio, "Assinar por RSS…" e download para `C:\Users\<u>\Music\Skáld\Podcasts\<Programa>\` (nomes sem `:`/`?` por `podcasts::nome_seguro`), e a migração v16.
-7. Fora do código: instalador sem assinatura (SmartScreen avisa); assinar é pago.
-
-- Fase 9: 69 e 70 testadas no Android; falta o Windows (próxima release). O cartão Novidades mostra a versão do app (`getVersion`) e abre as notas das versões.
+- Fase 9: 69 e 70 testadas no Android e no Windows. O cartão Novidades mostra a versão do app (`getVersion`) e abre as notas das versões.
 - Android: exportar/restaurar backup aceitam `content://` (arquivo temporário no cache + `tauri_plugin_fs`); APK com isso instalado no S24+, falta testar.
 - Fase 11, sincronização pelo Drive (estado em 2026-11-17):
   - Linux e Android: login (63) e subir/baixar músicas (64) testados. Falta testar a 65 (dados) entre PC e celular. Configurações → Biblioteca tem "Músicas não encontradas (N)" → remover só os registros (`missing_count`/`remove_missing`).
-  - Windows: ver "Windows: o que falta" acima.
+  - Windows: login e download testados (ver "Windows" acima).
   - App do Google **em produção** desde 2026-11-17 (login não expira mais; quem entrou em "Testando" precisa sair e entrar de novo). Site em `site/` (`index.html`, `privacidade.html`, cores do tema vidro), publicado por `.github/workflows/pages.yml` em `https://beedb.github.io/skald/`; Branding sem logotipo, domínio autorizado `beedb.github.io`.
   - Opcional: substituir no Drive a versão antiga da música quando as tags são editadas no arquivo (hoje as duas ficam).
   - Cópia do banco do PC antes da migração v14: `~/.local/share/com.skald.app/skald-antes-etapa65.db`.
