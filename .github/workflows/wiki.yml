@@ -1,0 +1,35 @@
+# Publica a pasta wiki/ na Wiki do GitHub (github.com/Beedb/skald/wiki).
+# A wiki/ é a fonte: editar lá, não pela página da Wiki (seria sobrescrito).
+name: Wiki
+
+on:
+  push:
+    branches: [main]
+    paths: ["wiki/**", ".github/workflows/wiki.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  publicar:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Enviar para a Wiki
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if ! git clone --depth 1 "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.wiki.git" wiki-repo; then
+            echo "::warning::A Wiki ainda não existe: crie a primeira página em https://github.com/${GITHUB_REPOSITORY}/wiki e rode este workflow de novo."
+            exit 0
+          fi
+          rsync -a --delete --exclude .git wiki/ wiki-repo/
+          cd wiki-repo
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git diff --cached --quiet && { echo "Wiki já está igual."; exit 0; }
+          git commit -m "Wiki: ${GITHUB_SHA::7}"
+          git push

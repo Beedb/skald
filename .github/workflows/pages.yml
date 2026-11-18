@@ -1,10 +1,11 @@
-# Publica a pasta site/ (página inicial e política de privacidade) no GitHub Pages.
+# Publica a pasta site/ (página inicial e política de privacidade) no GitHub Pages, com a
+# ajuda (site/ajuda/) gerada da wiki/ por scripts/wiki-site.py.
 name: Site
 
 on:
   push:
     branches: [main]
-    paths: ["site/**", ".github/workflows/pages.yml"]
+    paths: ["site/**", "wiki/**", "scripts/wiki-site.py", ".github/workflows/pages.yml"]
   workflow_dispatch:
 
 permissions:
@@ -24,6 +25,10 @@ jobs:
       url: ${{ steps.deploy.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
+      - name: Gerar a ajuda a partir da wiki
+        run: |
+          pip install --quiet markdown==3.5.2
+          python3 scripts/wiki-site.py
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:

@@ -99,3 +99,35 @@ code { font-size: 0.9em; background: var(--card); padding: 1px 5px; border-radiu
   .inscricao button { flex: 1 1 100%; border-radius: calc(var(--raio) - 6px); }
 }
 .oculto { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+/* Ajuda (páginas geradas da wiki por scripts/wiki-site.py) */
+.ajuda { display: grid; grid-template-columns: 240px minmax(0, 1fr); gap: 32px; max-width: 1080px; margin: 0 auto; padding: 32px 16px 64px; }
+.ajuda-menu { position: sticky; top: 16px; align-self: start; max-height: calc(100vh - 32px); overflow: auto; }
+.ajuda-marca { display: flex; align-items: center; gap: 10px; font-family: "Cinzel", Georgia, serif; font-size: 1.3rem; color: var(--forte); text-decoration: none; margin-bottom: 16px; }
+.ajuda-marca img { width: 36px; height: 36px; }
+.ajuda-menu summary { display: none; }
+.ajuda-menu ul { list-style: none; padding: 0; margin: 8px 0; }
+.ajuda-menu li a { display: block; padding: 6px 10px; border-radius: 8px; color: var(--texto); text-decoration: none; line-height: 1.3; }
+.ajuda-menu li a:hover { background: var(--card); color: var(--forte); }
+.ajuda-menu a[aria-current="page"] { background: var(--acento); color: var(--acento-txt); }
+.ajuda-menu p { margin: 8px 0; }
+.ajuda-texto { background: var(--card); border: 1px solid var(--borda); border-radius: 16px; padding: 8px 32px 24px; backdrop-filter: var(--vidro); line-height: 1.65; min-width: 0; }
+.ajuda-texto h1 { font-family: "Cinzel", Georgia, serif; color: var(--forte); font-size: 2rem; margin: 24px 0 12px; }
+.ajuda-texto h2 { font-family: "Lora", Georgia, serif; color: var(--forte); margin: 32px 0 8px; padding-top: 8px; border-top: 1px solid var(--borda); }
+.ajuda-texto h3 { font-family: "Lora", Georgia, serif; color: var(--forte); margin: 24px 0 6px; }
+.ajuda-texto code { background: var(--fundo); border: 1px solid var(--borda); border-radius: 6px; padding: 1px 6px; font-size: 0.9em; overflow-wrap: anywhere; }
+.ajuda-texto pre { background: var(--fundo); border: 1px solid var(--borda); border-radius: 10px; padding: 12px 14px; overflow-x: auto; }
+.ajuda-texto pre code { border: 0; padding: 0; background: none; }
+.ajuda-texto table { border-collapse: collapse; width: 100%; display: block; overflow-x: auto; font-size: 0.95rem; }
+.ajuda-texto th, .ajuda-texto td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--borda); vertical-align: top; }
+.ajuda-texto th { color: var(--forte); }
+.ajuda-texto blockquote { margin: 12px 0; padding: 8px 14px; border-left: 3px solid var(--acento); background: var(--fundo); border-radius: 0 8px 8px 0; }
+.ajuda-texto blockquote p { margin: 4px 0; }
+.ajuda-rodape { margin-top: 40px; padding-top: 12px; border-top: 1px solid var(--borda); color: var(--fraco); font-size: 0.9rem; }
+@media (max-width: 760px) {
+  .ajuda { grid-template-columns: 1fr; gap: 12px; padding-top: 16px; }
+  .ajuda-menu { position: static; max-height: none; }
+  .ajuda-menu summary { display: list-item; cursor: pointer; color: var(--forte); font-weight: 600; padding: 6px 0; }
+  .ajuda-texto { padding: 4px 16px 16px; }
+}
+.ajuda-texto code { -webkit-box-decoration-break: clone; box-decoration-break: clone; }

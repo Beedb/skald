@@ -1,0 +1,19 @@
+**[Ajuda do Skáld](Home)**
+
+- [Baixar e instalar](Baixar-e-instalar)
+- [Primeiros passos](Primeiros-passos)
+- [Tocar músicas](Tocar-musicas)
+- [Playlists e curtidas](Playlists-e-curtidas)
+- [Artistas e álbuns](Artistas-e-albuns)
+- [Organizar a biblioteca](Organizar-a-biblioteca)
+- [Podcasts](Podcasts)
+- [Histórico e estatísticas](Historico-e-estatisticas)
+- [Som](Som)
+- [Aparência](Aparencia)
+- [Sincronização pelo Google Drive](Sincronizacao-pelo-Google-Drive)
+- [Android](Android)
+- [Sistema e avisos](Sistema-e-avisos)
+- [Backup](Backup)
+- [Perguntas frequentes](Perguntas-frequentes)
+
+[Site do Skáld](https://beedb.github.io/skald/)
