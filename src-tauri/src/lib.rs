@@ -2,6 +2,7 @@ mod apelidos;
 mod caminhos;
 mod drive;
 mod sincdados;
+mod sincpasta;
 mod artistas;
 mod backup;
 #[cfg(test)]
@@ -2271,32 +2272,93 @@ fn sincronizar_agora(app: AppHandle) -> Result<SyncResultado, String> {
                 settings::aparelho_id(&conn).map_err(|e| e.to_string())?
             };
             drive::sincronizar_dados(&dados, &aparelho, |textos| {
-                let db = app.state::<db::Db>();
-                let mut conn = db.0.lock().map_err(erro_db)?;
-                let mut todos = vec![sincdados::exportar(&conn)?];
-                for t in textos {
-                    // Arquivo de versão mais nova ou estragado: ignora (não apaga nada).
-                    match serde_json::from_str::<sincdados::Dados>(&t) {
-                        Ok(d) if d.versao <= sincdados::VERSAO => todos.push(d),
-                        _ => {}
-                    }
-                }
-                let m = sincdados::aplicar(&mut conn, &sincdados::mesclar(&todos))?;
-                let meu = serde_json::to_string(&sincdados::exportar(&conn)?).map_err(|e| e.to_string())?;
+                let (meu, m) = trocar_dados(&app, textos)?;
                 mudancas = Some(m);
                 Ok(meu)
             })?;
             if let Some(m) = &mudancas {
-                if m.playlists > 0 {
-                    let _ = app.emit(EVENTO_PLAYLISTS, ());
-                }
-                if m.escutas > 0 {
-                    let _ = app.emit(EVENTO_HISTORICO, ());
-                }
+                avisar_dados(&app, m);
             }
         }
         Ok(SyncResultado { resumo, pasta: destino.to_string_lossy().into_owned(), dados: mudancas })
     }
+}
+
+/// Junta os arquivos dos outros aparelhos com o banco, aplica e devolve o deste aparelho.
+fn trocar_dados(app: &AppHandle, textos: Vec<String>) -> Result<(String, sincdados::Mudancas), String> {
+    let db = app.state::<db::Db>();
+    let mut conn = db.0.lock().map_err(erro_db)?;
+    let mut todos = vec![sincdados::exportar(&conn)?];
+    for t in textos {
+        // Arquivo de versão mais nova ou estragado: ignora (não apaga nada).
+        match serde_json::from_str::<sincdados::Dados>(&t) {
+            Ok(d) if d.versao <= sincdados::VERSAO => todos.push(d),
+            _ => {}
+        }
+    }
+    let m = sincdados::aplicar(&mut conn, &sincdados::mesclar(&todos))?;
+    let meu = serde_json::to_string(&sincdados::exportar(&conn)?).map_err(|e| e.to_string())?;
+    Ok((meu, m))
+}
+
+fn avisar_dados(app: &AppHandle, m: &sincdados::Mudancas) {
+    if m.playlists > 0 {
+        let _ = app.emit(EVENTO_PLAYLISTS, ());
+    }
+    if m.escutas > 0 {
+        let _ = app.emit(EVENTO_HISTORICO, ());
+    }
+}
+
+/// Dados por pasta (Syncthing etc.): nada configurado devolve `None`.
+fn sincronizar_pasta(app: &AppHandle) -> Result<Option<sincdados::Mudancas>, String> {
+    let (pasta, aparelho) = {
+        let db = app.state::<db::Db>();
+        let conn = db.0.lock().map_err(erro_db)?;
+        let Some(pasta) = settings::sync_pasta(&conn).map_err(|e| e.to_string())? else { return Ok(None) };
+        (pasta, settings::aparelho_id(&conn).map_err(|e| e.to_string())?)
+    };
+    let mut mudancas = sincdados::Mudancas::default();
+    sincpasta::sincronizar(std::path::Path::new(&pasta), &aparelho, |textos| {
+        let (meu, m) = trocar_dados(app, textos)?;
+        mudancas = m;
+        Ok(meu)
+    })?;
+    avisar_dados(app, &mudancas);
+    Ok(Some(mudancas))
+}
+
+/// Ao abrir e a cada 5 minutos com a pasta configurada (só arquivos locais, sem internet).
+fn vigiar_pasta_dados(app: AppHandle) {
+    std::thread::spawn(move || {
+        std::thread::sleep(std::time::Duration::from_secs(10));
+        loop {
+            if let Err(e) = sincronizar_pasta(&app) {
+                eprintln!("sincronização por pasta: {e}");
+            }
+            std::thread::sleep(std::time::Duration::from_secs(300));
+        }
+    });
+}
+
+/// Escolhe (ou desliga, com `None`) a pasta dos dados e já sincroniza.
+#[tauri::command]
+async fn set_sync_folder(app: AppHandle, pasta: Option<String>) -> Result<Option<sincdados::Mudancas>, String> {
+    {
+        let db = app.state::<db::Db>();
+        let conn = db.0.lock().map_err(erro_db)?;
+        settings::definir_sync_pasta(&conn, pasta.as_deref()).map_err(|e| e.to_string())?;
+    }
+    tauri::async_runtime::spawn_blocking(move || sincronizar_pasta(&app))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn sync_folder_now(app: AppHandle) -> Result<Option<sincdados::Mudancas>, String> {
+    tauri::async_runtime::spawn_blocking(move || sincronizar_pasta(&app))
+        .await
+        .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
@@ -2558,6 +2620,7 @@ pub fn run() {
                 }
             });
             retomar_temporizador(app.handle());
+            vigiar_pasta_dados(app.handle().clone());
             rganalise::iniciar(app.handle().clone());
             // Bandeja ligada: cria o ícone; iniciado com o sistema, abre só nela.
             #[cfg(desktop)]
@@ -2689,6 +2752,8 @@ pub fn run() {
             set_update_check,
             update_check,
             sync_status,
+            set_sync_folder,
+            sync_folder_now,
             sync_login,
             sync_cancel,
             sync_now,
@@ -2725,6 +2790,8 @@ pub fn run() {
             if let tauri::RunEvent::Exit = evento {
                 salvar_retomar(app, app.state::<player::Player>().posicao_ms());
                 encerrar_sessao(app, false);
+                // Grava o arquivo deste aparelho com o histórico de agora.
+                let _ = sincronizar_pasta(app);
             }
         });
 }

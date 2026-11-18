@@ -18,6 +18,7 @@ const RETOMAR: &str = "retomar";
 const CONTINUAR: &str = "continuar_tocando";
 const VERIFICAR_VERSAO: &str = "verificar_versao";
 const SYNC_ENVIAR: &str = "sync_enviar";
+const SYNC_PASTA: &str = "sync_pasta";
 const PODCAST_VELOCIDADE: &str = "podcast_velocidade";
 /// Tema padrão do Skáld (docs/temas.css).
 const TEMA_PADRAO: &str = "carmesim";
@@ -47,6 +48,8 @@ pub struct Configuracoes {
     pub verificar_versao: bool,
     /// "Sincronizar agora" também envia ao Drive (padrão: ligado; desligado = só baixar).
     pub sync_enviar: bool,
+    /// Pasta para sincronizar dados por arquivos (Syncthing etc.); nula = desligado.
+    pub sync_pasta: Option<String>,
     /// Velocidade dos podcasts (0,8× a 2×; padrão 1×). Música toca sempre a 1×.
     pub podcast_velocidade: f64,
 }
@@ -90,6 +93,7 @@ pub fn carregar(conn: &Connection) -> rusqlite::Result<Configuracoes> {
     let continuar_tocando = ler(conn, CONTINUAR)?.is_none_or(|v| v == "1");
     let verificar_versao = verificar_versao(conn)?;
     let sync_enviar = sync_enviar(conn)?;
+    let sync_pasta = sync_pasta(conn)?;
     let podcast_velocidade = podcast_velocidade(conn)?;
     Ok(Configuracoes {
         crossfade_ms,
@@ -103,6 +107,7 @@ pub fn carregar(conn: &Connection) -> rusqlite::Result<Configuracoes> {
         continuar_tocando,
         verificar_versao,
         sync_enviar,
+        sync_pasta,
         podcast_velocidade,
     })
 }
@@ -215,6 +220,14 @@ pub fn sync_enviar(conn: &Connection) -> rusqlite::Result<bool> {
 
 pub fn definir_sync_enviar(conn: &Connection, ativo: bool) -> rusqlite::Result<()> {
     gravar(conn, SYNC_ENVIAR, if ativo { "1" } else { "0" })
+}
+
+pub fn sync_pasta(conn: &Connection) -> rusqlite::Result<Option<String>> {
+    Ok(ler(conn, SYNC_PASTA)?.filter(|v| !v.is_empty()))
+}
+
+pub fn definir_sync_pasta(conn: &Connection, pasta: Option<&str>) -> rusqlite::Result<()> {
+    gravar(conn, SYNC_PASTA, pasta.unwrap_or(""))
 }
 
 /// Identificador deste aparelho na sincronização (nome do arquivo dele no Drive).

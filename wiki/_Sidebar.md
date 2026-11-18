@@ -11,6 +11,7 @@
 - [Som](Som)
 - [Aparência](Aparencia)
 - [Sincronização pelo Google Drive](Sincronizacao-pelo-Google-Drive)
+- [Sincronização sem nuvem (Syncthing)](Sincronizacao-sem-nuvem)
 - [Android](Android)
 - [Sistema e avisos](Sistema-e-avisos)
 - [Backup](Backup)

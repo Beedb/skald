@@ -25,6 +25,7 @@ Esta ajuda mostra desde como baixar até como usar cada função.
 | [Som](Som) | Crossfade, gapless, normalização de volume e equalizador |
 | [Aparência](Aparencia) | Temas, claro/escuro, cores da capa e barra lateral |
 | [Sincronização pelo Google Drive](Sincronizacao-pelo-Google-Drive) | Levar músicas e playlists entre o PC e o celular |
+| [Sincronização sem nuvem (Syncthing)](Sincronizacao-sem-nuvem) | Sincronizar entre seus aparelhos sem Google Drive nem limite de espaço |
 | [Android](Android) | Widget, Android Auto, tocar com a tela apagada |
 | [Sistema e avisos](Sistema-e-avisos) | Bandeja, iniciar com o sistema, notificações, aviso de versão nova |
 | [Backup](Backup) | Salvar e restaurar seus dados |

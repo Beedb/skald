@@ -21,6 +21,7 @@ type Config = {
   notificar: boolean;
   continuar_tocando: boolean;
   sync_enviar: boolean;
+  sync_pasta: string | null;
   verificar_versao: boolean;
 };
 
@@ -99,14 +100,24 @@ function textoProgresso(p: ProgressoSync | null) {
   return `${verbo} ${p.feito + 1} de ${p.total}: ${p.nome}`;
 }
 
+function partesDados(d: ResultadoSync["dados"]) {
+  const partes = [];
+  if (d?.playlists) partes.push(plural(d.playlists, "playlist atualizada", "playlists atualizadas"));
+  if (d?.escutas) partes.push(`${plural(d.escutas, "escuta", "escutas")} no histórico`);
+  if (d?.apelidos) partes.push(plural(d.apelidos, "apelido novo", "apelidos novos"));
+  return partes;
+}
+
+function textoDados(d: ResultadoSync["dados"]) {
+  const partes = partesDados(d);
+  return partes.length ? `Dados da pasta: ${partes.join("; ")}.` : "Dados da pasta: tudo igual, nada mudou.";
+}
+
 function textoResultado(r: ResultadoSync) {
   const partes = [];
   if (r.subidas) partes.push(`${plural(r.subidas, "música enviada", "músicas enviadas")} ao Drive`);
   if (r.baixadas) partes.push(`${plural(r.baixadas, "música baixada", "músicas baixadas")} para ${r.pasta}`);
-  const d = r.dados;
-  if (d?.playlists) partes.push(plural(d.playlists, "playlist atualizada", "playlists atualizadas"));
-  if (d?.escutas) partes.push(`${plural(d.escutas, "escuta", "escutas")} no histórico`);
-  if (d?.apelidos) partes.push(plural(d.apelidos, "apelido novo", "apelidos novos"));
+  partes.push(...partesDados(r.dados));
   if (!partes.length) partes.push("Tudo igual: nada mudou");
   let t = partes.join("; ") + ".";
   if (r.cancelado) t = "Sincronização interrompida. " + t;
@@ -123,10 +134,15 @@ function CartaoSincronizacao() {
   const [progresso, setProgresso] = useState<ProgressoSync | null>(null);
   const [resultado, setResultado] = useState<string | null>(null);
   const [enviar, setEnviar] = useState(true);
+  const [pastaDados, setPastaDados] = useState<string | null>(null);
+  const [sincronizandoPasta, setSincronizandoPasta] = useState(false);
 
   useEffect(() => {
     invoke<Config>("get_settings")
-      .then((c) => setEnviar(c.sync_enviar))
+      .then((c) => {
+        setEnviar(c.sync_enviar);
+        setPastaDados(c.sync_pasta);
+      })
       .catch(() => {});
     invoke<EstadoSync>("sync_status")
       .then((e) => {
@@ -163,6 +179,39 @@ function CartaoSincronizacao() {
   function mudarEnviar(ativo: boolean) {
     setEnviar(ativo);
     invoke("set_sync_upload", { ativo }).catch((e) => setErro(String(e)));
+  }
+
+  /** Sincronizar dados por pasta: escolher, desligar (`null`) ou só rodar agora. */
+  async function pastaDadosAcao(acao: "escolher" | "desligar" | "agora") {
+    setErro(null);
+    setResultado(null);
+    let pasta: string | null = null;
+    if (acao === "escolher") {
+      if (noAndroid) {
+        if (!(await garantirPermissao())) {
+          setErro("Sem permissão para ler os arquivos. Libere em Configurações do Android → Apps → Skáld → Permissões.");
+          return;
+        }
+        pasta = await escolherPasta();
+      } else {
+        const p = await open({ directory: true, title: "Escolha a pasta dos dados (a mesma que o Syncthing sincroniza)" });
+        pasta = typeof p === "string" ? p : null;
+      }
+      if (!pasta) return;
+    }
+    setSincronizandoPasta(true);
+    try {
+      const m =
+        acao === "agora"
+          ? await invoke<ResultadoSync["dados"]>("sync_folder_now")
+          : await invoke<ResultadoSync["dados"]>("set_sync_folder", { pasta });
+      setPastaDados(acao === "agora" ? pastaDados : pasta);
+      if (m) setResultado(textoDados(m));
+    } catch (e) {
+      setErro(String(e));
+    } finally {
+      setSincronizandoPasta(false);
+    }
   }
 
   async function entrar() {
@@ -245,6 +294,34 @@ function CartaoSincronizacao() {
           <Interruptor ligado={enviar} rotulo="Enviar músicas deste aparelho" onMudar={mudarEnviar} />
         </Linha>
       )}
+      <Linha
+        titulo="Dados por pasta (Syncthing)"
+        nota={
+          pastaDados ? (
+            <>
+              Playlists, curtidas, histórico e apelidos ficam em <strong>{pastaDados}</strong>, juntados ao abrir, a cada 5
+              minutos e ao fechar. Use a mesma pasta, sincronizada pelo Syncthing, em todos os aparelhos. As músicas vão pela
+              pasta de música que o Syncthing também sincroniza.
+            </>
+          ) : (
+            "Sem nuvem: escolha uma pasta que outro programa (como o Syncthing) mantém igual nos seus aparelhos, e o Skáld junta playlists, curtidas, histórico e apelidos por ela. Nada vai para a internet."
+          )
+        }
+      >
+        {pastaDados && (
+          <button onClick={() => pastaDadosAcao("agora")} disabled={sincronizandoPasta}>
+            {sincronizandoPasta ? "Sincronizando…" : "Sincronizar dados agora"}
+          </button>
+        )}
+        <button onClick={() => pastaDadosAcao("escolher")} disabled={sincronizandoPasta}>
+          {pastaDados ? "Trocar pasta…" : "Escolher pasta…"}
+        </button>
+        {pastaDados && (
+          <button onClick={() => pastaDadosAcao("desligar")} disabled={sincronizandoPasta}>
+            Desligar
+          </button>
+        )}
+      </Linha>
       {sincronizando && progresso && progresso.total > 0 && (
         <progress className="cfg-progresso" max={progresso.total} value={progresso.feito} />
       )}
