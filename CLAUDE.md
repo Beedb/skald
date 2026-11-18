@@ -267,7 +267,7 @@ Etapas:
 
 ## Estado atual
 
-**MVP, Fase 2 (etapas 10 a 19), Fase 3 (20 a 23), Fase 4 (24 a 28), Fase 5 (29 a 32) e Fase 6 (33 a 35) concluídos; Fase 7 concluída no Linux (36 a 41), no Android (36 a 43) e no Windows (36 a 41); Fase 8 (Windows) concluída (44 a 53). Fase 9 concluída no Linux e no Android (66 a 70; falta testar 69 e 70 no Windows). Fase 11: widget (60, 61) e Android Auto (62) concluídos no Android; login (63) e músicas (64) testados no Linux e no Android, 65 em teste; app do Google em produção. Fase 10: etapas 54 a 59 com código feito (inclui assinar por RSS), falta testar no app. Versão atual: **0.3.0** (release v0.3.0, 2026-11-17: Linux e Android; Windows "em breve", ver "Windows: o que falta"). Pendências do Windows: seção "Windows: o que falta" abaixo.**
+**MVP, Fase 2 (etapas 10 a 19), Fase 3 (20 a 23), Fase 4 (24 a 28), Fase 5 (29 a 32) e Fase 6 (33 a 35) concluídos; Fase 7 concluída no Linux (36 a 41), no Android (36 a 43) e no Windows (36 a 41); Fase 8 (Windows) concluída (44 a 53). Fase 9 concluída no Linux e no Android (66 a 70; falta testar 69 e 70 no Windows). Fase 11: widget (60, 61) e Android Auto (62) concluídos no Android; login (63) e músicas (64) testados no Linux e no Android, 65 em teste; app do Google em produção. Fase 10: etapas 54 a 59 com código feito (inclui assinar por RSS), falta testar no app. Versão atual: **0.3.1** (release v0.3.1, 2026-11-18: Linux e Android, com a sincronização de dados por pasta; Windows "em breve", ver "Windows: o que falta"). Pendências do Windows: seção "Windows: o que falta" abaixo.**
 
 ### Fase 7 (36 a 43; testada no Linux e no Android)
 
