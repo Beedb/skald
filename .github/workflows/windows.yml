@@ -160,4 +160,11 @@ jobs:
         run: |
           tag="${{ github.ref_name }}"
           gh release view "$tag" > /dev/null 2>&1 || gh release create "$tag" --title "$tag" --notes "Skáld $tag"
+          # Notas com a marca "windows-em-breve": o instalador fica só como artefato desta
+          # execução (para testar). Depois de testado: tirar a marca das notas e rodar de novo
+          # este job (gh run rerun <id> --job <id do job release>).
+          if gh release view "$tag" --json body -q .body | grep -q 'windows-em-breve'; then
+            echo "Windows marcado como em breve nesta release: o .exe não foi anexado."
+            exit 0
+          fi
           gh release upload "$tag" ./*-setup.exe --clobber

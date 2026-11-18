@@ -9,7 +9,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600&family=Lora:wght@400;600&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="estilo.css?v=4">
+  <link rel="stylesheet" href="estilo.css?v=5">
 </head>
 <body>
 <main>
@@ -95,16 +95,28 @@
     botoes.forEach(function (b) {
       if (b.dataset.arquivo === sistema) b.classList.add("sugerido");
     });
-    fetch("https://api.github.com/repos/Beedb/skald/releases/latest")
+    // Sistema sem arquivo na versão mais recente (ex.: Windows ainda em teste): usa a versão
+    // anterior que tem o arquivo e avisa que a nova chega em breve.
+    fetch("https://api.github.com/repos/Beedb/skald/releases?per_page=20")
       .then(function (r) { return r.ok ? r.json() : Promise.reject(r.status); })
-      .then(function (rel) {
-        document.getElementById("versao").textContent = rel.tag_name;
+      .then(function (lista) {
+        var rels = lista.filter(function (r) { return !r.draft && !r.prerelease; });
+        if (!rels.length) return Promise.reject("sem versões");
+        document.getElementById("versao").textContent = rels[0].tag_name;
         botoes.forEach(function (b) {
           var re = new RegExp(b.dataset.arquivo, "i");
-          var a = (rel.assets || []).find(function (x) { return re.test(x.name); });
-          if (a) {
+          for (var i = 0; i < rels.length; i++) {
+            var a = (rels[i].assets || []).find(function (x) { return re.test(x.name); });
+            if (!a) continue;
             b.href = a.browser_download_url;
             b.title = a.name + " (" + (a.size / 1048576).toFixed(0) + " MB)";
+            if (i > 0) {
+              var aviso = document.createElement("span");
+              aviso.className = "em-breve";
+              aviso.textContent = rels[i].tag_name + " · " + rels[0].tag_name + " em breve";
+              b.querySelector(".sub-download").after(aviso);
+            }
+            break;
           }
         });
       })

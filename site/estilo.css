@@ -67,6 +67,8 @@ code { font-size: 0.9em; background: var(--card); padding: 1px 5px; border-radiu
   margin-top: 10px; padding: 2px 10px; border-radius: 999px; font-size: 0.8rem; font-weight: 600;
   background: var(--card); border: 1px solid var(--linha); color: var(--texto);
 }
+.download .em-breve { font-size: 0.8rem; color: var(--fraco); margin-top: 2px; }
+.download.sugerido .em-breve { color: var(--acento-txt); opacity: 0.8; }
 .download.sugerido { background: var(--acento); border-color: var(--acento); box-shadow: var(--sombra); }
 .download.sugerido .icone, .download.sugerido strong, .download.sugerido .sub-download { color: var(--acento-txt); }
 .download.sugerido .sub-download { opacity: 0.8; }
