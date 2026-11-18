@@ -811,7 +811,8 @@ mod testes {
     }
 
     /// Podcast: começa em 1 s de uma faixa de ~4 s a 2× (sem mudar o tom: `scaletempo`);
-    /// os ~3 s restantes devem passar em ~1,5 s.
+    /// os ~3 s restantes devem passar em ~1,5 s. Mede quando a posição chega ao fim: no
+    /// Windows (GStreamer 1.28.8) o EOS a 2× vem ~1 s depois disso, perto de 2,9 s.
     #[test]
     fn velocidade_e_retomar() {
         let dir = crate::teste_util::pasta("skald-teste-velocidade");
@@ -828,15 +829,23 @@ mod testes {
         p.definir_velocidade(2.0);
         let inicio = Instant::now();
         p.tocar_em(1, &a.to_string_lossy(), Ganho::default(), 1000).unwrap();
+        // (ms desde o início, posição em ms): diz, se falhar, onde começou e em que ritmo andou.
+        let mut posicoes = Vec::new();
+        let mut chegou = None;
         loop {
             let e = rx.recv_timeout(Duration::from_secs(10)).expect("sem eventos do player");
             assert!(e.erro.is_none(), "{:?}", e.erro);
             if e.fim {
                 break;
             }
+            posicoes.push((inicio.elapsed().as_millis(), e.posicao_ms));
+            if e.posicao_ms >= 3900 && chegou.is_none() {
+                chegou = Some(inicio.elapsed());
+            }
         }
-        let t = inicio.elapsed();
-        assert!(t > Duration::from_millis(900) && t < Duration::from_millis(2600), "durou {t:?}");
+        assert!(posicoes.first().is_some_and(|&(_, p)| (900..1600).contains(&p)), "não começou em 1 s: {posicoes:?}");
+        let t = chegou.unwrap_or_else(|| panic!("não chegou ao fim: {posicoes:?}"));
+        assert!(t > Duration::from_millis(900) && t < Duration::from_millis(2200), "chegou ao fim em {t:?}; posições {posicoes:?}");
         drop(p);
         let _ = std::fs::remove_dir_all(&dir);
     }

@@ -327,7 +327,9 @@ pub fn reconciliar_movidos(conn: &mut Connection) -> rusqlite::Result<Vec<(i64, 
                  AND ((a.file_hash IS NOT NULL AND a.file_hash = b.file_hash)
                  OR (ABS(COALESCE(a.duration_ms, 0) - COALESCE(b.duration_ms, 0)) <= 1000
                  AND (
-                    (a.file_size IS NOT NULL AND a.file_size = b.file_size AND (
+                    (a.file_size IS NOT NULL AND a.file_size = b.file_size
+                     -- Renomear não muda os bytes: com os dois hashes, diferentes = outro arquivo.
+                     AND (a.file_hash IS NULL OR b.file_hash IS NULL OR a.file_hash = b.file_hash) AND (
                         (COALESCE(a.title, '') = COALESCE(b.title, '') AND COALESCE(a.artist, '') = COALESCE(b.artist, ''))
                         OR (a.path LIKE '%' || {sep} || a.title || '.%' AND b.path LIKE '%' || {sep} || b.title || '.%')))
                     OR (a.title IS NOT NULL AND a.artist IS NOT NULL
@@ -437,6 +439,11 @@ mod testes {
         // Duração diferente → outro arquivo, mesmo com o mesmo título.
         ins(&conn, 10, "/m/c.mp3", "Velha", 3000, 100_000, true);
         ins(&conn, 11, "/m/Velha.mp3", "Velha", 3000, 120_000, false);
+        // Sem título, mesmo tamanho e duração, mas hashes diferentes → outro arquivo
+        // (ex.: duas faixas WAV sem tags; uma foi apagada e a outra continua).
+        ins(&conn, 12, "/m/Faixa Dois.wav", "Faixa Dois", 6000, 3_000, true);
+        ins(&conn, 13, "/m/Faixa Um.wav", "Faixa Um", 6000, 3_000, false);
+        conn.execute("UPDATE media SET file_hash = 'h' || id WHERE id IN (12, 13)", []).unwrap();
 
         let curtidas: i64 = conn.query_row("SELECT id FROM playlist WHERE kind = 'curtidas'", [], |r| r.get(0)).unwrap();
         conn.execute("INSERT INTO playlist (id, name) VALUES (50, 'Minha')", []).unwrap();
@@ -458,8 +465,8 @@ mod testes {
         assert_eq!(conta(&format!("SELECT COUNT(*) FROM playlist_item WHERE playlist_id = {curtidas}")), 1);
         assert_eq!(conta("SELECT COUNT(*) FROM playlist_item WHERE playlist_id = 50 AND media_id = 1"), 2);
         assert_eq!(conta("SELECT COUNT(*) FROM play_history WHERE media_id = 1"), 2);
-        assert_eq!(conta("SELECT COUNT(*) FROM media"), 8);
-        assert_eq!(conta("SELECT COUNT(*) FROM media WHERE missing = 1"), 3); // Lilás (2) e Velha
+        assert_eq!(conta("SELECT COUNT(*) FROM media"), 10);
+        assert_eq!(conta("SELECT COUNT(*) FROM media WHERE missing = 1"), 4); // Lilás (2), Velha e Faixa Dois
         assert_eq!(reconciliar_movidos(&mut conn).unwrap(), []);
     }
 
