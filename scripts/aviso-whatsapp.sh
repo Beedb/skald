@@ -5,9 +5,10 @@
 set -euo pipefail
 tag="${1:-$(gh release view --json tagName -q .tagName)}"
 versao="${tag#v}"
-# Itens da lista das notas (linhas "- ..."), sem a linha de inscrição, até 8.
+# Itens da seção "## Novidades" das notas (linhas "- ..."), sem a linha de inscrição, até 8.
 novidades=$(gh release view "$tag" --json body -q .body \
-  | tr -d '\r' | grep -E '^\s*[-*] ' | grep -v 'buttondown.com' | head -n 8 \
+  | tr -d '\r' | awk '/^## /{dentro = ($0 ~ /^## Novidades/); next} dentro' \
+  | grep -E '^\s*[-*] ' | grep -v 'buttondown.com' | head -n 8 \
   | sed -E 's/^\s*[-*] +/• /; s/\*\*//g; s/`//g; s/\[([^]]*)\]\([^)]*\)/\1/g' || true)
 texto="🎵 Saiu o Skáld ${versao}!"
 [ -n "$novidades" ] && texto+=$'\n\n'"O que mudou:"$'\n'"${novidades}"
