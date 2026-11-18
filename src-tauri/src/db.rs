@@ -151,6 +151,10 @@ const MIGRATIONS: &[&str] = &[
         UNIQUE (show_id, guid)
     );
     CREATE INDEX idx_episodio_show ON podcast_episode(show_id, publicado_em);",
+    // v16: assinatura por RSS (etapa 59): endereço, tamanho e tipo do áudio de cada episódio.
+    "ALTER TABLE podcast_episode ADD COLUMN audio_url TEXT;
+    ALTER TABLE podcast_episode ADD COLUMN audio_tamanho INTEGER;
+    ALTER TABLE podcast_episode ADD COLUMN audio_tipo TEXT;",
 ];
 
 pub fn open(path: &Path) -> rusqlite::Result<Connection> {

@@ -23,6 +23,7 @@ mod novidades;
 mod player;
 mod playlists;
 mod podcasts;
+mod rss;
 #[cfg(desktop)]
 mod mpris;
 #[cfg(target_os = "android")]
@@ -201,6 +202,188 @@ fn seek_relative(player: State<player::Player>, delta_ms: i64) -> Result<(), Str
     }
     let alvo = (e.posicao_ms as i64 + delta_ms).clamp(0, e.duracao_ms.saturating_sub(500) as i64);
     player.buscar(alvo as u64)
+}
+
+// ---------- Assinatura por RSS (etapa 59) ----------
+
+/// Downloads de episódios que a pessoa pediu para cancelar.
+struct DownloadsState(Mutex<std::collections::HashSet<i64>>);
+
+/// Reduz a capa do feed a 600 px e guarda em `<dados>/capas-podcast/<id>.jpg`.
+fn guardar_capa_programa(app: &AppHandle, id: i64, url: &str) -> Result<(), String> {
+    let bytes = rss::baixar_imagem(url)?;
+    let img = image::load_from_memory(&bytes).map_err(|e| e.to_string())?;
+    let mini = img.thumbnail(600, 600).to_rgb8();
+    let pasta = caminhos::dados(app)?.join("capas-podcast");
+    std::fs::create_dir_all(&pasta).map_err(|e| e.to_string())?;
+    let destino = pasta.join(format!("{id}.jpg"));
+    let mut saida = std::io::Cursor::new(Vec::new());
+    image::codecs::jpeg::JpegEncoder::new_with_quality(&mut saida, 85)
+        .encode_image(&mini)
+        .map_err(|e| e.to_string())?;
+    std::fs::write(&destino, saida.into_inner()).map_err(|e| e.to_string())?;
+    let db = app.state::<db::Db>();
+    let conn = db.0.lock().map_err(erro_db)?;
+    podcasts::definir_capa(&conn, id, &destino.to_string_lossy()).map_err(|e| e.to_string())
+}
+
+/// Lê o feed, grava programa e episódios novos e, se faltar, a capa. Devolve (id, novos).
+fn atualizar_feed(app: &AppHandle, url: &str) -> Result<(i64, u32), String> {
+    let feed = rss::buscar(url)?;
+    let (id, novos) = {
+        let db = app.state::<db::Db>();
+        let mut conn = db.0.lock().map_err(erro_db)?;
+        podcasts::assinar(&mut conn, url.trim(), &feed).map_err(|e| e.to_string())?
+    };
+    let sem_capa = {
+        let db = app.state::<db::Db>();
+        let conn = db.0.lock().map_err(erro_db)?;
+        podcasts::capa(&conn, id).map_err(|e| e.to_string())?.is_none_or(|c| !std::path::Path::new(&c).is_file())
+    };
+    if let (true, Some(img)) = (sem_capa, &feed.imagem) {
+        // Sem capa o programa funciona igual (usa a do episódio, se houver).
+        let _ = guardar_capa_programa(app, id, img);
+    }
+    Ok((id, novos))
+}
+
+/// "Assinar por RSS": devolve o id do programa.
+#[tauri::command]
+async fn podcast_subscribe(app: AppHandle, url: String) -> Result<i64, String> {
+    let h = app.clone();
+    let r = tauri::async_runtime::spawn_blocking(move || atualizar_feed(&h, &url))
+        .await
+        .map_err(|e| e.to_string())??;
+    let _ = app.emit(EVENTO_PODCASTS, ());
+    Ok(r.0)
+}
+
+#[derive(Serialize)]
+struct ResumoAtualizacao {
+    novos: u32,
+    falhas: Vec<String>,
+}
+
+/// "Atualizar": um programa (`id`) ou todos os assinados. Só baixa a lista, nunca os áudios.
+#[tauri::command]
+async fn podcast_refresh(app: AppHandle, id: Option<i64>) -> Result<ResumoAtualizacao, String> {
+    let h = app.clone();
+    let r = tauri::async_runtime::spawn_blocking(move || -> Result<ResumoAtualizacao, String> {
+        let lista: Vec<(i64, String)> = {
+            let db = h.state::<db::Db>();
+            let conn = db.0.lock().map_err(erro_db)?;
+            podcasts::assinaturas(&conn).map_err(|e| e.to_string())?
+        };
+        let mut resumo = ResumoAtualizacao { novos: 0, falhas: Vec::new() };
+        for (_, url) in lista.into_iter().filter(|(sid, _)| id.is_none_or(|i| i == *sid)) {
+            match atualizar_feed(&h, &url) {
+                Ok((_, n)) => resumo.novos += n,
+                Err(e) => resumo.falhas.push(format!("{url}: {e}")),
+            }
+        }
+        Ok(resumo)
+    })
+    .await
+    .map_err(|e| e.to_string())??;
+    let _ = app.emit(EVENTO_PODCASTS, ());
+    Ok(r)
+}
+
+/// Cancela a assinatura (os episódios baixados e os arquivos ficam).
+#[tauri::command]
+fn podcast_unsubscribe(app: AppHandle, id: i64) -> Result<(), String> {
+    {
+        let db = app.state::<db::Db>();
+        let conn = db.0.lock().map_err(erro_db)?;
+        podcasts::cancelar_assinatura(&conn, id).map_err(|e| e.to_string())?;
+    }
+    let _ = app.emit(EVENTO_PODCASTS, ());
+    Ok(())
+}
+
+/// Capa baixada do feed, como data URL (ou nada).
+#[tauri::command]
+fn podcast_cover(db: State<db::Db>, id: i64) -> Result<Option<String>, String> {
+    use base64::Engine;
+    let caminho = {
+        let conn = db.0.lock().map_err(erro_db)?;
+        podcasts::capa(&conn, id).map_err(|e| e.to_string())?
+    };
+    Ok(caminho
+        .and_then(|c| std::fs::read(c).ok())
+        .map(|b| format!("data:image/jpeg;base64,{}", base64::engine::general_purpose::STANDARD.encode(b))))
+}
+
+#[derive(Serialize, Clone)]
+struct ProgressoDownload {
+    episodio: i64,
+    feito: u64,
+    total: Option<u64>,
+}
+
+/// Baixa o episódio para `<Música>/Skáld/Podcasts/<Programa>/` (pasta monitorada como
+/// Podcasts) e liga o arquivo ao episódio. Progresso pelo evento `podcast-download`.
+#[tauri::command]
+async fn podcast_download(app: AppHandle, id: i64) -> Result<(), String> {
+    let h = app.clone();
+    let r = tauri::async_runtime::spawn_blocking(move || -> Result<(), String> {
+        let podcasts::ParaBaixar { programa, titulo, publicado_em: data, url, tipo } = {
+            let db = h.state::<db::Db>();
+            let conn = db.0.lock().map_err(erro_db)?;
+            podcasts::para_baixar(&conn, id).map_err(|e| e.to_string())?.ok_or("Este episódio já foi baixado.")?
+        };
+        let raiz = caminhos::musica(&h)?.join("Skáld").join("Podcasts");
+        let pasta = raiz.join(podcasts::nome_seguro(&programa, 80));
+        let ext = rss::extensao(&url, tipo.as_deref());
+        let nome = podcasts::nome_arquivo(&titulo, data, ext);
+        let mut destino = pasta.join(&nome);
+        let mut n = 2;
+        while destino.exists() {
+            destino = pasta.join(nome.replacen(&format!(".{ext}"), &format!(" ({n}).{ext}"), 1));
+            n += 1;
+        }
+        // A pasta raiz vira monitorada como Podcasts antes do arquivo aparecer nela.
+        {
+            let db = h.state::<db::Db>();
+            let conn = db.0.lock().map_err(erro_db)?;
+            podcasts::marcar_pasta(&conn, &raiz.to_string_lossy()).map_err(|e| e.to_string())?;
+        }
+        h.state::<DownloadsState>().0.lock().map_err(erro_db)?.remove(&id);
+        let _acordado = TarefaLonga::nova(&format!("Baixando {titulo}"));
+        let mut ultimo = std::time::Instant::now();
+        let emissor = h.clone();
+        let baixado = rss::baixar(&url, &destino, |feito, total| {
+            if ultimo.elapsed() >= std::time::Duration::from_millis(300) {
+                ultimo = std::time::Instant::now();
+                let _ = emissor.emit("podcast-download", &ProgressoDownload { episodio: id, feito, total });
+                if let Some(t) = total {
+                    TarefaLonga::texto(&format!("Baixando {titulo}: {}%", feito * 100 / t.max(1)));
+                }
+            }
+            !emissor.state::<DownloadsState>().0.lock().is_ok_and(|c| c.contains(&id))
+        });
+        let _ = h.emit("podcast-download", &ProgressoDownload { episodio: id, feito: 0, total: Some(0) });
+        let baixado = baixado?;
+        std::fs::create_dir_all(&raiz).ok();
+        h.state::<watch::Vigia>().vigiar(&raiz);
+        import::importar_arquivos(&h.state::<db::Db>().0, std::slice::from_ref(&baixado))?;
+        let db = h.state::<db::Db>();
+        let conn = db.0.lock().map_err(erro_db)?;
+        let media: i64 = conn
+            .query_row("SELECT id FROM media WHERE path = ?1", [baixado.to_string_lossy()], |r| r.get(0))
+            .map_err(|_| "O arquivo baixado não pôde ser lido como áudio.".to_string())?;
+        podcasts::ligar(&conn, id, media).map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?;
+    let _ = app.emit(EVENTO_PODCASTS, ());
+    r
+}
+
+#[tauri::command]
+fn podcast_download_cancel(downloads: State<DownloadsState>, id: i64) -> Result<(), String> {
+    downloads.0.lock().map_err(erro_db)?.insert(id);
+    Ok(())
 }
 
 /// "Importar pasta como Podcasts" (etapa 54): a pasta e o que já estava importado dentro
@@ -2315,6 +2498,7 @@ pub fn run() {
             app.manage(FilaState(Mutex::new(queue::Fila::default())));
             app.manage(HistoricoState(Mutex::new(None)));
             app.manage(OrigemState(Mutex::new(None)));
+            app.manage(DownloadsState(Mutex::new(Default::default())));
             app.manage(RetomarState(Mutex::new(RetomarControle::default())));
             app.manage(GaplessState(Mutex::new(None)));
             app.manage(NotificadaState(Mutex::new(None)));
@@ -2518,6 +2702,12 @@ pub fn run() {
             podcast_info,
             set_podcast_speed,
             seek_relative,
+            podcast_subscribe,
+            podcast_refresh,
+            podcast_unsubscribe,
+            podcast_cover,
+            podcast_download,
+            podcast_download_cancel,
             missing_count,
             remove_missing,
             set_sync_upload,

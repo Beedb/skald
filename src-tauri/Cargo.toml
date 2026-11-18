@@ -39,6 +39,7 @@ getrandom = "0.3"
 form_urlencoded = "1"
 tauri-plugin-opener = "2"
 tauri-plugin-fs = "2"
+roxmltree = "0.21.2"
 
 # Só no desktop: notificações (D-Bus/Windows), MPRIS (Linux, via zbus) e SMTC (Windows).
 # No Android isso virá com o serviço de mídia.

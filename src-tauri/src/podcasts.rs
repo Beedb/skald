@@ -146,7 +146,7 @@ fn ler_extras(p: &Path) -> (Option<i64>, Option<String>) {
 }
 
 /// Dias entre 1970-01-01 e a data (calendário gregoriano; algoritmo de Howard Hinnant).
-fn dias_desde_1970(ano: i64, mes: i64, dia: i64) -> i64 {
+pub(crate) fn dias_desde_1970(ano: i64, mes: i64, dia: i64) -> i64 {
     let a = if mes <= 2 { ano - 1 } else { ano };
     let era = a.div_euclid(400);
     let ano_era = a - era * 400;
@@ -189,12 +189,17 @@ pub struct Programa {
     pub episodios: i64,
     pub nao_ouvidos: i64,
     pub ultimo_em: Option<i64>,
+    /// Assinado por RSS (pode atualizar).
+    pub assinado: bool,
+    /// Capa baixada do feed (comando `podcast_cover`).
+    pub tem_capa: bool,
 }
 
 const SELECT_PROGRAMA: &str = "SELECT s.id, s.titulo, s.autor, s.descricao,
         (SELECT e2.media_id FROM podcast_episode e2 WHERE e2.show_id = s.id AND e2.media_id IS NOT NULL
          ORDER BY e2.publicado_em DESC, e2.id DESC LIMIT 1),
-        COUNT(e.id), COALESCE(SUM(e.ouvido_em IS NULL), 0), MAX(e.publicado_em)
+        COUNT(e.id), COALESCE(SUM(e.ouvido_em IS NULL), 0), MAX(e.publicado_em),
+        s.feed_url IS NOT NULL, s.capa IS NOT NULL
     FROM podcast_show s LEFT JOIN podcast_episode e ON e.show_id = s.id";
 
 fn linha_programa(r: &rusqlite::Row) -> rusqlite::Result<Programa> {
@@ -207,6 +212,8 @@ fn linha_programa(r: &rusqlite::Row) -> rusqlite::Result<Programa> {
         episodios: r.get(5)?,
         nao_ouvidos: r.get(6)?,
         ultimo_em: r.get(7)?,
+        assinado: r.get(8)?,
+        tem_capa: r.get(9)?,
     })
 }
 
@@ -239,11 +246,14 @@ pub struct Episodio {
     pub posicao_ms: Option<i64>,
     /// Arquivo não encontrado (registro mantido).
     pub ausente: bool,
+    /// Do feed e ainda não baixado.
+    pub baixavel: bool,
+    pub tamanho: Option<i64>,
 }
 
 const SELECT_EPISODIO: &str = "SELECT e.id, e.show_id, s.titulo, e.titulo, e.publicado_em, e.descricao,
         COALESCE(e.duracao_ms, m.duration_ms), e.media_id, e.ouvido_em IS NOT NULL, e.posicao_ms,
-        COALESCE(m.missing, 1)
+        COALESCE(m.missing, 0), e.media_id IS NULL AND e.audio_url IS NOT NULL, e.audio_tamanho
     FROM podcast_episode e JOIN podcast_show s ON s.id = e.show_id LEFT JOIN media m ON m.id = e.media_id";
 
 fn linha_episodio(r: &rusqlite::Row) -> rusqlite::Result<Episodio> {
@@ -259,6 +269,8 @@ fn linha_episodio(r: &rusqlite::Row) -> rusqlite::Result<Episodio> {
         ouvido: r.get(8)?,
         posicao_ms: r.get(9)?,
         ausente: r.get(10)?,
+        baixavel: r.get(11)?,
+        tamanho: r.get(12)?,
     })
 }
 
@@ -361,6 +373,149 @@ pub fn e_podcast(conn: &Connection, media_id: i64) -> bool {
         .unwrap_or(false)
 }
 
+// ---------- Assinatura por RSS (etapa 59) ----------
+
+/// Cria (ou acha, pelo endereço) o programa do feed e acrescenta os episódios que ainda não
+/// tem. Título, autor e descrição vêm do feed. Devolve (programa, episódios novos).
+pub fn assinar(conn: &mut Connection, url: &str, feed: &crate::rss::Feed) -> rusqlite::Result<(i64, u32)> {
+    let tx = conn.transaction()?;
+    let id: i64 = match tx
+        .query_row("SELECT id FROM podcast_show WHERE feed_url = ?1", [url], |r| r.get(0))
+        .optional()?
+    {
+        Some(id) => {
+            tx.execute(
+                "UPDATE podcast_show SET titulo = ?2, autor = COALESCE(?3, autor), descricao = COALESCE(?4, descricao)
+                 WHERE id = ?1",
+                params![id, feed.titulo, feed.autor, feed.descricao],
+            )?;
+            id
+        }
+        None => {
+            tx.execute(
+                "INSERT INTO podcast_show (titulo, autor, descricao, feed_url, criado_em) VALUES (?1, ?2, ?3, ?4, ?5)",
+                params![feed.titulo, feed.autor, feed.descricao, url, agora()],
+            )?;
+            tx.last_insert_rowid()
+        }
+    };
+    let mut novos = 0;
+    {
+        let mut ins = tx.prepare(
+            "INSERT OR IGNORE INTO podcast_episode
+             (show_id, guid, titulo, publicado_em, descricao, duracao_ms, audio_url, audio_tamanho, audio_tipo)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+        )?;
+        for it in &feed.itens {
+            novos += ins.execute(params![
+                id, it.guid, it.titulo, it.publicado_em, it.descricao, it.duracao_ms, it.url, it.tamanho, it.tipo
+            ])? as u32;
+        }
+    }
+    tx.commit()?;
+    Ok((id, novos))
+}
+
+/// Programas assinados: (id, endereço do feed).
+pub fn assinaturas(conn: &Connection) -> rusqlite::Result<Vec<(i64, String)>> {
+    let mut st = conn.prepare("SELECT id, feed_url FROM podcast_show WHERE feed_url IS NOT NULL ORDER BY id")?;
+    let v = st.query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?.collect::<rusqlite::Result<Vec<_>>>()?;
+    Ok(v)
+}
+
+pub fn definir_capa(conn: &Connection, id: i64, arquivo: &str) -> rusqlite::Result<()> {
+    conn.execute("UPDATE podcast_show SET capa = ?2 WHERE id = ?1", params![id, arquivo])?;
+    Ok(())
+}
+
+pub fn capa(conn: &Connection, id: i64) -> rusqlite::Result<Option<String>> {
+    Ok(conn.query_row("SELECT capa FROM podcast_show WHERE id = ?1", [id], |r| r.get(0)).optional()?.flatten())
+}
+
+/// O que é preciso para baixar um episódio.
+pub struct ParaBaixar {
+    pub programa: String,
+    pub titulo: String,
+    pub publicado_em: Option<i64>,
+    pub url: String,
+    pub tipo: Option<String>,
+}
+
+pub fn para_baixar(conn: &Connection, episodio: i64) -> rusqlite::Result<Option<ParaBaixar>> {
+    conn.query_row(
+        "SELECT s.titulo, e.titulo, e.publicado_em, e.audio_url, e.audio_tipo FROM podcast_episode e
+         JOIN podcast_show s ON s.id = e.show_id
+         WHERE e.id = ?1 AND e.media_id IS NULL AND e.audio_url IS NOT NULL",
+        [episodio],
+        |r| Ok(ParaBaixar { programa: r.get(0)?, titulo: r.get(1)?, publicado_em: r.get(2)?, url: r.get(3)?, tipo: r.get(4)? }),
+    )
+    .optional()
+}
+
+/// Liga o arquivo baixado (já importado como `media_id`) ao episódio do feed. Se o
+/// monitoramento chegou antes e criou um episódio "local" para ele, esse sai.
+pub fn ligar(conn: &Connection, episodio: i64, media_id: i64) -> rusqlite::Result<()> {
+    conn.execute("DELETE FROM podcast_episode WHERE media_id = ?1 AND guid LIKE 'local:%'", [media_id])?;
+    conn.execute(
+        "UPDATE podcast_episode SET media_id = ?2,
+         duracao_ms = COALESCE((SELECT duration_ms FROM media WHERE id = ?2), duracao_ms)
+         WHERE id = ?1",
+        params![episodio, media_id],
+    )?;
+    conn.execute(
+        "DELETE FROM podcast_show WHERE feed_url IS NULL
+         AND NOT EXISTS (SELECT 1 FROM podcast_episode e WHERE e.show_id = podcast_show.id)",
+        [],
+    )?;
+    Ok(())
+}
+
+/// Cancela a assinatura: para de atualizar e tira da lista os episódios não baixados.
+/// Os baixados (e os arquivos) ficam.
+pub fn cancelar_assinatura(conn: &Connection, id: i64) -> rusqlite::Result<()> {
+    conn.execute(
+        "DELETE FROM podcast_episode WHERE show_id = ?1 AND media_id IS NULL AND guid NOT LIKE 'local:%'",
+        [id],
+    )?;
+    conn.execute("UPDATE podcast_show SET feed_url = NULL WHERE id = ?1", [id])?;
+    conn.execute(
+        "DELETE FROM podcast_show WHERE id = ?1
+         AND NOT EXISTS (SELECT 1 FROM podcast_episode e WHERE e.show_id = podcast_show.id)",
+        [id],
+    )?;
+    Ok(())
+}
+
+/// Nome do arquivo baixado: "2026-11-17 - Título.mp3" (sem caracteres proibidos).
+pub fn nome_arquivo(titulo: &str, publicado_em: Option<i64>, ext: &str) -> String {
+    let data = publicado_em.map(|s| {
+        let d = s.div_euclid(86_400);
+        // Inverso de `dias_desde_1970` (Howard Hinnant).
+        let z = d + 719_468;
+        let era = z.div_euclid(146_097);
+        let doe = z - era * 146_097;
+        let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
+        let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+        let mp = (5 * doy + 2) / 153;
+        let dia = doy - (153 * mp + 2) / 5 + 1;
+        let mes = if mp < 10 { mp + 3 } else { mp - 9 };
+        let ano = yoe + era * 400 + i64::from(mes <= 2);
+        format!("{ano:04}-{mes:02}-{dia:02} - ")
+    });
+    format!("{}{}.{ext}", data.unwrap_or_default(), nome_seguro(titulo, 120))
+}
+
+/// Sem separadores nem caracteres proibidos no Windows/Android, e com tamanho limitado.
+pub fn nome_seguro(nome: &str, max: usize) -> String {
+    let limpo: String = nome
+        .chars()
+        .map(|c| if c.is_control() || "/\\:*?\"<>|".contains(c) { '_' } else { c })
+        .take(max)
+        .collect();
+    let limpo = limpo.trim().trim_matches('.').to_string();
+    if limpo.is_empty() { "Episódio".into() } else { limpo }
+}
+
 #[cfg(test)]
 mod testes {
     use super::*;
@@ -459,5 +614,45 @@ mod testes {
         let progs = programas(&conn).unwrap();
         assert_eq!((progs[0].episodios, progs[0].nao_ouvidos, progs[0].capa_media), (4, 2, Some(4)));
         assert_eq!(episodios(&conn, 1).unwrap().iter().map(|e| e.id).collect::<Vec<_>>(), [4, 3, 2, 1]);
+    }
+
+    #[test]
+    fn assinar_baixar_e_cancelar() {
+        let mut conn = crate::db::open(Path::new(":memory:")).unwrap();
+        let item = |guid: &str, data: i64| crate::rss::Item {
+            guid: guid.into(),
+            titulo: format!("Ep {guid}"),
+            publicado_em: Some(data),
+            url: format!("https://x/{guid}.mp3"),
+            ..Default::default()
+        };
+        let mut feed = crate::rss::Feed { titulo: "Pod".into(), itens: vec![item("a", 100), item("b", 200)], ..Default::default() };
+        let (id, novos) = assinar(&mut conn, "https://x/feed", &feed).unwrap();
+        assert_eq!(novos, 2);
+        feed.itens.push(item("c", 300));
+        assert_eq!(assinar(&mut conn, "https://x/feed", &feed).unwrap(), (id, 1), "só o novo entra");
+        let eps = episodios(&conn, id).unwrap();
+        assert!(eps.iter().all(|e| e.baixavel && !e.ausente));
+        let p = programa(&conn, id).unwrap().unwrap();
+        assert!(p.assinado && !p.tem_capa);
+        // Baixado: o monitoramento chegou antes e criou um episódio local; ligar resolve.
+        conn.execute("INSERT INTO media (id, path, title, duration_ms, category) VALUES (9, '/d/b.mp3', 'b', 5000, 'podcast')", []).unwrap();
+        let db = Mutex::new(conn);
+        assert_eq!(sincronizar(&db).unwrap(), 1, "episódio local provisório");
+        let conn = db.into_inner().unwrap();
+        let ep_b: i64 = conn.query_row("SELECT id FROM podcast_episode WHERE guid = 'b'", [], |r| r.get(0)).unwrap();
+        assert!(para_baixar(&conn, ep_b).unwrap().is_some());
+        ligar(&conn, ep_b, 9).unwrap();
+        assert!(para_baixar(&conn, ep_b).unwrap().is_none());
+        let n: i64 = conn.query_row("SELECT COUNT(*) FROM podcast_show", [], |r| r.get(0)).unwrap();
+        assert_eq!(n, 1, "o programa local provisório saiu");
+        let b = episodios(&conn, id).unwrap().into_iter().find(|e| e.id == ep_b).unwrap();
+        assert_eq!((b.media_id, b.baixavel, b.duracao_ms), (Some(9), false, Some(5000)));
+        // Cancelar: só o baixado fica.
+        cancelar_assinatura(&conn, id).unwrap();
+        let eps = episodios(&conn, id).unwrap();
+        assert_eq!(eps.len(), 1);
+        assert!(!programa(&conn, id).unwrap().unwrap().assinado);
+        assert_eq!(nome_arquivo("A/B: c?", Some(20_774 * 86_400 + 50), "mp3"), "2026-11-17 - A_B_ c_.mp3");
     }
 }
