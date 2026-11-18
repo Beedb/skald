@@ -152,7 +152,7 @@ fn ler_atom(raiz: roxmltree::Node) -> Result<Feed, String> {
 fn duracao(s: &str) -> Option<i64> {
     let partes: Vec<f64> = s.trim().split(':').map(|p| p.trim().parse().ok()).collect::<Option<_>>()?;
     let seg = partes.iter().fold(0.0, |t, p| t * 60.0 + p);
-    (seg > 0.0 && partes.len() <= 3).then(|| (seg * 1000.0) as i64)
+    (seg > 0.0 && partes.len() <= 3).then_some((seg * 1000.0) as i64)
 }
 
 fn dias(ano: i64, mes: i64, dia: i64) -> i64 {
