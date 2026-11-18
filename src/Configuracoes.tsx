@@ -401,7 +401,7 @@ export default function Configuracoes({ onErro }: { onErro: (m: string) => void 
     try {
       const r = await invoke<{ adicionados: number; existentes: number }>("import_podcast_folder", { path: pasta });
       const total = r.adicionados + r.existentes;
-      setAvisoPodcasts(`${total} ${total === 1 ? "episódio" : "episódios"} em Podcasts. A tela de podcasts chega na próxima versão.`);
+      setAvisoPodcasts(`${total} ${total === 1 ? "episódio" : "episódios"} em Podcasts. Estão em Biblioteca → Podcasts.`);
       invoke<string[]>("watched_folders").then(setPastas).catch(() => {});
     } catch (e) {
       onErro(String(e));

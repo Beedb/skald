@@ -49,7 +49,9 @@ export type Vista =
   | { tipo: "albuns" }
   /** `de`: a vista de onde o álbum foi aberto (para o "Voltar"). */
   | { tipo: "album"; chave: ChaveAlbum; de: Vista }
-  | { tipo: "playlist"; id: number };
+  | { tipo: "playlist"; id: number }
+  | { tipo: "podcasts" }
+  | { tipo: "programa"; id: number };
 
 type Props = {
   vista: Vista;
@@ -219,7 +221,9 @@ export default function Lateral({ vista, playlists, onVista, onErro, r, onAbrirP
         {grupos.biblioteca && (
           <div className="subitens">
             {item(vista.tipo === "biblioteca", <Music size={16} />, "Músicas", () => onVista({ tipo: "biblioteca" }))}
-            {item(false, <Podcast size={16} />, "Podcasts", () => {}, { desativado: true, dica: "Em breve" })}
+            {item(vista.tipo === "podcasts" || vista.tipo === "programa", <Podcast size={16} />, "Podcasts", () =>
+              onVista({ tipo: "podcasts" }),
+            )}
             {item(false, <BookOpen size={16} />, "Audiolivros", () => {}, { desativado: true, dica: "Em breve" })}
             {item(false, <AudioLines size={16} />, "Outros áudios", () => {}, { desativado: true, dica: "Em breve" })}
           </div>

@@ -103,6 +103,106 @@ fn importar_pasta(app: &AppHandle, path: &str) -> Result<import::ImportResumo, S
     }
 }
 
+const EVENTO_PODCASTS: &str = "podcasts-mudou";
+
+#[tauri::command]
+fn podcast_shows(db: State<db::Db>) -> Result<Vec<podcasts::Programa>, String> {
+    let conn = db.0.lock().map_err(erro_db)?;
+    podcasts::programas(&conn).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn podcast_show(db: State<db::Db>, id: i64) -> Result<Option<podcasts::Programa>, String> {
+    let conn = db.0.lock().map_err(erro_db)?;
+    podcasts::programa(&conn, id).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn podcast_episodes(db: State<db::Db>, id: i64) -> Result<Vec<podcasts::Episodio>, String> {
+    let conn = db.0.lock().map_err(erro_db)?;
+    podcasts::episodios(&conn, id).map_err(|e| e.to_string())
+}
+
+/// "Continuar ouvindo" do Início.
+#[tauri::command]
+fn podcast_in_progress(db: State<db::Db>) -> Result<Vec<podcasts::Episodio>, String> {
+    let conn = db.0.lock().map_err(erro_db)?;
+    podcasts::em_andamento(&conn, 10).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn podcast_mark(app: AppHandle, id: i64, ouvido: bool) -> Result<(), String> {
+    {
+        let db = app.state::<db::Db>();
+        let conn = db.0.lock().map_err(erro_db)?;
+        podcasts::marcar(&conn, id, ouvido).map_err(|e| e.to_string())?;
+    }
+    let _ = app.emit(EVENTO_PODCASTS, ());
+    Ok(())
+}
+
+/// Toca um episódio. A fila é só ele; ao terminar, "Continuar tocando" segue com o próximo
+/// não ouvido do programa.
+#[tauri::command]
+fn play_episode(app: AppHandle, id: i64) -> Result<(), String> {
+    let media = {
+        let db = app.state::<db::Db>();
+        let conn = db.0.lock().map_err(erro_db)?;
+        conn.query_row("SELECT media_id FROM podcast_episode WHERE id = ?1", [id], |r| r.get::<_, Option<i64>>(0))
+            .map_err(|e| e.to_string())?
+            .ok_or("Este episódio não tem áudio neste aparelho.")?
+    };
+    app.state::<FilaState>().0.lock().map_err(erro_db)?.tocar_do_contexto(vec![media], media);
+    definir_origem(&app, None)?;
+    let _ = app.emit(EVENTO_FILA, ());
+    tocar_id(&app, media)
+}
+
+/// Faixa atual é um episódio? (o player mostra −15/+30 s e a velocidade).
+#[derive(Serialize)]
+struct InfoPodcast {
+    episodio: i64,
+    programa: i64,
+    velocidade: f64,
+}
+
+#[tauri::command]
+fn podcast_info(db: State<db::Db>, media_id: i64) -> Result<Option<InfoPodcast>, String> {
+    let conn = db.0.lock().map_err(erro_db)?;
+    let Some((episodio, programa, _, _)) = podcasts::de_media(&conn, media_id).map_err(|e| e.to_string())? else {
+        return Ok(None);
+    };
+    let velocidade = settings::podcast_velocidade(&conn).map_err(|e| e.to_string())?;
+    Ok(Some(InfoPodcast { episodio, programa, velocidade }))
+}
+
+/// Velocidade dos podcasts (0,8× a 2×); vale na hora se um episódio estiver tocando.
+#[tauri::command]
+fn set_podcast_speed(app: AppHandle, velocidade: f64) -> Result<f64, String> {
+    let (v, atual_e_podcast) = {
+        let db = app.state::<db::Db>();
+        let conn = db.0.lock().map_err(erro_db)?;
+        let v = settings::definir_podcast_velocidade(&conn, velocidade).map_err(|e| e.to_string())?;
+        let atual = app.state::<player::Player>().estado().id;
+        (v, atual.is_some_and(|id| podcasts::e_podcast(&conn, id)))
+    };
+    if atual_e_podcast {
+        app.state::<player::Player>().definir_velocidade(v);
+    }
+    Ok(v)
+}
+
+/// Pular para trás ou para a frente (−15 s / +30 s nos podcasts).
+#[tauri::command]
+fn seek_relative(player: State<player::Player>, delta_ms: i64) -> Result<(), String> {
+    let e = player.estado();
+    if e.id.is_none() {
+        return Ok(());
+    }
+    let alvo = (e.posicao_ms as i64 + delta_ms).clamp(0, e.duracao_ms.saturating_sub(500) as i64);
+    player.buscar(alvo as u64)
+}
+
 /// "Importar pasta como Podcasts" (etapa 54): a pasta e o que já estava importado dentro
 /// dela passam à categoria Podcasts; cada subpasta (ou a própria pasta) vira um programa.
 #[tauri::command]
@@ -394,9 +494,20 @@ fn acompanhar_retomar(app: &AppHandle, estado: &player::EstadoPlayer) {
     c.ultimo = Some(agora);
     c.gravado_em = Some(std::time::Instant::now());
     drop(c);
-    let (h, posicao) = (app.clone(), estado.posicao_ms);
+    let (h, posicao, id, duracao) = (app.clone(), estado.posicao_ms, estado.id, estado.duracao_ms);
     // Fora da thread do barramento: o banco pode estar ocupado com uma importação.
-    std::thread::spawn(move || salvar_retomar(&h, posicao));
+    std::thread::spawn(move || {
+        salvar_retomar(&h, posicao);
+        // Podcast: a posição do episódio (retomar por episódio) e o "ouvido" automático.
+        if let Some(id) = id {
+            let virou = h.state::<db::Db>().0.lock().ok().and_then(|c| {
+                podcasts::salvar_posicao(&c, id, posicao as i64, duracao as i64).ok()
+            });
+            if virou == Some(true) {
+                let _ = h.emit(EVENTO_PODCASTS, ());
+            }
+        }
+    });
 }
 
 /// Ao abrir: volta a fila e deixa a última música pausada no ponto em que parou.
@@ -431,6 +542,7 @@ fn retomar_reproducao(app: &AppHandle) -> Result<(), String> {
         }
     };
     let ganho = ganho_de(app, id, &path);
+    app.state::<player::Player>().definir_velocidade(velocidade_de(app, id));
     app.state::<RetomarState>().0.lock().map_err(erro_db)?.sessao_pendente = Some(id);
     app.state::<player::Player>().carregar_pausado(id, &path, ganho, r.posicao_ms)
 }
@@ -471,6 +583,10 @@ fn encerrar_sessao(app: &AppHandle, concluida: bool) {
         let db = app.state::<db::Db>();
         if let Ok(conn) = db.0.lock() {
             let _ = history::encerrar(&conn, &s);
+            // Episódio que tocou até o fim: ouvido, e a retomada volta ao começo.
+            if concluida && podcasts::concluir(&conn, s.media_id).unwrap_or(false) {
+                let _ = app.emit(EVENTO_PODCASTS, ());
+            }
         }
         let _ = app.emit(EVENTO_HISTORICO, ());
     }
@@ -541,7 +657,12 @@ fn continuacao(app: &AppHandle, ultima: Option<i64>) -> Option<Vec<i64>> {
     if !settings::carregar(&conn).ok()?.continuar_tocando {
         return None;
     }
-    colecao::continuacao(&conn, ultima?).ok().filter(|ids| !ids.is_empty())
+    let ultima = ultima?;
+    // Podcast: o próximo não ouvido do mesmo programa (nunca músicas relacionadas).
+    if podcasts::e_podcast(&conn, ultima) {
+        return podcasts::proximos(&conn, ultima).ok().filter(|ids| !ids.is_empty());
+    }
+    colecao::continuacao(&conn, ultima).ok().filter(|ids| !ids.is_empty())
 }
 
 fn preparar_proxima(app: &AppHandle) -> Option<player::Proxima> {
@@ -569,6 +690,11 @@ fn preparar_proxima(app: &AppHandle) -> Option<player::Proxima> {
             let existe = std::path::Path::new(&path).is_file();
             if existe == musica.missing {
                 let _ = library::marcar_ausente(&conn, id, !existe);
+            }
+            // Podcast (o atual ou o próximo): sem crossfade nem emenda; a faixa termina e o
+            // próximo começa pelo `tocar_id` (retomada e velocidade de cada episódio).
+            if antes.atual().is_some_and(|a| podcasts::e_podcast(&conn, a)) || podcasts::e_podcast(&conn, id) {
+                return None;
             }
             let mesmo_album = antes.atual().is_some_and(|a| library::mesmo_album(&conn, a, id).unwrap_or(false));
             existe.then_some((id, path, mesmo_album))
@@ -618,10 +744,27 @@ fn concluir_transicao(app: &AppHandle, id: i64) {
 /// ReplayGain das tags; sem elas, o calculado pelo Skáld (análise em segundo plano).
 fn ganho_de(app: &AppHandle, id: i64, path: &str) -> ganho::Ganho {
     let g = ganho::ler(std::path::Path::new(path));
-    if g.faixa.is_some() || g.album.is_some() {
-        return g;
+    let mut g = if g.faixa.is_some() || g.album.is_some() {
+        g
+    } else {
+        app.state::<db::Db>().0.lock().map(|c| rganalise::do_banco(&c, id)).unwrap_or_default()
+    };
+    // Podcast: sem ReplayGain de álbum (cada episódio é um "álbum" à parte).
+    if app.state::<db::Db>().0.lock().is_ok_and(|c| podcasts::e_podcast(&c, id)) {
+        g.album = None;
     }
-    app.state::<db::Db>().0.lock().map(|c| rganalise::do_banco(&c, id)).unwrap_or_default()
+    g
+}
+
+/// Velocidade de reprodução: a dos podcasts para episódios, 1× para música.
+fn velocidade_de(app: &AppHandle, id: i64) -> f64 {
+    let db = app.state::<db::Db>();
+    let Ok(conn) = db.0.lock() else { return 1.0 };
+    if podcasts::e_podcast(&conn, id) {
+        settings::podcast_velocidade(&conn).unwrap_or(1.0)
+    } else {
+        1.0
+    }
 }
 
 /// Situação da análise de volume (Configurações).
@@ -653,7 +796,21 @@ fn tocar_id(app: &AppHandle, id: i64) -> Result<(), String> {
         c.sessao_pendente = None;
     }
     let ganho = ganho_de(app, id, &path);
-    app.state::<player::Player>().tocar(id, &path, ganho)?;
+    let player = app.state::<player::Player>();
+    player.definir_velocidade(velocidade_de(app, id));
+    // Episódio começado e não ouvido: continua de onde parou.
+    let retomar = {
+        let db = app.state::<db::Db>();
+        let conn = db.0.lock().map_err(erro_db)?;
+        podcasts::de_media(&conn, id)
+            .ok()
+            .flatten()
+            .and_then(|(_, _, pos, ouvido)| pos.filter(|&p| !ouvido && p > 5_000))
+    };
+    match retomar {
+        Some(pos) => player.tocar_em(id, &path, ganho, pos as u64)?,
+        None => player.tocar(id, &path, ganho)?,
+    }
     iniciar_sessao(app, id);
     Ok(())
 }
@@ -2352,6 +2509,15 @@ pub fn run() {
             sync_cancel,
             sync_now,
             import_podcast_folder,
+            podcast_shows,
+            podcast_show,
+            podcast_episodes,
+            podcast_in_progress,
+            podcast_mark,
+            play_episode,
+            podcast_info,
+            set_podcast_speed,
+            seek_relative,
             missing_count,
             remove_missing,
             set_sync_upload,

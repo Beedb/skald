@@ -112,6 +112,9 @@ struct Interno {
     pre_eq: f64,
     /// Redução do temporizador (1 = nenhuma).
     atenuacao: f64,
+    /// Velocidade pedida (podcasts; música é sempre 1) e a já aplicada em cada deck.
+    velocidade: f64,
+    taxa: [f64; 2],
 }
 
 impl Interno {
@@ -152,10 +155,42 @@ fn criar_deck() -> Result<(gst::Element, Option<gst::Element>), String> {
         playbin.set_property("video-sink", &fake);
     }
     let eq = gst::ElementFactory::make("equalizer-10bands").build().ok();
-    if let Some(eq) = &eq {
-        playbin.set_property("audio-filter", eq);
+    // `scaletempo` (plugin audiofx) muda a velocidade sem mudar o tom; a 1× só repassa o áudio.
+    let tempo = gst::ElementFactory::make("scaletempo").build().ok();
+    let filtro = match (tempo, &eq) {
+        (Some(t), Some(e)) => filtro_tempo_eq(&t, e).or(Some(e.clone())),
+        (Some(t), None) => Some(t),
+        (None, e) => e.clone(),
+    };
+    if let Some(f) = &filtro {
+        playbin.set_property("audio-filter", f);
     }
     Ok((playbin, eq))
+}
+
+/// `scaletempo ! audioconvert ! equalizer-10bands` num bin só (o `audio-filter` aceita um elemento).
+fn filtro_tempo_eq(tempo: &gst::Element, eq: &gst::Element) -> Option<gst::Element> {
+    let conv = gst::ElementFactory::make("audioconvert").build().ok()?;
+    let bin = gst::Bin::new();
+    bin.add_many([tempo, &conv, eq]).ok()?;
+    gst::Element::link_many([tempo, &conv, eq]).ok()?;
+    let entrada = gst::GhostPad::with_target(&tempo.static_pad("sink")?).ok()?;
+    let saida = gst::GhostPad::with_target(&eq.static_pad("src")?).ok()?;
+    bin.add_pad(&entrada).ok()?;
+    bin.add_pad(&saida).ok()?;
+    Some(bin.upcast())
+}
+
+/// Busca em `ms` mantendo a velocidade `taxa` (o `seek_simple` voltaria a 1×).
+fn buscar_com_taxa(deck: &gst::Element, ms: u64, taxa: f64) -> Result<(), gst::glib::BoolError> {
+    deck.seek(
+        taxa,
+        gst::SeekFlags::FLUSH | gst::SeekFlags::ACCURATE,
+        gst::SeekType::Set,
+        Some(gst::ClockTime::from_mseconds(ms)),
+        gst::SeekType::None,
+        gst::ClockTime::NONE,
+    )
 }
 
 fn uri_de(path: &str) -> Result<String, String> {
@@ -185,6 +220,8 @@ impl Player {
             ganhos: [Ganho::default(); 2],
             pre_eq: 1.0,
             atenuacao: 1.0,
+            velocidade: 1.0,
+            taxa: [1.0; 2],
         }));
         let pedir: Arc<Pedir> = Arc::new(pedir_proxima);
         for (i, deck) in decks.iter().enumerate() {
@@ -243,6 +280,7 @@ impl Player {
             g.atual = Some(id);
             let ativo = g.ativo;
             g.ganhos[ativo] = ganho;
+            g.taxa[ativo] = 1.0;
             (ativo, g.alvo(ativo))
         };
         let deck = &self.decks[ativo];
@@ -265,9 +303,11 @@ impl Player {
             g.atual = Some(id);
             let ativo = g.ativo;
             g.ganhos[ativo] = ganho;
+            g.taxa[ativo] = 1.0;
             (ativo, g.alvo(ativo))
         };
         let deck = &self.decks[ativo];
+        let _ = deck.set_state(gst::State::Null);
         deck.set_property("volume", volume);
         deck.set_property("uri", uri.as_str());
         deck.set_state(gst::State::Paused)
@@ -278,13 +318,49 @@ impl Player {
             self.int.lock().unwrap().atual = None;
             return Err("Não foi possível abrir este arquivo.".into());
         }
-        if posicao_ms > 0 {
-            let _ = deck.seek_simple(
-                gst::SeekFlags::FLUSH | gst::SeekFlags::ACCURATE,
-                gst::ClockTime::from_mseconds(posicao_ms),
-            );
+        // Já com a velocidade pedida (um `seek_simple` voltaria a 1×).
+        let v = {
+            let mut g = self.int.lock().unwrap();
+            g.taxa[ativo] = g.velocidade;
+            g.velocidade
+        };
+        if posicao_ms > 0 || (v - 1.0).abs() > 1e-3 {
+            let _ = buscar_com_taxa(deck, posicao_ms, v);
         }
         Ok(())
+    }
+
+    /// Toca `id` a partir de `posicao_ms` (episódio de podcast retomado).
+    pub fn tocar_em(&self, id: i64, path: &str, ganho: Ganho, posicao_ms: u64) -> Result<(), String> {
+        for d in &self.decks {
+            let _ = d.set_state(gst::State::Null);
+        }
+        self.carregar_pausado(id, path, ganho, posicao_ms)?;
+        self.decks[self.ativo()]
+            .set_state(gst::State::Playing)
+            .map_err(|_| "Não foi possível tocar este arquivo.".to_string())?;
+        Ok(())
+    }
+
+    /// Velocidade de reprodução (0,5× a 3×), sem mudar o tom. Vale para a faixa atual e as
+    /// seguintes até mudar de novo; o app põe 1× para música.
+    pub fn definir_velocidade(&self, v: f64) {
+        let v = v.clamp(0.5, 3.0);
+        let (ativo, aplicar) = {
+            let mut g = self.int.lock().unwrap();
+            g.velocidade = v;
+            let ativo = g.ativo;
+            let pronto = matches!(self.decks[ativo].current_state(), gst::State::Playing | gst::State::Paused);
+            let aplicar = pronto && g.atual.is_some() && (g.taxa[ativo] - v).abs() > 1e-3;
+            if aplicar {
+                g.taxa[ativo] = v;
+            }
+            (ativo, aplicar)
+        };
+        if aplicar {
+            let deck = &self.decks[ativo];
+            let _ = buscar_com_taxa(deck, posicao(deck), v);
+        }
     }
 
     /// Estado atual (para a interface ao abrir, antes do primeiro aviso).
@@ -401,9 +477,8 @@ impl Player {
             let volume = self.int.lock().unwrap().alvo(ativo);
             self.decks[ativo].set_property("volume", volume);
         }
-        self.decks[ativo]
-            .seek_simple(gst::SeekFlags::FLUSH | gst::SeekFlags::ACCURATE, gst::ClockTime::from_mseconds(ms))
-            .map_err(|_| "Não foi possível mudar a posição.".to_string())
+        let taxa = self.int.lock().unwrap().taxa[ativo];
+        buscar_com_taxa(&self.decks[ativo], ms, taxa).map_err(|_| "Não foi possível mudar a posição.".to_string())
     }
 }
 
@@ -498,6 +573,19 @@ fn vigiar(
                     // Busca concluída (também pausado): a posição nova vai para a tela.
                     gst::MessageView::AsyncDone(..) if i == ativo => {
                         envio_imediato = true;
+                        // Deck pronto (faixa nova ou busca): aplica a velocidade pedida.
+                        let v = {
+                            let mut g = int.lock().unwrap();
+                            let v = g.velocidade;
+                            let mudar = g.atual.is_some() && (g.taxa[i] - v).abs() > 1e-3;
+                            if mudar {
+                                g.taxa[i] = v;
+                            }
+                            mudar.then_some(v)
+                        };
+                        if let Some(v) = v {
+                            let _ = buscar_com_taxa(&decks[i], posicao(&decks[i]), v);
+                        }
                     }
                     gst::MessageView::StateChanged(s)
                         if i == ativo && s.src().is_some_and(|src| src == decks[i].upcast_ref::<gst::Object>()) =>
@@ -597,6 +685,7 @@ fn conduzir_cruzamento(decks: &[gst::Element; 2], int: &Mutex<Interno>, pedir: &
         g.escolha = Escolha::NaoPedida;
         g.cruzando = Some(Cruzamento { saindo: ativo, dur_ms: cf });
         g.ganhos[novo] = p.ganho;
+        g.taxa[novo] = 1.0;
         g.alvo(ativo)
     };
     let _ = decks[novo].set_state(gst::State::Null);
@@ -719,6 +808,37 @@ mod testes {
         }
         std::fs::remove_dir_all(&dir).unwrap();
         Some(r)
+    }
+
+    /// Podcast: começa em 1 s de uma faixa de ~4 s a 2× (sem mudar o tom: `scaletempo`);
+    /// os ~3 s restantes devem passar em ~1,5 s.
+    #[test]
+    fn velocidade_e_retomar() {
+        let dir = crate::teste_util::pasta("skald-teste-velocidade");
+        let a = dir.join("episódio.wav");
+        gerar_wav(&a, 172);
+        let (tx, rx) = mpsc::channel();
+        let p = Player::new(move |e| { let _ = tx.send(e); }, || None).unwrap();
+        silenciar(&p);
+        let filtro: gst::Element = p.decks[0].property("audio-filter");
+        let tem_tempo = filtro.factory().is_some_and(|f| f.name() == "scaletempo")
+            || filtro.downcast_ref::<gst::Bin>().is_some_and(|b| b.by_name("scaletempo0").is_some()
+                || b.iterate_elements().into_iter().flatten().any(|e| e.factory().is_some_and(|f| f.name() == "scaletempo")));
+        assert!(tem_tempo, "scaletempo fora do filtro de áudio");
+        p.definir_velocidade(2.0);
+        let inicio = Instant::now();
+        p.tocar_em(1, &a.to_string_lossy(), Ganho::default(), 1000).unwrap();
+        loop {
+            let e = rx.recv_timeout(Duration::from_secs(10)).expect("sem eventos do player");
+            assert!(e.erro.is_none(), "{:?}", e.erro);
+            if e.fim {
+                break;
+            }
+        }
+        let t = inicio.elapsed();
+        assert!(t > Duration::from_millis(900) && t < Duration::from_millis(2600), "durou {t:?}");
+        drop(p);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     /// Mesmo sem crossfade: a segunda entra pelo `about-to-finish`, sem o player parar.

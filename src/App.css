@@ -3360,3 +3360,222 @@ input[type="range"].trilha:disabled {
   display: flex;
   gap: 0.5rem;
 }
+
+/* ---------- Podcasts (etapas 55 a 58) ---------- */
+
+.podcasts-topo {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  margin-bottom: 0.8rem;
+}
+
+.podcasts-topo h2 {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin: 0;
+}
+
+.podcasts-topo button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.grade-programas {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 0.6rem;
+}
+
+.descricao-programa {
+  margin: 0.3rem 0 0;
+  max-width: 60ch;
+  color: var(--fraco);
+  font-size: 0.9rem;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.filtro-episodios {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  color: var(--fraco);
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+
+.episodios {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.episodios li {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.7rem;
+  padding: 0.55rem 0.5rem;
+  border-radius: var(--raio-p);
+  border-bottom: 1px solid var(--linha);
+}
+
+.episodios li:hover {
+  background: var(--card-2);
+}
+
+.episodios li.atual .titulo {
+  color: var(--acento);
+}
+
+.episodios li.ouvido .titulo {
+  color: var(--fraco);
+}
+
+.episodios li.ausente {
+  opacity: 0.5;
+}
+
+.tocar-episodio {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 2rem;
+  height: 2rem;
+  padding: 0;
+  border-radius: 50%;
+  border: 1px solid var(--borda);
+  background: var(--card);
+  color: var(--texto);
+}
+
+.tocar-episodio:hover:not(:disabled) {
+  border-color: var(--acento);
+  color: var(--acento);
+}
+
+.texto-episodio {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  cursor: default;
+}
+
+.texto-episodio .titulo {
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.texto-episodio .detalhe {
+  font-size: 0.85rem;
+}
+
+.descricao-episodio {
+  color: var(--fraco);
+  font-size: 0.85rem;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  cursor: pointer;
+  white-space: pre-line;
+}
+
+.descricao-episodio.aberta {
+  -webkit-line-clamp: unset;
+}
+
+.progresso-episodio {
+  display: block;
+  height: 3px;
+  max-width: 14rem;
+  border-radius: 2px;
+  background: var(--linha);
+  overflow: hidden;
+}
+
+.progresso-episodio > span {
+  display: block;
+  height: 100%;
+  background: var(--acento);
+}
+
+.marcar-episodio {
+  flex: none;
+  display: grid;
+  place-items: center;
+  padding: 0.35rem;
+  background: none;
+  border: none;
+  border-radius: 50%;
+  color: var(--fraco);
+}
+
+.marcar-episodio:hover {
+  color: var(--acento);
+  background: var(--card-2);
+}
+
+.cartao-episodio {
+  cursor: default;
+}
+
+.cartao-episodio-tocar {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 0;
+  padding: 0;
+  text-align: left;
+  background: none;
+  border: none;
+  color: inherit;
+  cursor: pointer;
+}
+
+.cartao-episodio .link.detalhe {
+  text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cartao-episodio .progresso-episodio {
+  margin-top: 0.3rem;
+}
+
+/* −15 s / +30 s: o número dentro da seta circular. */
+.controles .pulo {
+  position: relative;
+  color: var(--texto);
+}
+
+.controles .pulo-num {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  font-size: 0.55rem;
+  font-weight: 700;
+  pointer-events: none;
+}
+
+.controles.grandes .pulo-num {
+  font-size: 0.65rem;
+}
+
+select.velocidade {
+  padding: 0.15rem 0.3rem;
+  border-radius: var(--raio-p);
+  font-variant-numeric: tabular-nums;
+}

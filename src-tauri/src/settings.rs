@@ -18,6 +18,7 @@ const RETOMAR: &str = "retomar";
 const CONTINUAR: &str = "continuar_tocando";
 const VERIFICAR_VERSAO: &str = "verificar_versao";
 const SYNC_ENVIAR: &str = "sync_enviar";
+const PODCAST_VELOCIDADE: &str = "podcast_velocidade";
 /// Tema padrão do Skáld (docs/temas.css).
 const TEMA_PADRAO: &str = "carmesim";
 /// Crossfade padrão: ligado, 5 s (desligado entre faixas do mesmo álbum).
@@ -46,6 +47,8 @@ pub struct Configuracoes {
     pub verificar_versao: bool,
     /// "Sincronizar agora" também envia ao Drive (padrão: ligado; desligado = só baixar).
     pub sync_enviar: bool,
+    /// Velocidade dos podcasts (0,8× a 2×; padrão 1×). Música toca sempre a 1×.
+    pub podcast_velocidade: f64,
 }
 
 fn ler(conn: &Connection, chave: &str) -> rusqlite::Result<Option<String>> {
@@ -87,6 +90,7 @@ pub fn carregar(conn: &Connection) -> rusqlite::Result<Configuracoes> {
     let continuar_tocando = ler(conn, CONTINUAR)?.is_none_or(|v| v == "1");
     let verificar_versao = verificar_versao(conn)?;
     let sync_enviar = sync_enviar(conn)?;
+    let podcast_velocidade = podcast_velocidade(conn)?;
     Ok(Configuracoes {
         crossfade_ms,
         normalizacao,
@@ -99,6 +103,7 @@ pub fn carregar(conn: &Connection) -> rusqlite::Result<Configuracoes> {
         continuar_tocando,
         verificar_versao,
         sync_enviar,
+        podcast_velocidade,
     })
 }
 
@@ -220,6 +225,16 @@ pub fn aparelho_id(conn: &Connection) -> rusqlite::Result<String> {
     let id: String = conn.query_row("SELECT lower(hex(randomblob(8)))", [], |r| r.get(0))?;
     gravar(conn, "aparelho_id", &id)?;
     Ok(id)
+}
+
+pub fn podcast_velocidade(conn: &Connection) -> rusqlite::Result<f64> {
+    Ok(ler(conn, PODCAST_VELOCIDADE)?.and_then(|v| v.parse().ok()).unwrap_or(1.0f64).clamp(0.8, 2.0))
+}
+
+pub fn definir_podcast_velocidade(conn: &Connection, v: f64) -> rusqlite::Result<f64> {
+    let v = (v.clamp(0.8, 2.0) * 100.0).round() / 100.0;
+    gravar(conn, PODCAST_VELOCIDADE, &v.to_string())?;
+    Ok(v)
 }
 
 #[cfg(test)]

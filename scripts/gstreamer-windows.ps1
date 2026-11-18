@@ -20,14 +20,14 @@ $dumpbin = Get-ChildItem (Join-Path $vs 'VC\Tools\MSVC') -Recurse -Filter dumpbi
     Where-Object FullName -like '*Hostx64\x64*' | Select-Object -First 1 -ExpandProperty FullName
 if (-not $dumpbin) { throw 'dumpbin.exe não encontrado (instale o VS Build Tools com C++).' }
 
-# Elementos usados: playbin/uridecodebin, fakesink, equalizer-10bands, rganalysis,
+# Elementos usados: playbin/uridecodebin, fakesink, equalizer-10bands, scaletempo (audiofx), rganalysis,
 # audioconvert/audioresample, saída de áudio e os decodificadores dos formatos aceitos
 # (MP3, FLAC, OGG/Opus/Vorbis, M4A/AAC, WAV).
 $plugins = @(
     'coreelements', 'playback', 'typefindfunctions',
     'audioconvert', 'audioresample', 'volume',
     'autodetect', 'wasapi', 'wasapi2', 'directsound',
-    'equalizer', 'replaygain',
+    'equalizer', 'replaygain', 'audiofx',
     'audioparsers', 'id3demux', 'apetag',
     'mpg123', 'flac', 'ogg', 'vorbis', 'opus', 'opusparse',
     'isomp4', 'libav', 'wavparse'

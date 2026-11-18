@@ -15,6 +15,7 @@ import Pastas from "./Pastas";
 import Duplicados from "./Duplicados";
 import { Albuns, AlbumView, Artistas, ArtistaView } from "./Colecao";
 import Inicio from "./Inicio";
+import Podcasts, { ProgramaView } from "./Podcasts";
 import { esquecerMiniatura, miniatura } from "./Capa";
 import Informacoes from "./Informacoes";
 import EdicaoLote from "./EdicaoLote";
@@ -84,6 +85,8 @@ function App() {
   const [versaoPlaylists, setVersaoPlaylists] = useState(0);
   const [curtidas, setCurtidas] = useState<Set<number>>(new Set());
   const [versaoHistorico, setVersaoHistorico] = useState(0);
+  const [versaoPodcasts, setVersaoPodcasts] = useState(0);
+  const [podcast, setPodcast] = useState<Reproducao["podcast"]>(null);
   // Aviso deixado antes de recarregar (ex.: backup restaurado).
   const [aviso, setAviso] = useState<string | null>(() => {
     try {
@@ -182,11 +185,13 @@ function App() {
       }),
       listen<string>("player-erro", (e) => mostrarErro(e.payload)),
       listen("historico-mudou", () => setVersaoHistorico((v) => v + 1)),
+      listen("podcasts-mudou", () => setVersaoPodcasts((v) => v + 1)),
       listen<ImportResumo>("biblioteca-mudou", (e) => {
         setAviso(avisoMonitoramento(e.payload));
         carregarStatus();
         setVersao((v) => v + 1);
         setVersaoPlaylists((v) => v + 1);
+        setVersaoPodcasts((v) => v + 1);
       }),
     ];
     return () => {
@@ -218,6 +223,17 @@ function App() {
 
   // Capa e informações da música atual (lidas do arquivo só quando ela muda).
   const idAtual = fila?.atual?.id ?? null;
+  // Episódio de podcast? (o player mostra −15/+30 s e a velocidade)
+  useEffect(() => {
+    if (idAtual === null) return setPodcast(null);
+    let valido = true;
+    invoke<Reproducao["podcast"]>("podcast_info", { mediaId: idAtual })
+      .then((p) => valido && setPodcast(p))
+      .catch(() => valido && setPodcast(null));
+    return () => {
+      valido = false;
+    };
+  }, [idAtual]);
   useEffect(() => {
     if (idAtual === null) return setDetalhes(null);
     let valido = true;
@@ -251,6 +267,11 @@ function App() {
     onCurtir: () => idAtual !== null && curtir(idAtual),
     aleatorio: fila?.aleatorio ?? false,
     repetir: fila?.repetir ?? "desligado",
+    podcast,
+    onVelocidade: (v) =>
+      invoke<number>("set_podcast_speed", { velocidade: v })
+        .then((real) => setPodcast((p) => (p ? { ...p, velocidade: real } : p)))
+        .catch((e) => mostrarErro(String(e))),
   };
 
   async function tocar(id: number) {
@@ -500,10 +521,27 @@ function App() {
               />
             </div>
           )}
+          {vista.tipo === "podcasts" && (
+            <div className="area">
+              <Podcasts versao={versaoPodcasts} onAbrir={(id) => setVista({ tipo: "programa", id })} onErro={setErro} />
+            </div>
+          )}
+          {vista.tipo === "programa" && (
+            <div className="area">
+              <ProgramaView
+                id={vista.id}
+                versao={versaoPodcasts + versaoHistorico}
+                idAtual={idAtual}
+                onVoltar={() => setVista({ tipo: "podcasts" })}
+                onErro={setErro}
+              />
+            </div>
+          )}
           {vista.tipo === "inicio" && (
             <div className="area">
               <Inicio
-                versao={versao + versaoHistorico}
+                versao={versao + versaoHistorico + versaoPodcasts}
+                onPrograma={(id) => setVista({ tipo: "programa", id })}
                 playlists={playlists}
                 totalMusicas={status?.media_count ?? 0}
                 onPlaylist={(id) => setVista({ tipo: "playlist", id })}

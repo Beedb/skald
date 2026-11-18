@@ -21,12 +21,12 @@ endif
 GSTREAMER_NDK_BUILD_PATH := $(GSTREAMER_ROOT)/share/gst-android/ndk-build/
 
 # Só o que o Skáld usa: playbin, decodificadores dos formatos aceitos (MP3, FLAC,
-# OGG/Opus, WAV; AAC via MediaCodec em androidmedia), equalizador, ReplayGain e saída OpenSL ES.
+# OGG/Opus, WAV; AAC via MediaCodec em androidmedia), equalizador, scaletempo (audiofx, velocidade dos podcasts), ReplayGain e saída OpenSL ES.
 GSTREAMER_PLUGINS := coreelements typefindfunctions playback app \
 	audioconvert audioresample volume audiorate autodetect \
 	id3demux apetag audioparsers wavparse isomp4 ogg \
 	mpg123 flac vorbis opus \
-	equalizer replaygain level \
+	equalizer replaygain level audiofx \
 	opensles androidmedia
 GSTREAMER_EXTRA_DEPS := gstreamer-audio-1.0 gstreamer-pbutils-1.0
 GSTREAMER_JAVA_SRC_DIR := $(LOCAL_PATH)/../build/gstreamer/java

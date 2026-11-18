@@ -6,6 +6,8 @@ import {
   Play,
   Repeat,
   Repeat1,
+  RotateCcw,
+  RotateCw,
   Shuffle,
   SkipBack,
   SkipForward,
@@ -39,7 +41,35 @@ export type Reproducao = {
   onCurtir: () => void;
   aleatorio: boolean;
   repetir: Repetir;
+  /** Faixa atual é um episódio de podcast (null: música). */
+  podcast: { episodio: number; programa: number; velocidade: number } | null;
+  onVelocidade: (v: number) => void;
 };
+
+export const VELOCIDADES = [0.8, 1, 1.2, 1.5, 1.75, 2];
+const rotuloVelocidade = (v: number) => `${v.toLocaleString("pt-BR")}×`;
+
+/** Velocidade dos podcasts (sem mudar o tom). */
+export function SeletorVelocidade({ r }: { r: Reproducao }) {
+  if (!r.podcast) return null;
+  const v = r.podcast.velocidade;
+  const opcoes = VELOCIDADES.includes(v) ? VELOCIDADES : [...VELOCIDADES, v].sort((a, b) => a - b);
+  return (
+    <select
+      className="velocidade"
+      value={v}
+      onChange={(e) => r.onVelocidade(Number(e.target.value))}
+      aria-label="Velocidade do podcast"
+      title="Velocidade (o tom da voz não muda)"
+    >
+      {opcoes.map((o) => (
+        <option key={o} value={o}>
+          {rotuloVelocidade(o)}
+        </option>
+      ))}
+    </select>
+  );
+}
 
 const PROXIMO_REPETIR: Record<Repetir, Repetir> = { desligado: "fila", fila: "faixa", faixa: "desligado" };
 const ROTULO_REPETIR: Record<Repetir, string> = {
@@ -65,8 +95,15 @@ export function Controles({ r, grande = false }: { r: Reproducao; grande?: boole
   const comando = (nome: string, args?: Record<string, unknown>) =>
     invoke(nome, args).catch((e) => r.onErro(String(e)));
   const t = grande ? 22 : 18;
+  const pular = (ms: number) => comando("seek_relative", { deltaMs: ms });
   return (
-    <div className={"controles" + (grande ? " grandes" : "")}>
+    <div className={"controles" + (grande ? " grandes" : "") + (r.podcast ? " podcast" : "")}>
+      {r.podcast ? (
+        <button className="pulo" onClick={() => pular(-15000)} disabled={!ativo(r)} aria-label="Voltar 15 segundos" title="Voltar 15 s">
+          <RotateCcw size={t} />
+          <span className="pulo-num" aria-hidden="true">15</span>
+        </button>
+      ) : (
       <button
         className={"modo" + (r.aleatorio ? " ligado" : "")}
         onClick={() => comando("set_shuffle", { ativo: !r.aleatorio })}
@@ -76,6 +113,7 @@ export function Controles({ r, grande = false }: { r: Reproducao; grande?: boole
       >
         <Shuffle size={t} />
       </button>
+      )}
       <button onClick={() => comando("previous_track")} disabled={!r.musica} aria-label="Anterior" title="Anterior">
         <SkipBack size={t} fill="currentColor" />
       </button>
@@ -91,6 +129,12 @@ export function Controles({ r, grande = false }: { r: Reproducao; grande?: boole
       <button onClick={() => comando("next_track")} disabled={!r.musica} aria-label="Próxima" title="Próxima">
         <SkipForward size={t} fill="currentColor" />
       </button>
+      {r.podcast ? (
+        <button className="pulo" onClick={() => pular(30000)} disabled={!ativo(r)} aria-label="Avançar 30 segundos" title="Avançar 30 s">
+          <RotateCw size={t} />
+          <span className="pulo-num" aria-hidden="true">30</span>
+        </button>
+      ) : (
       <button
         className={"modo" + (r.repetir !== "desligado" ? " ligado" : "")}
         onClick={() => comando("set_repeat", { modo: PROXIMO_REPETIR[r.repetir] })}
@@ -100,6 +144,7 @@ export function Controles({ r, grande = false }: { r: Reproducao; grande?: boole
       >
         {r.repetir === "faixa" ? <Repeat1 size={t} /> : <Repeat size={t} />}
       </button>
+      )}
     </div>
   );
 }
@@ -273,6 +318,7 @@ export default function PlayerBar({ r, filaAberta, onAlternarFila, onAbrirPlayer
       </div>
 
       <div className="extras">
+        <SeletorVelocidade r={r} />
         <Volume r={r} />
         <Temporizador onErro={r.onErro} />
         <button

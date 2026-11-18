@@ -194,7 +194,7 @@ pub fn schema_version(conn: &Connection) -> rusqlite::Result<i64> {
 }
 
 pub fn media_count(conn: &Connection) -> rusqlite::Result<i64> {
-    conn.query_row("SELECT COUNT(*) FROM media", [], |r| r.get(0))
+    conn.query_row("SELECT COUNT(*) FROM media WHERE category = 'music'", [], |r| r.get(0))
 }
 
 #[cfg(test)]

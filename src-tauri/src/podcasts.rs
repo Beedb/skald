@@ -175,6 +175,192 @@ pub fn marcar_pasta(conn: &Connection, pasta: &str) -> rusqlite::Result<()> {
     Ok(())
 }
 
+// ---------- Telas e reprodução (etapas 55 a 58) ----------
+
+/// Programa na grade de Podcasts.
+#[derive(serde::Serialize)]
+pub struct Programa {
+    pub id: i64,
+    pub titulo: String,
+    pub autor: Option<String>,
+    pub descricao: Option<String>,
+    /// Episódio mais novo com áudio, para a capa.
+    pub capa_media: Option<i64>,
+    pub episodios: i64,
+    pub nao_ouvidos: i64,
+    pub ultimo_em: Option<i64>,
+}
+
+const SELECT_PROGRAMA: &str = "SELECT s.id, s.titulo, s.autor, s.descricao,
+        (SELECT e2.media_id FROM podcast_episode e2 WHERE e2.show_id = s.id AND e2.media_id IS NOT NULL
+         ORDER BY e2.publicado_em DESC, e2.id DESC LIMIT 1),
+        COUNT(e.id), COALESCE(SUM(e.ouvido_em IS NULL), 0), MAX(e.publicado_em)
+    FROM podcast_show s LEFT JOIN podcast_episode e ON e.show_id = s.id";
+
+fn linha_programa(r: &rusqlite::Row) -> rusqlite::Result<Programa> {
+    Ok(Programa {
+        id: r.get(0)?,
+        titulo: r.get(1)?,
+        autor: r.get(2)?,
+        descricao: r.get(3)?,
+        capa_media: r.get(4)?,
+        episodios: r.get(5)?,
+        nao_ouvidos: r.get(6)?,
+        ultimo_em: r.get(7)?,
+    })
+}
+
+/// Programas, com episódio mais recente primeiro.
+pub fn programas(conn: &Connection) -> rusqlite::Result<Vec<Programa>> {
+    let mut st = conn.prepare(&format!(
+        "{SELECT_PROGRAMA} GROUP BY s.id ORDER BY MAX(e.publicado_em) DESC, s.titulo COLLATE SEMACENTO"
+    ))?;
+    let v = st.query_map([], linha_programa)?.collect::<rusqlite::Result<Vec<_>>>()?;
+    Ok(v)
+}
+
+pub fn programa(conn: &Connection, id: i64) -> rusqlite::Result<Option<Programa>> {
+    conn.query_row(&format!("{SELECT_PROGRAMA} WHERE s.id = ?1 GROUP BY s.id"), [id], linha_programa)
+        .optional()
+}
+
+/// Episódio na tela do programa ou em "Continuar ouvindo".
+#[derive(serde::Serialize)]
+pub struct Episodio {
+    pub id: i64,
+    pub show_id: i64,
+    pub programa: String,
+    pub titulo: String,
+    pub publicado_em: Option<i64>,
+    pub descricao: Option<String>,
+    pub duracao_ms: Option<i64>,
+    pub media_id: Option<i64>,
+    pub ouvido: bool,
+    pub posicao_ms: Option<i64>,
+    /// Arquivo não encontrado (registro mantido).
+    pub ausente: bool,
+}
+
+const SELECT_EPISODIO: &str = "SELECT e.id, e.show_id, s.titulo, e.titulo, e.publicado_em, e.descricao,
+        COALESCE(e.duracao_ms, m.duration_ms), e.media_id, e.ouvido_em IS NOT NULL, e.posicao_ms,
+        COALESCE(m.missing, 1)
+    FROM podcast_episode e JOIN podcast_show s ON s.id = e.show_id LEFT JOIN media m ON m.id = e.media_id";
+
+fn linha_episodio(r: &rusqlite::Row) -> rusqlite::Result<Episodio> {
+    Ok(Episodio {
+        id: r.get(0)?,
+        show_id: r.get(1)?,
+        programa: r.get(2)?,
+        titulo: r.get(3)?,
+        publicado_em: r.get(4)?,
+        descricao: r.get(5)?,
+        duracao_ms: r.get(6)?,
+        media_id: r.get(7)?,
+        ouvido: r.get(8)?,
+        posicao_ms: r.get(9)?,
+        ausente: r.get(10)?,
+    })
+}
+
+/// Episódios do programa, do mais novo ao mais antigo.
+pub fn episodios(conn: &Connection, show_id: i64) -> rusqlite::Result<Vec<Episodio>> {
+    let mut st = conn.prepare(&format!(
+        "{SELECT_EPISODIO} WHERE e.show_id = ?1 ORDER BY e.publicado_em DESC, e.id DESC"
+    ))?;
+    let v = st.query_map([show_id], linha_episodio)?.collect::<rusqlite::Result<Vec<_>>>()?;
+    Ok(v)
+}
+
+/// "Continuar ouvindo" (Início): começados e não terminados, tocados mais recentemente primeiro.
+pub fn em_andamento(conn: &Connection, limite: i64) -> rusqlite::Result<Vec<Episodio>> {
+    let mut st = conn.prepare(&format!(
+        "{SELECT_EPISODIO}
+         WHERE e.posicao_ms > 0 AND e.ouvido_em IS NULL AND m.missing = 0
+         ORDER BY (SELECT MAX(h.started_at) FROM play_history h WHERE h.media_id = e.media_id) DESC
+         LIMIT ?1"
+    ))?;
+    let v = st.query_map([limite], linha_episodio)?.collect::<rusqlite::Result<Vec<_>>>()?;
+    Ok(v)
+}
+
+fn agora() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0)
+}
+
+/// Marca à mão como ouvido ou não ouvido (os dois zeram a posição de retomada).
+pub fn marcar(conn: &Connection, episodio: i64, ouvido: bool) -> rusqlite::Result<()> {
+    conn.execute(
+        "UPDATE podcast_episode SET ouvido_em = CASE WHEN ?2 THEN COALESCE(ouvido_em, ?3) END,
+         posicao_ms = NULL WHERE id = ?1",
+        params![episodio, ouvido, agora()],
+    )?;
+    Ok(())
+}
+
+/// Episódio de um registro de `media`: (id, programa, posição de retomada, ouvido).
+pub type DeMedia = (i64, i64, Option<i64>, bool);
+
+pub fn de_media(conn: &Connection, media_id: i64) -> rusqlite::Result<Option<DeMedia>> {
+    conn.query_row(
+        "SELECT id, show_id, posicao_ms, ouvido_em IS NOT NULL FROM podcast_episode WHERE media_id = ?1",
+        [media_id],
+        |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)),
+    )
+    .optional()
+}
+
+/// "Ouvido": faltam até 2 min (e já passou da metade) ou chegou a 95%.
+pub fn quase_no_fim(posicao_ms: i64, duracao_ms: i64) -> bool {
+    duracao_ms > 0
+        && posicao_ms * 100 >= duracao_ms * 50
+        && (duracao_ms - posicao_ms <= 120_000 || posicao_ms * 100 >= duracao_ms * 95)
+}
+
+/// Grava a posição do episódio que está tocando. Devolve `true` se ele acabou de virar ouvido.
+pub fn salvar_posicao(conn: &Connection, media_id: i64, posicao_ms: i64, duracao_ms: i64) -> rusqlite::Result<bool> {
+    let Some((id, _, _, ouvido)) = de_media(conn, media_id)? else { return Ok(false) };
+    conn.execute("UPDATE podcast_episode SET posicao_ms = ?2 WHERE id = ?1", params![id, posicao_ms])?;
+    if !ouvido && quase_no_fim(posicao_ms, duracao_ms) {
+        conn.execute("UPDATE podcast_episode SET ouvido_em = ?2 WHERE id = ?1", params![id, agora()])?;
+        return Ok(true);
+    }
+    Ok(false)
+}
+
+/// O episódio tocou até o fim: ouvido, e a retomada volta ao começo.
+pub fn concluir(conn: &Connection, media_id: i64) -> rusqlite::Result<bool> {
+    let n = conn.execute(
+        "UPDATE podcast_episode SET ouvido_em = COALESCE(ouvido_em, ?2), posicao_ms = NULL WHERE media_id = ?1",
+        params![media_id, agora()],
+    )?;
+    Ok(n > 0)
+}
+
+/// Depois de `media_id`, os não ouvidos do mesmo programa com áudio: primeiro os publicados
+/// depois dele (do mais antigo ao mais novo), depois os anteriores.
+pub fn proximos(conn: &Connection, media_id: i64) -> rusqlite::Result<Vec<i64>> {
+    let mut st = conn.prepare(
+        "SELECT e.media_id FROM podcast_episode e
+         JOIN podcast_episode atual ON atual.media_id = ?1 AND atual.show_id = e.show_id
+         JOIN media m ON m.id = e.media_id
+         WHERE e.ouvido_em IS NULL AND m.missing = 0 AND e.media_id <> ?1
+         ORDER BY (COALESCE(e.publicado_em, 0) < COALESCE(atual.publicado_em, 0)
+                   OR (COALESCE(e.publicado_em, 0) = COALESCE(atual.publicado_em, 0) AND e.id < atual.id)),
+                  e.publicado_em, e.id",
+    )?;
+    let v = st.query_map([media_id], |r| r.get(0))?.collect::<rusqlite::Result<Vec<_>>>()?;
+    Ok(v)
+}
+
+/// É um episódio de podcast?
+pub fn e_podcast(conn: &Connection, media_id: i64) -> bool {
+    conn.query_row("SELECT category = 'podcast' FROM media WHERE id = ?1", [media_id], |r| r.get(0))
+        .unwrap_or(false)
+}
+
 #[cfg(test)]
 mod testes {
     use super::*;
@@ -237,5 +423,41 @@ mod testes {
         let conn = db.lock().unwrap();
         let n: i64 = conn.query_row("SELECT COUNT(*) FROM podcast_show", [], |r| r.get(0)).unwrap();
         assert_eq!(n, 1);
+    }
+
+    #[test]
+    fn ouvido_retomar_e_proximos() {
+        let conn = crate::db::open(Path::new(":memory:")).unwrap();
+        conn.execute_batch(
+            "INSERT INTO media (id, path, title, duration_ms, category) VALUES
+               (1, '/p/1.mp3', 'Um', 3600000, 'podcast'), (2, '/p/2.mp3', 'Dois', 3600000, 'podcast'),
+               (3, '/p/3.mp3', 'Três', 3600000, 'podcast'), (4, '/p/4.mp3', 'Quatro', 3600000, 'podcast');
+             INSERT INTO podcast_show (id, titulo, pasta, criado_em) VALUES (1, 'P', '/p', 0);
+             INSERT INTO podcast_episode (id, show_id, guid, titulo, publicado_em, media_id) VALUES
+               (1, 1, 'local:1', 'Um', 100, 1), (2, 1, 'local:2', 'Dois', 200, 2),
+               (3, 1, 'local:3', 'Três', 300, 3), (4, 1, 'local:4', 'Quatro', 400, 4);",
+        )
+        .unwrap();
+        // Faltando 2 min de 1 h: ouvido.
+        assert!(!salvar_posicao(&conn, 2, 600_000, 3_600_000).unwrap());
+        assert_eq!(de_media(&conn, 2).unwrap().unwrap().2, Some(600_000));
+        assert!(salvar_posicao(&conn, 2, 3_480_000, 3_600_000).unwrap());
+        assert!(de_media(&conn, 2).unwrap().unwrap().3);
+        // Episódio curto: começar não marca como ouvido.
+        assert!(!quase_no_fim(5_000, 60_000));
+        assert!(quase_no_fim(58_000, 60_000));
+        // Depois do 3: o 4 (mais novo), depois o 1 (o 2 já foi ouvido).
+        assert_eq!(proximos(&conn, 3).unwrap(), [4, 1]);
+        marcar(&conn, 4, true).unwrap();
+        assert_eq!(proximos(&conn, 3).unwrap(), [1]);
+        marcar(&conn, 2, false).unwrap();
+        assert_eq!(proximos(&conn, 3).unwrap(), [1, 2]);
+        assert!(concluir(&conn, 1).unwrap());
+        let (_, _, pos, ouvido) = de_media(&conn, 1).unwrap().unwrap();
+        assert_eq!((pos, ouvido), (None, true));
+        assert!(!concluir(&conn, 99).unwrap());
+        let progs = programas(&conn).unwrap();
+        assert_eq!((progs[0].episodios, progs[0].nao_ouvidos, progs[0].capa_media), (4, 2, Some(4)));
+        assert_eq!(episodios(&conn, 1).unwrap().iter().map(|e| e.id).collect::<Vec<_>>(), [4, 3, 2, 1]);
     }
 }

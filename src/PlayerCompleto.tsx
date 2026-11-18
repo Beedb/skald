@@ -1,5 +1,5 @@
 import Fila, { type VisaoFila } from "./Fila";
-import { Capa, Controles, Progresso, Volume, type Reproducao } from "./PlayerBar";
+import { Capa, Controles, Progresso, SeletorVelocidade, Volume, type Reproducao } from "./PlayerBar";
 import { useState } from "react";
 import { ArrowLeft, Ellipsis, PanelRightClose, PanelRightOpen } from "lucide-react";
 import { BotaoCurtir } from "./Biblioteca";
@@ -136,7 +136,7 @@ export default function PlayerCompleto({ r, fila, detalhes, onVoltar }: Props) {
           <div className="pc-base">
             <Progresso r={r} />
             <div className="pc-controles">
-              <span />
+              {r.podcast ? <SeletorVelocidade r={r} /> : <span />}
               <Controles r={r} grande />
               <Volume r={r} />
             </div>

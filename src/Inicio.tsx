@@ -2,6 +2,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { ArrowRight, Play, Sparkle } from "lucide-react";
 import Capa from "./Capa";
+import { estadoEpisodio, type Episodio } from "./Podcasts";
 import { Album, CartaoAlbum, ChaveAlbum } from "./Colecao";
 import type { PlaylistResumo } from "./Lateral";
 import { useMenuMusica } from "./MenuMusica";
@@ -111,6 +112,7 @@ export default function Inicio({
   onAlbuns,
   onHistorico,
   onTocarMusica,
+  onPrograma,
   onErro,
 }: {
   versao: number;
@@ -122,9 +124,16 @@ export default function Inicio({
   onAlbuns: () => void;
   onHistorico: () => void;
   onTocarMusica: (id: number) => void;
+  onPrograma: (id: number) => void;
   onErro: (m: string) => void;
 }) {
   const [dados, setDados] = useState<DadosInicio | null>(null);
+  const [ouvindo, setOuvindo] = useState<Episodio[]>([]);
+  useEffect(() => {
+    invoke<Episodio[]>("podcast_in_progress")
+      .then(setOuvindo)
+      .catch(() => setOuvindo([]));
+  }, [versao]);
   const abrirMenu = useMenuMusica();
   useEffect(() => {
     invoke<DadosInicio>("home_data")
@@ -158,6 +167,33 @@ export default function Inicio({
 
       {totalMusicas === 0 && (
         <p className="vazio">A biblioteca está vazia. Use "Importar pasta" ou "Arquivos" no topo.</p>
+      )}
+
+      {ouvindo.length > 0 && (
+        <Secao titulo="Continuar ouvindo">
+          <div className="faixa-cartoes">
+            {ouvindo.map((e) => (
+              <div key={e.id} className="cartao-album cartao-episodio" style={{ width: 160 }}>
+                <button
+                  className="cartao-episodio-tocar"
+                  onClick={() => invoke("play_episode", { id: e.id }).catch((x) => onErro(String(x)))}
+                  title={`Continuar ${e.titulo}`}
+                >
+                  <Capa id={e.media_id} />
+                  <span className="nome">{e.titulo}</span>
+                </button>
+                <button className="link detalhe" onClick={() => onPrograma(e.show_id)} title="Abrir o programa">
+                  {e.programa} · {estadoEpisodio(e)}
+                </button>
+                {e.posicao_ms && e.duracao_ms ? (
+                  <span className="progresso-episodio" aria-hidden="true">
+                    <span style={{ width: `${(e.posicao_ms / e.duracao_ms) * 100}%` }} />
+                  </span>
+                ) : null}
+              </div>
+            ))}
+          </div>
+        </Secao>
       )}
 
       {dados && dados.mixes.length > 0 && (
