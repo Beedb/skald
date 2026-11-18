@@ -1,6 +1,6 @@
 [package]
 name = "skald"
-version = "0.3.1"
+version = "0.3.2"
 description = "Reprodutor de áudio local para Linux"
 authors = ["Ded"]
 edition = "2024"
