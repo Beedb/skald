@@ -263,7 +263,7 @@ Etapas:
 
 ## Estado atual
 
-**MVP, Fase 2 (etapas 10 a 19), Fase 3 (20 a 23), Fase 4 (24 a 28), Fase 5 (29 a 32) e Fase 6 (33 a 35) concluídos; Fase 7 concluída no Linux (36 a 41), no Android (36 a 43) e no Windows (36 a 41); Fase 8 (Windows) concluída (44 a 53). Fase 9 concluída no Linux e no Android (66 a 70; falta testar 69 e 70 no Windows). Fase 11: widget (60, 61) e Android Auto (62) concluídos no Android; login (63) e músicas (64) testados no Linux e no Android, 65 em teste; app do Google em produção. Fase 10: etapa 54 com código feito, falta testar no app. Versão atual: 0.2.0 (release v0.2.0); o PC e o S24+ estão com o código de 2026-11-17 (commit 33f518f), ainda com o número 0.2.0. Pendências do Windows: seção "Windows: o que falta" abaixo.**
+**MVP, Fase 2 (etapas 10 a 19), Fase 3 (20 a 23), Fase 4 (24 a 28), Fase 5 (29 a 32) e Fase 6 (33 a 35) concluídos; Fase 7 concluída no Linux (36 a 41), no Android (36 a 43) e no Windows (36 a 41); Fase 8 (Windows) concluída (44 a 53). Fase 9 concluída no Linux e no Android (66 a 70; falta testar 69 e 70 no Windows). Fase 11: widget (60, 61) e Android Auto (62) concluídos no Android; login (63) e músicas (64) testados no Linux e no Android, 65 em teste; app do Google em produção. Fase 10: etapas 54 a 59 com código feito (inclui assinar por RSS), falta testar no app. Versão atual: 0.2.0 (release v0.2.0); o .deb do PC e o APK do S24+ foram gerados em 2026-11-17 com a etapa 59 (commit ffee180 e seguintes), ainda com o número 0.2.0. Pendências do Windows: seção "Windows: o que falta" abaixo.**
 
 ### Fase 7 (36 a 43; testada no Linux e no Android)
 
@@ -358,7 +358,7 @@ Antes de testar: na máquina Windows, `git pull`, copiar `google-oauth-desktop.j
 3. **Novidades de 2026-11-17 a conferir no Windows**: "Músicas não encontradas (N)" em Configurações → Biblioteca (remove só registros); "Importar pasta de podcasts…" (etapa 54: caminhos com `\` em `marcar_pasta`/`SEP_SQL`); release sem `panic = "abort"` (bandeja segue funcionando; ver se o instalador continua do mesmo tamanho aproximado).
 4. **Exportação de retrospectivas pelo app** (PNG em `C:\Users\<u>\Music\Skáld\Retrospectivas\`): ainda não testada no Windows.
 5. **Próxima release (v0.3.0)**: o `.exe` sai pelo CI na tag; conferir a instalação por cima da 0.2.0 (banco migra para v15 sem perder nada).
-6. **Podcasts (55 a 59)**: valem para todas as plataformas; testar no Windows quando ficarem prontas.
+6. **Podcasts (54 a 59)**: código feito, valem para todas as plataformas. No Windows conferir: o plugin `audiofx` (`scaletempo`) entra no GStreamer embutido (`scripts/gstreamer-windows.ps1`; velocidade sem mudar o tom), −15/+30 s, retomar por episódio, "Assinar por RSS…" e download para `C:\Users\<u>\Music\Skáld\Podcasts\<Programa>\` (nomes sem `:`/`?` por `podcasts::nome_seguro`), e a migração v16.
 7. Fora do código: instalador sem assinatura (SmartScreen avisa); assinar é pago.
 
 - Fase 9: 69 e 70 testadas no Android; falta o Windows (próxima release). O cartão Novidades mostra a versão do app (`getVersion`) e abre as notas das versões.
