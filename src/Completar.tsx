@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import CompletarLetras from "./CompletarLetras";
+import { CompletarCategorias } from "./CategoriasMusica";
 
 /**
  * Completar informações em lote (seção 6): lista músicas com campos vazios, busca uma
@@ -57,13 +58,22 @@ function escolher(c: Candidato[], duracao: number | null) {
   );
 }
 
-/** Duas abas: informações (MusicBrainz) e letras (LRCLIB). */
-export default function Completar(props: {
+type Aba = "info" | "letras" | "categorias";
+
+/** Três abas: informações (MusicBrainz), letras (LRCLIB) e categorias (MusicBrainz + década). */
+export default function Completar({
+  aba: abaInicial,
+  ...props
+}: {
+  aba?: Aba;
   versao: number;
   onMudou: (mensagem: string) => void;
   onErro: (m: string) => void;
 }) {
-  const [aba, setAba] = useState<"info" | "letras">("info");
+  const [aba, setAba] = useState<Aba>(abaInicial ?? "info");
+  useEffect(() => {
+    if (abaInicial) setAba(abaInicial);
+  }, [abaInicial]);
   return (
     <section className="colecao completar">
       <div className="cabecalho-colecao">
@@ -75,9 +85,19 @@ export default function Completar(props: {
           <button role="tab" aria-selected={aba === "letras"} className={aba === "letras" ? "ativa" : ""} onClick={() => setAba("letras")}>
             Letras
           </button>
+          <button
+            role="tab"
+            aria-selected={aba === "categorias"}
+            className={aba === "categorias" ? "ativa" : ""}
+            onClick={() => setAba("categorias")}
+          >
+            Categorias
+          </button>
         </div>
       </div>
-      {aba === "info" ? <CompletarInfo {...props} /> : <CompletarLetras onMudou={props.onMudou} onErro={props.onErro} />}
+      {aba === "info" && <CompletarInfo {...props} />}
+      {aba === "letras" && <CompletarLetras onMudou={props.onMudou} onErro={props.onErro} />}
+      {aba === "categorias" && <CompletarCategorias onMudou={props.onMudou} onErro={props.onErro} />}
     </section>
   );
 }

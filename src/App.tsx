@@ -21,6 +21,7 @@ import Informacoes from "./Informacoes";
 import EdicaoLote from "./EdicaoLote";
 import Completar from "./Completar";
 import { MenuMusicaProvider } from "./MenuMusica";
+import { CategoriaView, Categorias } from "./CategoriasMusica";
 import { aplicarCorCapa, corDaImagem, reaplicarCorCapa } from "./coresCapa";
 import { aplicarTema, ModoTema } from "./tema";
 import Estatisticas from "./Estatisticas";
@@ -494,6 +495,7 @@ function App() {
           {vista.tipo === "completar" && (
             <div className="area">
               <Completar
+                aba={vista.aba}
                 versao={versao}
                 onMudou={(mensagem) => {
                   setAviso(mensagem);
@@ -560,6 +562,27 @@ function App() {
                 versao={versao}
                 onAbrir={(nome) => setVista({ tipo: "artista", nome })}
                 onMudou={() => setVersao((v) => v + 1)}
+                onErro={setErro}
+              />
+            </div>
+          )}
+          {vista.tipo === "categorias" && (
+            <div className="area">
+              <Categorias
+                versao={versao}
+                onAbrir={(id) => setVista({ tipo: "categoria", id })}
+                onCompletar={() => setVista({ tipo: "completar", aba: "categorias" })}
+                onErro={setErro}
+              />
+            </div>
+          )}
+          {vista.tipo === "categoria" && (
+            <div className="area">
+              <CategoriaView
+                id={vista.id}
+                versao={versao}
+                tocandoId={estado && estado.estado !== "parado" ? estado.id : null}
+                onVoltar={() => setVista({ tipo: "categorias" })}
                 onErro={setErro}
               />
             </div>

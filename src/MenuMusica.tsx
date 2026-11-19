@@ -1,6 +1,7 @@
 import { createContext, ReactNode, useContext, useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import type { PlaylistResumo } from "./Lateral";
+import { JanelaCategorias } from "./CategoriasMusica";
 
 /**
  * Menu de contexto de música, o mesmo em todas as telas (biblioteca, início, álbum,
@@ -41,6 +42,7 @@ const ALTURA = 380;
 
 export function MenuMusicaProvider({ children, playlists, ...acoes }: Props) {
   const [menu, setMenu] = useState<Aberto | null>(null);
+  const [categorias, setCategorias] = useState<number[] | null>(null);
 
   const abrir: Abrir = (e, id, opcoes = {}) => {
     e.preventDefault();
@@ -86,8 +88,16 @@ export function MenuMusicaProvider({ children, playlists, ...acoes }: Props) {
   return (
     <Contexto.Provider value={abrir}>
       {children}
+      {categorias && <JanelaCategorias ids={categorias} onFechar={() => setCategorias(null)} onErro={acoes.onErro} />}
       {menu && menu.opcoes.selecao && menu.opcoes.selecao.length > 1 && (
-        <MenuSelecao ids={menu.opcoes.selecao} x={menu.x} y={menu.y} playlists={playlists} acoes={acoes} />
+        <MenuSelecao
+          ids={menu.opcoes.selecao}
+          x={menu.x}
+          y={menu.y}
+          playlists={playlists}
+          acoes={acoes}
+          onCategorias={setCategorias}
+        />
       )}
       {menu && !(menu.opcoes.selecao && menu.opcoes.selecao.length > 1) && (
         <ul className="menu-contexto" role="menu" style={{ left: menu.x, top: menu.y }}>
@@ -118,6 +128,9 @@ export function MenuMusicaProvider({ children, playlists, ...acoes }: Props) {
           <li role="menuitem" onClick={() => acoes.onInformacoes(menu.id)}>
             Informações e sugestões…
           </li>
+          <li role="menuitem" onClick={() => setCategorias([menu.id])}>
+            Categorias…
+          </li>
           {menu.confirmar ? (
             <li role="menuitem" className="perigo" onClick={() => acoes.onRemover(menu.id)}>
               Confirmar: remover (o arquivo fica no disco)
@@ -147,12 +160,14 @@ function MenuSelecao({
   y,
   playlists,
   acoes,
+  onCategorias,
 }: {
   ids: number[];
   x: number;
   y: number;
   playlists: PlaylistResumo[];
   acoes: Omit<Props, "children" | "playlists">;
+  onCategorias: (ids: number[]) => void;
 }) {
   const fazer = (cmd: string, args: Record<string, unknown>) => invoke(cmd, args).catch((e) => acoes.onErro(String(e)));
   return (
@@ -180,6 +195,9 @@ function MenuSelecao({
       <li role="separator" className="separador" />
       <li role="menuitem" onClick={() => acoes.onEditarLote(ids)}>
         Editar {ids.length} músicas…
+      </li>
+      <li role="menuitem" onClick={() => onCategorias(ids)}>
+        Pôr numa categoria…
       </li>
     </ul>
   );

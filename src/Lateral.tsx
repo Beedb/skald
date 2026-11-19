@@ -21,6 +21,7 @@ import {
   Plus,
   Podcast,
   Settings,
+  Tags,
 } from "lucide-react";
 import type { ChaveAlbum } from "./Colecao";
 import { ativo, Capa, type Reproducao } from "./PlayerBar";
@@ -42,7 +43,7 @@ export type Vista =
   | { tipo: "biblioteca" }
   | { tipo: "historico" }
   | { tipo: "estatisticas" }
-  | { tipo: "completar" }
+  | { tipo: "completar"; aba?: "info" | "letras" | "categorias" }
   | { tipo: "configuracoes" }
   | { tipo: "artistas" }
   | { tipo: "artista"; nome: string | null }
@@ -50,6 +51,8 @@ export type Vista =
   /** `de`: a vista de onde o álbum foi aberto (para o "Voltar"). */
   | { tipo: "album"; chave: ChaveAlbum; de: Vista }
   | { tipo: "playlist"; id: number }
+  | { tipo: "categorias" }
+  | { tipo: "categoria"; id: number }
   | { tipo: "podcasts" }
   | { tipo: "programa"; id: number };
 
@@ -233,6 +236,9 @@ export default function Lateral({ vista, playlists, onVista, onErro, r, onAbrirP
         )}
         {item(vista.tipo === "artistas" || vista.tipo === "artista", <MicVocal size={tam} />, "Artistas", () =>
           onVista({ tipo: "artistas" }),
+        )}
+        {item(vista.tipo === "categorias" || vista.tipo === "categoria", <Tags size={tam} />, "Categorias", () =>
+          onVista({ tipo: "categorias" }),
         )}
         {item(vista.tipo === "historico", <History size={tam} />, "Histórico", () => onVista({ tipo: "historico" }))}
         {item(vista.tipo === "estatisticas", <ChartColumn size={tam} />, "Estatísticas", () =>
