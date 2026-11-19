@@ -79,6 +79,10 @@ Os pacotes são para computadores de 64 bits (x86_64).
 
 Quer saber quando sair uma versão nova? [Inscreva-se aqui](https://buttondown.com/skald) para receber um e-mail a cada lançamento, com as novidades e os links de download. Sem spam, e dá para sair a qualquer momento. O Skáld em si não guarda nem envia o seu e-mail; a lista fica no [Buttondown](https://buttondown.com). No app, o mesmo link está em Configurações → Novidades.
 
+## Apoie o Skáld
+
+O Skáld é grátis, sem anúncio e de código aberto, e vai continuar assim. Se quiser ajudar a manter o projeto, dá para contribuir com qualquer valor pelo Pix em [livepix.gg/skald](https://livepix.gg/skald). É totalmente opcional.
+
 ## Onde ficam os seus dados
 
 | O quê | Onde |
