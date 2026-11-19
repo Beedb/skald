@@ -1,7 +1,11 @@
 package com.skald.app
 
+import android.content.BroadcastReceiver
 import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
 import android.media.AudioManager
+import androidx.core.content.ContextCompat
 import androidx.media.AudioAttributesCompat
 import androidx.media.AudioFocusRequestCompat
 import androidx.media.AudioManagerCompat
@@ -45,10 +49,37 @@ object Foco {
     }
   }
 
+  /** Fone com fio tirado ou fone Bluetooth desconectado: o som iria para o alto-falante.
+   *  O Android avisa com `ACTION_AUDIO_BECOMING_NOISY`; o Skáld pausa (não retoma sozinho). */
+  private val barulho = object : BroadcastReceiver() {
+    override fun onReceive(c: Context?, i: Intent?) {
+      if (i?.action == AudioManager.ACTION_AUDIO_BECOMING_NOISY && Midia.atual?.estado == 1) {
+        retomarNaVolta = false
+        Midia.comando("pausar", 0)
+      }
+    }
+  }
+  private var barulhoCtx: Context? = null
+
+  private fun ouvirFone(contexto: Context?, ligar: Boolean) {
+    if (ligar && barulhoCtx == null && contexto != null) {
+      val app = contexto.applicationContext
+      ContextCompat.registerReceiver(
+        app, barulho, IntentFilter(AudioManager.ACTION_AUDIO_BECOMING_NOISY), ContextCompat.RECEIVER_EXPORTED
+      )
+      barulhoCtx = app
+    } else if (!ligar) {
+      barulhoCtx?.let { runCatching { it.unregisterReceiver(barulho) } }
+      barulhoCtx = null
+    }
+  }
+
   /** Cada mudança de estado do player: 0 parado, 1 tocando, 2 pausado. */
   fun aoMudar(contexto: Context?, estado: Int) {
     if (estado == ultimo) return
     ultimo = estado
+    // Só escuta o fone enquanto toca.
+    ouvirFone(contexto, estado == 1)
     when (estado) {
       1 -> {
         retomarNaVolta = false
