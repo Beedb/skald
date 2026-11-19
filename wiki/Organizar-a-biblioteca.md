@@ -20,7 +20,7 @@ Clique com o botão direito na música → **Informações e sugestões…**
 O item **Completar informações** da barra lateral lista as músicas sem artista, álbum, ano ou gênero.
 
 1. Filtre pelo campo que falta (ou **qualquer campo**).
-2. Clique em **Buscar sugestões**. O Skáld consulta o MusicBrainz uma música por segundo (é o limite do serviço) e só aceita sugestões com alta confiança e duração parecida.
+2. Clique em **Buscar sugestões**. O Skáld consulta o MusicBrainz uma música por segundo (é o limite do serviço) e só aceita sugestões com alta confiança e duração parecida. Pode deixar o Skáld em segundo plano enquanto isso: no Android aparece uma notificação com o progresso (vale também para as abas Letras e Categorias). Se a internet cair por um momento, ele espera e tenta de novo; só para depois de uns 45 s sem conexão. Trocar de tela dentro do Skáld interrompe a busca.
 3. As sugestões aparecem como etiquetas marcáveis, **só para os campos vazios** (o que já está preenchido não é tocado).
 4. Escolha onde gravar e clique em **Aplicar**. **Parar** interrompe a qualquer momento.
 
