@@ -353,6 +353,14 @@ Etapas:
 
 ### Próximo
 
+### Beta 2026-11-19 (pedido da pinguis; APK `skald-0.3.2-beta-android-arm64.apk` enviado, falta testar no app)
+
+- **Busca por nome de arquivo**: `enriquecer::limpar_titulo`/`variantes`/`buscar_flexivel` (tira número da faixa e sobras como "(Official Video)", tenta "Artista - Música" nos dois sentidos); `consultar_mb` espaça as consultas ao MusicBrainz (1,1 s, até 3 novas tentativas com 503). Completar sugere o título limpo; achado só pelo título (`Candidato.incerto`) vem desmarcado.
+- **Renomear arquivo**: `enriquecer::renomear_arquivo` → "Artista - Título.ext" (nunca sobrescreve, leva o `.lrc`), comando `media_rename`, opção no Completar.
+- **Categorias** (várias por música, só no banco): migração v17 (`tag`, `media_tag`), `categorias.rs` (sugestão = gênero do arquivo + tags da gravação + gêneros do artista no MusicBrainz + década do 1º lançamento; nomes em pt-BR), `src/CategoriasMusica.tsx` (lateral Categorias, tela tocável, aba no Completar, "Categorias…" no menu da música). Ainda não sincroniza (65/71).
+- **Reconhecer pelo som**: `acustico.rs` (Chromaprint com `rusty-chromaprint`, áudio via `fakesink` com `signal-handoffs`; AcoustID → `rid:` no MusicBrainz). Chave em `~/Android/chaves/acoustid.txt` (ou `SKALD_ACOUSTID_KEY`), embutida pelo `build.rs`; sem ela, `acoustic_available` = falso. Ensaio: `SKALD_ARQUIVO=… cargo test ensaio_acustico -- --ignored --nocapture`. Falta no CI do Windows.
+- **Android**: `Foco.kt` pausa com `ACTION_AUDIO_BECOMING_NOISY` (fone desconectado). Desktop ainda não.
+
 ### Windows (testado em 2026-11-18, v0.3.1)
 
 - 0.3.1 instalada por cima da 0.2.0 (`/S`): banco v13 → v16 sem perder nada; `gstaudiofx.dll` embutido; instalação de 43,5 → 51,9 MB (sem `panic = "abort"`). Bandeja conferida pelo usuário. `.exe` anexado à release v0.3.1 (marca `windows-em-breve` tirada das notas e job `release` rodado de novo).
