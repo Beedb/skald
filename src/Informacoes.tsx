@@ -60,7 +60,11 @@ export default function Informacoes({
   const [escolhido, setEscolhido] = useState<number | null>(null);
   const [usarCapa, setUsarCapa] = useState(false);
   const [noArquivo, setNoArquivo] = useState(false);
-  const [ocupado, setOcupado] = useState<"buscando" | "salvando" | null>(null);
+  const [ocupado, setOcupado] = useState<"buscando" | "ouvindo" | "salvando" | null>(null);
+  const [temSom, setTemSom] = useState(false);
+  useEffect(() => {
+    invoke<boolean>("acoustic_available").then(setTemSom).catch(() => {});
+  }, []);
   const [aviso, setAviso] = useState<string | null>(null);
 
   useEffect(() => {
@@ -91,6 +95,22 @@ export default function Informacoes({
       setCandidatos(c);
       setEscolhido(null);
       if (c.length === 0) setAviso("Nenhuma sugestão encontrada. Tente mudar o título ou o artista da busca.");
+    } catch (e) {
+      setAviso(String(e));
+    } finally {
+      setOcupado(null);
+    }
+  }
+
+  /** Reconhece pelo som (AcoustID): serve quando o nome e as tags estão errados. */
+  async function reconhecer() {
+    setOcupado("ouvindo");
+    setAviso(null);
+    try {
+      const c = await invoke<Candidato[]>("metadata_recognize", { id });
+      setCandidatos(c);
+      setEscolhido(null);
+      if (c.length === 0) setAviso("O som não foi reconhecido. Tente a busca pelo título e artista.");
     } catch (e) {
       setAviso(String(e));
     } finally {
@@ -191,8 +211,16 @@ export default function Informacoes({
           <button className="primario" onClick={buscar} disabled={ocupado !== null || !busca.titulo.trim()}>
             {ocupado === "buscando" ? "Buscando…" : "Buscar no MusicBrainz"}
           </button>
+          {temSom && (
+            <button onClick={reconhecer} disabled={ocupado !== null} title="Identifica a música pelo áudio (AcoustID)">
+              {ocupado === "ouvindo" ? "Ouvindo…" : "Reconhecer pelo som"}
+            </button>
+          )}
         </div>
-        <p className="nota">Precisa de internet. Envia só o título e o artista da busca.</p>
+        <p className="nota">
+          Precisa de internet. A busca envia só o título e o artista
+          {temSom ? "; reconhecer pelo som envia uma impressão digital do áudio (não o arquivo)." : "."}
+        </p>
 
         {candidatos && candidatos.length > 0 && (
           <ul className="candidatos">

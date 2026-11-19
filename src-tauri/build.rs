@@ -16,7 +16,27 @@ fn main() {
         println!("cargo:rerun-if-changed={}", libs.join("libgstreamer_android.so").display());
     }
     credenciais_google();
+    chave_acoustid();
     tauri_build::build()
+}
+
+/// Chave de aplicativo do AcoustID (reconhecer música pelo som). Fora do repositório:
+/// `SKALD_ACOUSTID_KEY` ou o arquivo `~/Android/chaves/acoustid.txt`. Sem ela, o
+/// reconhecimento fica indisponível e o resto segue igual.
+fn chave_acoustid() {
+    println!("cargo:rerun-if-env-changed=SKALD_ACOUSTID_KEY");
+    let env = |v: &str| std::env::var(v).ok().filter(|s| !s.trim().is_empty());
+    let chave = env("SKALD_ACOUSTID_KEY").or_else(|| {
+        let casa = env("HOME").or_else(|| env("USERPROFILE"))?;
+        let arquivo = std::path::Path::new(&casa).join("Android/chaves/acoustid.txt");
+        // Só vigia se existir (vigiar arquivo ausente recompila sempre); ao criar, tocar no build.rs.
+        let texto = std::fs::read_to_string(&arquivo).ok()?;
+        println!("cargo:rerun-if-changed={}", arquivo.display());
+        Some(texto)
+    });
+    if let Some(c) = chave.map(|c| c.trim().to_string()).filter(|c| c.chars().all(|x| x.is_ascii_alphanumeric())) {
+        println!("cargo:rustc-env=SKALD_ACOUSTID_KEY={c}");
+    }
 }
 
 /// ID e segredo do cliente OAuth do Google (sincronização pelo Drive). Nunca ficam no

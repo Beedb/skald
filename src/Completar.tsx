@@ -117,6 +117,12 @@ function CompletarInfo({
   const [progresso, setProgresso] = useState<{ feitos: number; total: number; acao: string } | null>(null);
   const [noArquivo, setNoArquivo] = useState(false);
   const [renomear, setRenomear] = useState(false);
+  // Reconhecer pelo som (AcoustID) quando o nome não basta; só existe com a chave embutida.
+  const [temSom, setTemSom] = useState(false);
+  const [pelSom, setPeloSom] = useState(true);
+  useEffect(() => {
+    invoke<boolean>("acoustic_available").then(setTemSom).catch(() => {});
+  }, []);
   const parar = useRef(false);
   const rolagem = useRef<HTMLDivElement>(null);
 
@@ -154,7 +160,18 @@ function CompletarInfo({
           artista: i.artist,
           duracaoMs: i.duration_ms,
         });
-        const melhor = escolher(c, i.duration_ms);
+        let melhor = escolher(c, i.duration_ms);
+        // Nome não bastou (ou só achou pelo título): tenta pelo som.
+        if ((!melhor || melhor.incerto) && temSom && pelSom && !parar.current) {
+          setProgresso({ feitos: n, total: fila.length, acao: "Ouvindo" });
+          try {
+            const s = await invoke<Candidato[]>("metadata_recognize", { id: i.id });
+            const pelo = escolher(s, i.duration_ms);
+            if (pelo && (!melhor || !pelo.incerto)) melhor = pelo;
+          } catch {
+            // Sem resultado pelo som: fica a busca por texto.
+          }
+        }
         const valores: Partial<Record<Campo, string | number>> = {};
         for (const f of i.faltando) {
           const v = melhor?.campos[f];
@@ -260,6 +277,12 @@ function CompletarInfo({
               <input type="checkbox" checked={noArquivo} onChange={(e) => setNoArquivo(e.target.checked)} /> gravar
               também nos arquivos
             </label>
+            {temSom && (
+              <label title="Quando o nome do arquivo não basta, reconhece a música pelo som (AcoustID). Mais lento: alguns segundos por música.">
+                <input type="checkbox" checked={pelSom} onChange={(e) => setPeloSom(e.target.checked)} /> reconhecer
+                pelo som
+              </label>
+            )}
             <label title="Renomeia para “Artista - Título” na mesma pasta. Nunca substitui outro arquivo; playlists e histórico continuam iguais.">
               <input type="checkbox" checked={renomear} onChange={(e) => setRenomear(e.target.checked)} /> renomear os
               arquivos (Artista - Título)

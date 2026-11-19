@@ -1,3 +1,4 @@
+mod acustico;
 mod apelidos;
 mod caminhos;
 mod drive;
@@ -2034,6 +2035,28 @@ fn play_category(app: AppHandle, fila: State<FilaState>, id: i64, indice: usize)
     tocar_lista(&app, &fila, ids, indice)
 }
 
+/// O reconhecimento pelo som (AcoustID) existe nesta versão?
+#[tauri::command]
+fn acoustic_available() -> bool {
+    acustico::disponivel()
+}
+
+/// Reconhece a música pelo som (AcoustID + MusicBrainz). Internet; uns segundos por música.
+#[tauri::command]
+async fn metadata_recognize(app: AppHandle, id: i64) -> Result<Vec<enriquecer::Candidato>, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let (caminho, duracao): (String, Option<i64>) = {
+            let db = app.state::<db::Db>();
+            let conn = db.0.lock().map_err(erro_db)?;
+            conn.query_row("SELECT path, duration_ms FROM media WHERE id = ?1", [id], |r| Ok((r.get(0)?, r.get(1)?)))
+                .map_err(|_| "Música não encontrada.".to_string())?
+        };
+        acustico::reconhecer(std::path::Path::new(&caminho), duracao)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
 /// Renomeia o arquivo para "Artista - Título.ext" com os dados do banco (nunca sobrescreve).
 #[tauri::command]
 async fn media_rename(app: AppHandle, id: i64) -> Result<String, String> {
@@ -2837,6 +2860,8 @@ pub fn run() {
             batch_edit,
             metadata_lookup,
             media_rename,
+            acoustic_available,
+            metadata_recognize,
             categories_list,
             category_name,
             category_tracks,
