@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { emSegundoPlano } from "./tarefaLonga";
 import { invoke } from "@tauri-apps/api/core";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import CompletarLetras from "./CompletarLetras";
@@ -150,48 +151,51 @@ function CompletarInfo({
   async function buscar() {
     parar.current = false;
     const fila = lista.filter((i) => !sugestoes.has(i.id) && i.title);
-    for (let n = 0; n < fila.length && !parar.current; n++) {
-      const i = fila[n];
-      setProgresso({ feitos: n, total: fila.length, acao: "Buscando" });
-      try {
-        // O Rust já espaça as consultas (uma por segundo) e tenta formas limpas do nome do arquivo.
-        const c = await invoke<Candidato[]>("metadata_lookup", {
-          titulo: i.title,
-          artista: i.artist,
-          duracaoMs: i.duration_ms,
-        });
-        let melhor = escolher(c, i.duration_ms);
-        // Nome não bastou (ou só achou pelo título): tenta pelo som.
-        if ((!melhor || melhor.incerto) && temSom && pelSom && !parar.current) {
-          setProgresso({ feitos: n, total: fila.length, acao: "Ouvindo" });
-          try {
-            const s = await invoke<Candidato[]>("metadata_recognize", { id: i.id });
-            const pelo = escolher(s, i.duration_ms);
-            if (pelo && (!melhor || !pelo.incerto)) melhor = pelo;
-          } catch {
-            // Sem resultado pelo som: fica a busca por texto.
+    await emSegundoPlano("Completando informações…", async (avisar) => {
+      for (let n = 0; n < fila.length && !parar.current; n++) {
+        const i = fila[n];
+        setProgresso({ feitos: n, total: fila.length, acao: "Buscando" });
+        avisar(`Completando informações: ${n + 1} de ${fila.length}`);
+        try {
+          // O Rust já espaça as consultas (uma por segundo) e tenta formas limpas do nome do arquivo.
+          const c = await invoke<Candidato[]>("metadata_lookup", {
+            titulo: i.title,
+            artista: i.artist,
+            duracaoMs: i.duration_ms,
+          });
+          let melhor = escolher(c, i.duration_ms);
+          // Nome não bastou (ou só achou pelo título): tenta pelo som.
+          if ((!melhor || melhor.incerto) && temSom && pelSom && !parar.current) {
+            setProgresso({ feitos: n, total: fila.length, acao: "Ouvindo" });
+            try {
+              const s = await invoke<Candidato[]>("metadata_recognize", { id: i.id });
+              const pelo = escolher(s, i.duration_ms);
+              if (pelo && (!melhor || !pelo.incerto)) melhor = pelo;
+            } catch {
+              // Sem resultado pelo som: fica a busca por texto.
+            }
+          }
+          const valores: Partial<Record<Campo, string | number>> = {};
+          for (const f of i.faltando) {
+            const v = melhor?.campos[f];
+            if (v !== null && v !== undefined && v !== "") valores[f] = v;
+          }
+          // Título vindo do nome do arquivo ("02 - Música"): sugere o título limpo.
+          if (melhor && tituloSujo(i.title, melhor.campos.title)) valores.title = melhor.campos.title as string;
+          const campos = Object.keys(valores) as Campo[];
+          // Achado só pelo título: a pessoa confere antes (nada marcado).
+          const marcados = new Set(melhor?.incerto ? [] : campos);
+          definir(i.id, campos.length ? { valores, marcados, incerto: !!melhor?.incerto } : "nada");
+        } catch (e) {
+          definir(i.id, "erro");
+          // Sem internet: não adianta seguir tentando.
+          if (String(e).includes("Sem conexão")) {
+            onErro(String(e));
+            break;
           }
         }
-        const valores: Partial<Record<Campo, string | number>> = {};
-        for (const f of i.faltando) {
-          const v = melhor?.campos[f];
-          if (v !== null && v !== undefined && v !== "") valores[f] = v;
-        }
-        // Título vindo do nome do arquivo ("02 - Música"): sugere o título limpo.
-        if (melhor && tituloSujo(i.title, melhor.campos.title)) valores.title = melhor.campos.title as string;
-        const campos = Object.keys(valores) as Campo[];
-        // Achado só pelo título: a pessoa confere antes (nada marcado).
-        const marcados = new Set(melhor?.incerto ? [] : campos);
-        definir(i.id, campos.length ? { valores, marcados, incerto: !!melhor?.incerto } : "nada");
-      } catch (e) {
-        definir(i.id, "erro");
-        // Sem internet: não adianta seguir tentando.
-        if (String(e).includes("Sem conexão")) {
-          onErro(String(e));
-          break;
-        }
       }
-    }
+    });
     setProgresso(null);
   }
 

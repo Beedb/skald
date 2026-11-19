@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { emSegundoPlano } from "./tarefaLonga";
 import { invoke } from "@tauri-apps/api/core";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import type { MediaRow } from "./Biblioteca";
@@ -59,30 +60,33 @@ export default function CompletarLetras({ onMudou, onErro }: { onMudou: (m: stri
     parar.current = false;
     const fila = lista.filter((i) => !resultados.has(i.id));
     let salvas = 0;
-    for (let n = 0; n < fila.length && !parar.current; n++) {
-      const i = fila[n];
-      setProgresso({ feitos: n, total: fila.length });
-      try {
-        const e = await invoke<Encontrada | null>("lyrics_lookup", { id: i.id });
-        if (!e) definir(i.id, "nada");
-        else if (e.instrumental) definir(i.id, "instrumental");
-        else if (!e.sincronizada && soSincronizadas) definir(i.id, "pulada");
-        else {
-          // .lrc ao lado só aceita letra sincronizada; a sem tempos fica no Skáld.
-          await invoke("lyrics_save", { id: i.id, texto: e.texto, noArquivo: noArquivo && e.sincronizada });
-          definir(i.id, e.sincronizada ? "sincronizada" : "simples");
-          salvas++;
+    await emSegundoPlano("Buscando letras…", async (avisar) => {
+      for (let n = 0; n < fila.length && !parar.current; n++) {
+        const i = fila[n];
+        setProgresso({ feitos: n, total: fila.length });
+        avisar(`Buscando letras: ${n + 1} de ${fila.length}`);
+        try {
+          const e = await invoke<Encontrada | null>("lyrics_lookup", { id: i.id });
+          if (!e) definir(i.id, "nada");
+          else if (e.instrumental) definir(i.id, "instrumental");
+          else if (!e.sincronizada && soSincronizadas) definir(i.id, "pulada");
+          else {
+            // .lrc ao lado só aceita letra sincronizada; a sem tempos fica no Skáld.
+            await invoke("lyrics_save", { id: i.id, texto: e.texto, noArquivo: noArquivo && e.sincronizada });
+            definir(i.id, e.sincronizada ? "sincronizada" : "simples");
+            salvas++;
+          }
+        } catch (err) {
+          definir(i.id, { erro: String(err) });
+          // Sem internet: não adianta seguir tentando.
+          if (String(err).includes("Sem conexão")) {
+            onErro(String(err));
+            break;
+          }
         }
-      } catch (err) {
-        definir(i.id, { erro: String(err) });
-        // Sem internet: não adianta seguir tentando.
-        if (String(err).includes("Sem conexão")) {
-          onErro(String(err));
-          break;
-        }
+        if (n < fila.length - 1) await espera(INTERVALO_MS);
       }
-      if (n < fila.length - 1) await espera(INTERVALO_MS);
-    }
+    });
     setProgresso(null);
     if (salvas) onMudou(`${salvas} ${salvas === 1 ? "letra guardada" : "letras guardadas"}.`);
   }

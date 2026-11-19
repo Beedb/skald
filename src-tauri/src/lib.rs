@@ -2257,10 +2257,15 @@ fn sync_status(app: AppHandle) -> Result<drive::Estado, String> {
 
 /// Enquanto existir, o Android mantém o app acordado com uma notificação (SyncService);
 /// sem isso a Samsung congela o processo em segundo plano. Nas outras plataformas não faz nada.
+/// Várias ao mesmo tempo (download e busca em lote, por exemplo) contam juntas: a notificação
+/// só sai quando a última termina.
 struct TarefaLonga;
+
+static TAREFAS_LONGAS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
 
 impl TarefaLonga {
     fn nova(texto: &str) -> Self {
+        TAREFAS_LONGAS.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         Self::texto(texto);
         TarefaLonga
     }
@@ -2273,9 +2278,36 @@ impl TarefaLonga {
 
 impl Drop for TarefaLonga {
     fn drop(&mut self) {
-        #[cfg(target_os = "android")]
-        mpris::segundo_plano(None);
+        if TAREFAS_LONGAS.fetch_sub(1, std::sync::atomic::Ordering::SeqCst) == 1 {
+            #[cfg(target_os = "android")]
+            mpris::segundo_plano(None);
+        }
     }
+}
+
+/// Tarefas longas abertas pela tela (buscas em lote do Completar e das Categorias), por id.
+#[derive(Default)]
+struct TarefasDaTela(Mutex<(u32, std::collections::HashMap<u32, TarefaLonga>)>);
+
+/// A tela começa um trabalho que deve seguir com o app em segundo plano.
+#[tauri::command]
+fn long_task_start(tarefas: State<TarefasDaTela>, texto: String) -> Result<u32, String> {
+    let mut t = tarefas.0.lock().map_err(erro_db)?;
+    t.0 += 1;
+    let id = t.0;
+    t.1.insert(id, TarefaLonga::nova(&texto));
+    Ok(id)
+}
+
+#[tauri::command]
+fn long_task_text(texto: String) {
+    TarefaLonga::texto(&texto);
+}
+
+#[tauri::command]
+fn long_task_end(tarefas: State<TarefasDaTela>, id: u32) -> Result<(), String> {
+    tarefas.0.lock().map_err(erro_db)?.1.remove(&id);
+    Ok(())
 }
 
 /// Abre o navegador para entrar com o Google e espera a autorização (ou "Cancelar").
@@ -2674,6 +2706,7 @@ pub fn run() {
             app.manage(HistoricoState(Mutex::new(None)));
             app.manage(OrigemState(Mutex::new(None)));
             app.manage(DownloadsState(Mutex::new(Default::default())));
+            app.manage(TarefasDaTela::default());
             app.manage(RetomarState(Mutex::new(RetomarControle::default())));
             app.manage(GaplessState(Mutex::new(None)));
             app.manage(NotificadaState(Mutex::new(None)));
@@ -2899,6 +2932,9 @@ pub fn run() {
             podcast_cover,
             podcast_download,
             podcast_download_cancel,
+            long_task_start,
+            long_task_text,
+            long_task_end,
             missing_count,
             remove_missing,
             set_sync_upload,

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { emSegundoPlano } from "./tarefaLonga";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { useVirtualizer } from "@tanstack/react-virtual";
@@ -395,23 +396,26 @@ export function CompletarCategorias({ onMudou, onErro }: { onMudou: (m: string) 
   async function buscar() {
     parar.current = false;
     const fila = lista.filter((m) => !propostas.has(m.id));
-    for (let n = 0; n < fila.length && !parar.current; n++) {
-      const m = fila[n];
-      setProgresso({ feitos: n, total: fila.length, acao: "Buscando" });
-      try {
-        // O Rust espaça as consultas (uma por segundo, como o MusicBrainz pede).
-        const s = await invoke<Sugestao>("category_suggest", { id: m.id });
-        const tem = new Set(m.categorias.map(normal));
-        const nomes = s.nomes.filter((x) => !tem.has(normal(x)));
-        definir(m.id, nomes.length ? { nomes, marcados: new Set(s.incerto ? [] : nomes), incerto: s.incerto } : "nada");
-      } catch (e) {
-        definir(m.id, "erro");
-        if (String(e).includes("Sem conexão")) {
-          onErro(String(e));
-          break;
+    await emSegundoPlano("Buscando categorias…", async (avisar) => {
+      for (let n = 0; n < fila.length && !parar.current; n++) {
+        const m = fila[n];
+        setProgresso({ feitos: n, total: fila.length, acao: "Buscando" });
+        avisar(`Buscando categorias: ${n + 1} de ${fila.length}`);
+        try {
+          // O Rust espaça as consultas (uma por segundo, como o MusicBrainz pede).
+          const s = await invoke<Sugestao>("category_suggest", { id: m.id });
+          const tem = new Set(m.categorias.map(normal));
+          const nomes = s.nomes.filter((x) => !tem.has(normal(x)));
+          definir(m.id, nomes.length ? { nomes, marcados: new Set(s.incerto ? [] : nomes), incerto: s.incerto } : "nada");
+        } catch (e) {
+          definir(m.id, "erro");
+          if (String(e).includes("Sem conexão")) {
+            onErro(String(e));
+            break;
+          }
         }
       }
-    }
+    });
     setProgresso(null);
   }
 

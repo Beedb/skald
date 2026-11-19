@@ -55,14 +55,21 @@ fn escolher(lista: &[Value], duracao_s: Option<f64>) -> Option<Encontrada> {
 }
 
 fn pedir(caminho: &str, params: &[(&str, String)]) -> Result<Option<Value>, String> {
-    let mut req = agente().get(format!("{LRCLIB}/{caminho}"));
-    for (k, v) in params {
-        req = req.query(*k, v);
-    }
-    let texto = match req.call() {
-        Ok(mut r) => r.body_mut().read_to_string().map_err(|e| erro_rede(e, "LRCLIB"))?,
-        Err(ureq::Error::StatusCode(404)) => return Ok(None),
-        Err(e) => return Err(erro_rede(e, "LRCLIB")),
+    let mut sem_rede = 0;
+    let texto = loop {
+        let mut req = agente().get(format!("{LRCLIB}/{caminho}"));
+        for (k, v) in params {
+            req = req.query(*k, v);
+        }
+        match req.call() {
+            Ok(mut r) => break r.body_mut().read_to_string().map_err(|e| erro_rede(e, "LRCLIB"))?,
+            Err(ureq::Error::StatusCode(404)) => return Ok(None),
+            Err(e) if crate::enriquecer::transitorio(&e) && sem_rede < 4 => {
+                std::thread::sleep(crate::enriquecer::espera_rede(sem_rede));
+                sem_rede += 1;
+            }
+            Err(e) => return Err(erro_rede(e, "LRCLIB")),
+        }
     };
     serde_json::from_str(&texto).map(Some).map_err(|_| "Resposta inesperada do LRCLIB.".to_string())
 }

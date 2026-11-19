@@ -129,13 +129,18 @@ pub fn reconhecer(path: &Path, duracao_ms: Option<i64>) -> Result<Vec<Candidato>
         ("duration", duracao.as_str()),
         ("fingerprint", fp.as_str()),
     ];
-    let texto = enriquecer::agente()
-        .post(ACOUSTID)
-        .send_form(corpo)
-        .map_err(|e| enriquecer::erro_rede(e, "AcoustID"))?
-        .body_mut()
-        .read_to_string()
-        .map_err(|e| enriquecer::erro_rede(e, "AcoustID"))?;
+    let mut sem_rede = 0;
+    let mut resposta = loop {
+        match enriquecer::agente().post(ACOUSTID).send_form(corpo) {
+            Ok(r) => break r,
+            Err(e) if enriquecer::transitorio(&e) && sem_rede < 4 => {
+                std::thread::sleep(enriquecer::espera_rede(sem_rede));
+                sem_rede += 1;
+            }
+            Err(e) => return Err(enriquecer::erro_rede(e, "AcoustID")),
+        }
+    };
+    let texto = resposta.body_mut().read_to_string().map_err(|e| enriquecer::erro_rede(e, "AcoustID"))?;
     let json: Value = serde_json::from_str(&texto).map_err(|_| "Resposta inesperada do AcoustID.".to_string())?;
     if json["status"].as_str() != Some("ok") {
         let msg = json["error"]["message"].as_str().unwrap_or("erro desconhecido");

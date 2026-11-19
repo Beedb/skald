@@ -103,8 +103,22 @@ pub(crate) fn erro_rede(e: ureq::Error, servico: &str) -> String {
         ureq::Error::StatusCode(404) => format!("Nada encontrado no {servico}."),
         ureq::Error::StatusCode(c) => format!("O {servico} respondeu com erro ({c})."),
         ureq::Error::Timeout(_) => format!("O {servico} demorou demais para responder."),
-        _ => format!("Sem conexão: não foi possível consultar o {servico}."),
+        e => format!("Sem conexão: não foi possível consultar o {servico} ({e})."),
     }
+}
+
+/// Falha de rede que pode passar sozinha (sem sinal por um momento, app voltando do segundo
+/// plano): vale tentar de novo.
+pub(crate) fn transitorio(e: &ureq::Error) -> bool {
+    matches!(
+        e,
+        ureq::Error::Io(_) | ureq::Error::HostNotFound | ureq::Error::ConnectionFailed | ureq::Error::Timeout(_)
+    )
+}
+
+/// Espera antes da tentativa `n` (0, 1, 2…) depois de uma falha: 3, 6, 12 e 24 s (~45 s ao todo).
+pub(crate) fn espera_rede(n: u32) -> Duration {
+    Duration::from_secs(3 << n)
 }
 
 /// Aspas e barras escapadas para a consulta Lucene do MusicBrainz.
@@ -114,13 +128,15 @@ fn termo(texto: &str) -> String {
 }
 
 /// Uma consulta ao MusicBrainz por vez, com 1,1 s entre elas (o serviço pede no máximo 1/s).
-/// Com 503 (ocupado), tenta de novo mais 3 vezes, esperando 2, 4 e 8 s.
+/// Com 503 (ocupado), tenta de novo mais 3 vezes, esperando 2, 4 e 8 s; sem rede, mais 4
+/// vezes em ~45 s (`espera_rede`).
 pub(crate) fn consultar_mb(url: &str, parametros: &[(&str, &str)]) -> Result<Value, String> {
     use std::sync::Mutex;
     use std::time::Instant;
     static ULTIMA: Mutex<Option<Instant>> = Mutex::new(None);
     let intervalo = Duration::from_millis(1100);
-    for tentativa in 0..4u32 {
+    let (mut ocupado, mut sem_rede) = (0u32, 0u32);
+    loop {
         {
             let mut ultima = ULTIMA.lock().unwrap_or_else(|e| e.into_inner());
             if let Some(t) = *ultima {
@@ -140,11 +156,17 @@ pub(crate) fn consultar_mb(url: &str, parametros: &[(&str, &str)]) -> Result<Val
                 let texto = r.body_mut().read_to_string().map_err(|e| erro_rede(e, "MusicBrainz"))?;
                 return serde_json::from_str(&texto).map_err(|_| "Resposta inesperada do MusicBrainz.".to_string());
             }
-            Err(ureq::Error::StatusCode(503)) if tentativa < 3 => std::thread::sleep(Duration::from_secs(2 << tentativa)),
+            Err(ureq::Error::StatusCode(503)) if ocupado < 3 => {
+                std::thread::sleep(Duration::from_secs(2 << ocupado));
+                ocupado += 1;
+            }
+            Err(e) if transitorio(&e) && sem_rede < 4 => {
+                std::thread::sleep(espera_rede(sem_rede));
+                sem_rede += 1;
+            }
             Err(e) => return Err(erro_rede(e, "MusicBrainz")),
         }
     }
-    Err(erro_rede(ureq::Error::StatusCode(503), "MusicBrainz"))
 }
 
 /// Palavras de sobra entre parênteses/colchetes em nomes baixados ("(Official Video)", "[Lyrics]").
@@ -191,7 +213,23 @@ pub fn limpar_titulo(titulo: &str) -> String {
         resto = &resto[f + 1..];
     }
     saida.push_str(resto);
-    saida.split_whitespace().collect::<Vec<_>>().join(" ")
+    // Endereços de site no nome ("Música - www.site.org", "[site.com.br]").
+    let sem_site: Vec<&str> = saida.split_whitespace().filter(|p| !eh_site(p)).collect();
+    let junto = sem_site.join(" ");
+    junto.trim_matches([' ', '-', '–', '—']).replace(" - - ", " - ")
+}
+
+/// "www.algo.org", "algo.com.br" e parecidos (pontuação em volta ignorada).
+fn eh_site(palavra: &str) -> bool {
+    let p = palavra.trim_matches(|c: char| !c.is_alphanumeric()).to_lowercase();
+    if p.starts_with("www.") || p.starts_with("http") {
+        return true;
+    }
+    let partes: Vec<&str> = p.split('.').collect();
+    partes.len() >= 2
+        && partes.iter().all(|x| !x.is_empty() && x.chars().all(|c| c.is_ascii_alphanumeric() || c == '-'))
+        && partes[0].chars().any(|c| c.is_ascii_alphabetic())
+        && ["com", "org", "net", "info", "biz", "br", "me", "tv", "io", "fm"].contains(partes.last().unwrap())
 }
 
 /// Formas de buscar uma música cujo título pode ser o nome do arquivo: a original; sem número
@@ -754,6 +792,12 @@ mod testes {
         assert_eq!(limpar_titulo("1-03. Faixa"), "Faixa");
         assert_eq!(limpar_titulo("07_Garota_de_Ipanema"), "Garota de Ipanema");
         assert_eq!(limpar_titulo("1984"), "1984");
+        assert_eq!(
+            limpar_titulo("01. Cyndi Lauper - Girls Just Want to Have Fun - www.musicasparabaixar.org"),
+            "Cyndi Lauper - Girls Just Want to Have Fun"
+        );
+        assert_eq!(limpar_titulo("Ray Parker, Jr. - Ghostbusters [site.com.br]"), "Ray Parker, Jr. - Ghostbusters");
+        assert_eq!(limpar_titulo("Mr. Brightside"), "Mr. Brightside");
         assert_eq!(limpar_titulo("Igris - Requiém das Rosas (Official Video) [HD]"), "Igris - Requiém das Rosas");
         assert_eq!(limpar_titulo("Deixe Me Ir (Acústico)"), "Deixe Me Ir (Acústico)");
         let v = variantes("11 Def Leppard - Armageddon", None);
