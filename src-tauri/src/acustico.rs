@@ -196,4 +196,16 @@ mod testes {
             Err(e) => panic!("{e}"),
         }
     }
+
+    /// Reconhecimento real (internet e chave): SKALD_ARQUIVO=/musica.mp3 cargo test ensaio_acustico -- --ignored --nocapture
+    #[test]
+    #[ignore]
+    fn ensaio_acustico() {
+        let arquivo = std::env::var("SKALD_ARQUIVO").expect("SKALD_ARQUIVO");
+        let c = reconhecer(Path::new(&arquivo), None).unwrap();
+        for x in c.iter().take(3) {
+            println!("{} | {:?} | {:?} | {:?} | incerto={}", x.pontuacao, x.campos.title, x.campos.artist, x.campos.album, x.incerto);
+        }
+        assert!(!c.is_empty());
+    }
 }
