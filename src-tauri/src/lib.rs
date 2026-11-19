@@ -1969,7 +1969,7 @@ async fn metadata_lookup(
     artista: Option<String>,
     duracao_ms: Option<i64>,
 ) -> Result<Vec<enriquecer::Candidato>, String> {
-    tauri::async_runtime::spawn_blocking(move || enriquecer::buscar(&titulo, artista.as_deref(), duracao_ms))
+    tauri::async_runtime::spawn_blocking(move || enriquecer::buscar_flexivel(&titulo, artista.as_deref(), duracao_ms))
         .await
         .map_err(|e| e.to_string())?
 }

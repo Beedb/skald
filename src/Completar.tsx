@@ -9,7 +9,7 @@ import CompletarLetras from "./CompletarLetras";
  * os campos vazios que o usuário deixar marcados. Campos preenchidos nunca mudam aqui.
  */
 
-type Campo = "artist" | "album" | "year" | "genre";
+type Campo = "title" | "artist" | "album" | "year" | "genre";
 type Incompleta = {
   id: number;
   title: string | null;
@@ -22,14 +22,33 @@ type Candidato = {
   campos: Record<string, string | number | null>;
   pontuacao: number;
   duracao_ms: number | null;
+  incerto: boolean;
 };
-type Sugestao = { valores: Partial<Record<Campo, string | number>>; marcados: Set<Campo> } | "nada" | "erro";
+type Sugestao =
+  | { valores: Partial<Record<Campo, string | number>>; marcados: Set<Campo>; incerto: boolean }
+  | "nada"
+  | "erro";
 
-const NOMES: Record<Campo, string> = { artist: "Artista", album: "Álbum", year: "Ano", genre: "Gênero" };
-const INTERVALO_MS = 1100;
+const NOMES: Record<Campo, string> = { title: "Título", artist: "Artista", album: "Álbum", year: "Ano", genre: "Gênero" };
+/** Campos que podem faltar (o título nunca falta; ele só pode vir sujo do nome do arquivo). */
+const FALTAVEIS: Campo[] = ["artist", "album", "year", "genre"];
 const ALTURA = 64;
 
-const espera = (ms: number) => new Promise((r) => setTimeout(r, ms));
+const normal = (t: string) =>
+  t
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, " ")
+    .trim();
+
+/** O título atual parece nome de arquivo com sobras ("02 - Música", "Artista - Música") em volta do sugerido. */
+function tituloSujo(atual: string | null, sugerido: unknown) {
+  if (!atual || typeof sugerido !== "string" || !sugerido.trim()) return false;
+  const a = normal(atual);
+  const s = normal(sugerido);
+  return a !== s && s.length > 0 && a.includes(s);
+}
 
 /** Melhor candidato confiável: semelhança ≥ 90 e duração a até 5 s (quando conhecida). */
 function escolher(c: Candidato[], duracao: number | null) {
@@ -108,6 +127,7 @@ function CompletarInfo({
       const i = fila[n];
       setProgresso({ feitos: n, total: fila.length, acao: "Buscando" });
       try {
+        // O Rust já espaça as consultas (uma por segundo) e tenta formas limpas do nome do arquivo.
         const c = await invoke<Candidato[]>("metadata_lookup", {
           titulo: i.title,
           artista: i.artist,
@@ -119,8 +139,12 @@ function CompletarInfo({
           const v = melhor?.campos[f];
           if (v !== null && v !== undefined && v !== "") valores[f] = v;
         }
+        // Título vindo do nome do arquivo ("02 - Música"): sugere o título limpo.
+        if (melhor && tituloSujo(i.title, melhor.campos.title)) valores.title = melhor.campos.title as string;
         const campos = Object.keys(valores) as Campo[];
-        definir(i.id, campos.length ? { valores, marcados: new Set(campos) } : "nada");
+        // Achado só pelo título: a pessoa confere antes (nada marcado).
+        const marcados = new Set(melhor?.incerto ? [] : campos);
+        definir(i.id, campos.length ? { valores, marcados, incerto: !!melhor?.incerto } : "nada");
       } catch (e) {
         definir(i.id, "erro");
         // Sem internet: não adianta seguir tentando.
@@ -129,7 +153,6 @@ function CompletarInfo({
           break;
         }
       }
-      if (n < fila.length - 1) await espera(INTERVALO_MS);
     }
     setProgresso(null);
   }
@@ -178,14 +201,15 @@ function CompletarInfo({
       <p className="nota">
         {itens.length} {itens.length === 1 ? "música" : "músicas"} sem artista, álbum, ano ou gênero. A busca usa o
         MusicBrainz (precisa de internet, uma música por segundo) e só sugere quando a semelhança é alta e a duração
-        bate. Só os campos vazios são preenchidos, e só os que ficarem marcados.
+        bate. Nomes de arquivo como "02 - Artista - Música" são separados antes da busca. Só os campos vazios são
+        preenchidos (e o título, quando vem do nome do arquivo), e só os que ficarem marcados.
       </p>
       <div className="barra-completar">
         <label>
           Faltando:{" "}
           <select value={filtro} onChange={(e) => setFiltro(e.target.value as Campo | "")} disabled={!!progresso}>
             <option value="">qualquer campo</option>
-            {(Object.keys(NOMES) as Campo[]).map((c) => (
+            {FALTAVEIS.map((c) => (
               <option key={c} value={c}>
                 {NOMES[c].toLowerCase()}
               </option>
@@ -233,6 +257,11 @@ function CompletarInfo({
                   {s === undefined && <span className="detalhe">—</span>}
                   {s === "nada" && <span className="detalhe">sem sugestão confiável</span>}
                   {s === "erro" && <span className="detalhe">erro na busca</span>}
+                  {s && typeof s !== "string" && s.incerto && (
+                    <span className="detalhe" title="Achada só pelo título, sem o artista. Confira antes de marcar.">
+                      confira:
+                    </span>
+                  )}
                   {s &&
                     typeof s !== "string" &&
                     (Object.keys(s.valores) as Campo[]).map((c) => (

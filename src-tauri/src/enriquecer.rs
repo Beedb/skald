@@ -47,6 +47,8 @@ pub struct Candidato {
     pub duracao_ms: Option<i64>,
     /// Id do lançamento, para a capa no Cover Art Archive.
     pub release_id: Option<String>,
+    /// Achado só pelo título (sem artista): a tela mostra a sugestão desmarcada.
+    pub incerto: bool,
 }
 
 pub fn atual(conn: &Connection, id: i64) -> Result<Atual, String> {
@@ -105,6 +107,153 @@ fn termo(texto: &str) -> String {
     format!("\"{}\"", limpo.replace('\\', "\\\\").replace('"', "\\\""))
 }
 
+/// Uma consulta ao MusicBrainz por vez, com 1,1 s entre elas (o serviço pede no máximo 1/s).
+/// Com 503 (ocupado), espera 2 s e tenta mais uma vez.
+pub(crate) fn consultar_mb(url: &str, parametros: &[(&str, &str)]) -> Result<Value, String> {
+    use std::sync::Mutex;
+    use std::time::Instant;
+    static ULTIMA: Mutex<Option<Instant>> = Mutex::new(None);
+    let intervalo = Duration::from_millis(1100);
+    for tentativa in 0..2 {
+        {
+            let mut ultima = ULTIMA.lock().unwrap_or_else(|e| e.into_inner());
+            if let Some(t) = *ultima {
+                let passou = t.elapsed();
+                if passou < intervalo {
+                    std::thread::sleep(intervalo - passou);
+                }
+            }
+            *ultima = Some(Instant::now());
+        }
+        let mut req = agente().get(url);
+        for (k, v) in parametros {
+            req = req.query(*k, *v);
+        }
+        match req.call() {
+            Ok(mut r) => {
+                let texto = r.body_mut().read_to_string().map_err(|e| erro_rede(e, "MusicBrainz"))?;
+                return serde_json::from_str(&texto).map_err(|_| "Resposta inesperada do MusicBrainz.".to_string());
+            }
+            Err(ureq::Error::StatusCode(503)) if tentativa == 0 => std::thread::sleep(Duration::from_secs(2)),
+            Err(e) => return Err(erro_rede(e, "MusicBrainz")),
+        }
+    }
+    Err(erro_rede(ureq::Error::StatusCode(503), "MusicBrainz"))
+}
+
+/// Palavras de sobra entre parênteses/colchetes em nomes baixados ("(Official Video)", "[Lyrics]").
+const SOBRAS: &[&str] = &[
+    "official", "oficial", "video", "vídeo", "clipe", "audio", "áudio", "lyric", "letra", "legendado", "hd", "hq", "4k",
+    "visualizer", "remaster",
+];
+
+/// Tira o número de faixa do começo ("02 - ", "11 ", "1-03. ", "07_") e sobras como "(Official Video)".
+pub fn limpar_titulo(titulo: &str) -> String {
+    let t = titulo.replace('_', " ");
+    let mut t = t.trim();
+    // Número de faixa (até 3 dígitos; "1-03" = disco-faixa) seguido de separador, ou de espaço
+    // com até 2 dígitos. "1984" fica. A busca tenta o título original primeiro, então um número
+    // que faz parte do nome ("99 Luftballons") ainda é achado.
+    let n = t.chars().take_while(char::is_ascii_digit).count();
+    if (1..=3).contains(&n) {
+        let mut resto = &t[n..];
+        if let Some(r) = resto.strip_prefix('-') {
+            let m = r.chars().take_while(char::is_ascii_digit).count();
+            if (1..=3).contains(&m) && r[m..].starts_with([' ', '.', '-']) {
+                resto = &r[m..];
+            }
+        }
+        let sem = resto.trim_start_matches(['.', ')', '-', '–', '—', ' ']);
+        let separador = resto.trim_start().starts_with(['.', ')', '-', '–', '—']);
+        let espaco = n <= 2 && resto.starts_with(' ');
+        if !sem.is_empty() && (separador || espaco) {
+            t = sem;
+        }
+    }
+    // Parênteses/colchetes de sobra.
+    let mut saida = String::new();
+    let mut resto = t;
+    while let Some(i) = resto.find(['(', '[']) {
+        let fecha = if resto[i..].starts_with('(') { ')' } else { ']' };
+        let Some(f) = resto[i..].find(fecha).map(|f| i + f) else { break };
+        let dentro = crate::search::normalizar(&resto[i + 1..f]);
+        let sobra = dentro.split(|c: char| !c.is_alphanumeric()).any(|p| SOBRAS.iter().any(|s| crate::search::normalizar(s) == p));
+        saida.push_str(&resto[..i]);
+        if !sobra {
+            saida.push_str(&resto[i..=f]);
+        }
+        resto = &resto[f + 1..];
+    }
+    saida.push_str(resto);
+    saida.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+/// Formas de buscar uma música cujo título pode ser o nome do arquivo: a original; sem número
+/// e sobras; e, se houver "A - B", artista A e música B (e o contrário).
+pub fn variantes(titulo: &str, artista: Option<&str>) -> Vec<(String, Option<String>)> {
+    let artista = artista.map(str::trim).filter(|a| !a.is_empty()).map(String::from);
+    let mut v = vec![(titulo.trim().to_string(), artista.clone())];
+    let limpo = limpar_titulo(titulo);
+    let partes = ["-", "–", "—"].iter().find_map(|s| {
+        let sep = format!(" {s} ");
+        limpo.split_once(&sep).map(|(a, b)| (a.trim().to_string(), b.trim().to_string()))
+    });
+    match (&artista, partes) {
+        (None, Some((a, b))) if !a.is_empty() && !b.is_empty() => {
+            v.push((b.clone(), Some(a.clone())));
+            v.push((a, Some(b)));
+        }
+        // Artista conhecido repetido no começo do título: "Queen - Bohemian Rhapsody".
+        (Some(art), Some((a, b))) if crate::search::normalizar(&a) == crate::search::normalizar(art) => {
+            v.push((b, artista.clone()));
+        }
+        _ => {}
+    }
+    if !limpo.is_empty() {
+        v.push((limpo, artista));
+    }
+    let mut vistos = std::collections::HashSet::new();
+    v.retain(|(t, a)| !t.is_empty() && vistos.insert((crate::search::normalizar(t), a.as_deref().map(crate::search::normalizar))));
+    v
+}
+
+/// Candidato em que dá para confiar: semelhança ≥ 90 e duração a até 5 s (quando conhecida).
+pub fn confiavel(c: &Candidato, duracao_ms: Option<i64>) -> bool {
+    c.pontuacao >= 90
+        && match (c.duracao_ms, duracao_ms) {
+            (Some(a), Some(b)) => (a - b).abs() <= 5000,
+            _ => true,
+        }
+}
+
+/// Busca tentando as `variantes` até achar um candidato confiável. Sem nenhum confiável,
+/// devolve a primeira lista não vazia.
+pub fn buscar_flexivel(titulo: &str, artista: Option<&str>, duracao_ms: Option<i64>) -> Result<Vec<Candidato>, String> {
+    let mut reserva: Option<Vec<Candidato>> = None;
+    let mut erro = None;
+    for (t, a) in variantes(titulo, artista) {
+        let so_titulo = a.is_none();
+        match buscar(&t, a.as_deref(), duracao_ms).map(|mut c| {
+            c.iter_mut().for_each(|x| x.incerto = so_titulo);
+            c
+        }) {
+            Ok(c) if c.iter().any(|x| confiavel(x, duracao_ms)) => return Ok(c),
+            Ok(c) => {
+                if reserva.is_none() && !c.is_empty() {
+                    reserva = Some(c);
+                }
+            }
+            Err(e) if e.starts_with("Sem conexão") => return Err(e),
+            Err(e) => erro = erro.or(Some(e)),
+        }
+    }
+    match (reserva, erro) {
+        (Some(c), _) => Ok(c),
+        (None, Some(e)) => Err(e),
+        (None, None) => Ok(Vec::new()),
+    }
+}
+
 /// Procura gravações pelo título (e artista, se houver). `duracao_ms` ajuda a ordenar.
 pub fn buscar(titulo: &str, artista: Option<&str>, duracao_ms: Option<i64>) -> Result<Vec<Candidato>, String> {
     let titulo = titulo.trim();
@@ -119,17 +268,7 @@ pub fn buscar(titulo: &str, artista: Option<&str>, duracao_ms: Option<i64>) -> R
             consulta.push_str(&format!(" AND ({})", nomes.join(" OR ")));
         }
     }
-    let texto = agente()
-        .get(MUSICBRAINZ)
-        .query("query", &consulta)
-        .query("fmt", "json")
-        .query("limit", "10")
-        .call()
-        .map_err(|e| erro_rede(e, "MusicBrainz"))?
-        .body_mut()
-        .read_to_string()
-        .map_err(|e| erro_rede(e, "MusicBrainz"))?;
-    let json: Value = serde_json::from_str(&texto).map_err(|_| "Resposta inesperada do MusicBrainz.".to_string())?;
+    let json = consultar_mb(MUSICBRAINZ, &[("query", &consulta), ("fmt", "json"), ("limit", "10")])?;
     Ok(candidatos(&json, duracao_ms))
 }
 
@@ -168,7 +307,7 @@ pub fn candidatos(json: &Value, duracao_ms: Option<i64>) -> Vec<Candidato> {
         let lancamentos: Vec<&Value> = rec["releases"].as_array().map(|r| r.iter().take(3).collect()).unwrap_or_default();
         let base = Campos { title: titulo.clone(), artist: artista.clone(), genre: genero.clone(), ..Default::default() };
         if lancamentos.is_empty() {
-            lista.push(Candidato { campos: base, pontuacao, duracao_ms: duracao, release_id: None });
+            lista.push(Candidato { campos: base, pontuacao, duracao_ms: duracao, release_id: None, incerto: false });
             continue;
         }
         for rel in lancamentos {
@@ -188,6 +327,7 @@ pub fn candidatos(json: &Value, duracao_ms: Option<i64>) -> Vec<Candidato> {
                 pontuacao,
                 duracao_ms: duracao,
                 release_id: rel["id"].as_str().map(String::from),
+                incerto: false,
             });
         }
     }
@@ -523,6 +663,25 @@ mod testes {
     }
 
     #[test]
+    fn limpa_nomes_de_arquivo() {
+        assert_eq!(limpar_titulo("02 - I'm Just a Prisoner"), "I'm Just a Prisoner");
+        assert_eq!(limpar_titulo("11 Def Leppard - Armageddon"), "Def Leppard - Armageddon");
+        assert_eq!(limpar_titulo("1-03. Faixa"), "Faixa");
+        assert_eq!(limpar_titulo("07_Garota_de_Ipanema"), "Garota de Ipanema");
+        assert_eq!(limpar_titulo("1984"), "1984");
+        assert_eq!(limpar_titulo("Igris - Requiém das Rosas (Official Video) [HD]"), "Igris - Requiém das Rosas");
+        assert_eq!(limpar_titulo("Deixe Me Ir (Acústico)"), "Deixe Me Ir (Acústico)");
+        let v = variantes("11 Def Leppard - Armageddon", None);
+        assert_eq!(v[0], ("11 Def Leppard - Armageddon".into(), None));
+        assert_eq!(v[1], ("Armageddon".into(), Some("Def Leppard".into())));
+        assert_eq!(v[2], ("Def Leppard".into(), Some("Armageddon".into())));
+        assert_eq!(v[3], ("Def Leppard - Armageddon".into(), None));
+        let v = variantes("Queen - Bohemian Rhapsody", Some("Queen"));
+        assert_eq!(v[1], ("Bohemian Rhapsody".into(), Some("Queen".into())));
+        assert_eq!(variantes("Garota de Ipanema", Some("Tom Jobim")).len(), 1);
+    }
+
+    #[test]
     fn valida_e_grava_so_os_campos_escolhidos() {
         let conn = crate::db::open(Path::new(":memory:")).unwrap();
         conn.execute("INSERT INTO media (id, path, title, artist) VALUES (1, '/x.mp3', 'Obsessão', 'Rodrigo Zin')", []).unwrap();
@@ -552,6 +711,10 @@ mod testes {
         assert!(!c.is_empty());
         let capa = baixar_capa(c.iter().find_map(|x| x.release_id.as_deref()).unwrap());
         println!("capa: {:?}", capa.as_ref().map(Vec::len));
+        for nome in ["11 Def Leppard - Armageddon It", "02 - I'm Just a Prisoner", "Igris - Requiém das Rosas"] {
+            let c = buscar_flexivel(nome, None, None).unwrap_or_default();
+            println!("{nome} => {:?}", c.first().map(|x| (x.pontuacao, &x.campos.title, &x.campos.artist)));
+        }
     }
 
     fn confere_tags(wav: &Path) {
