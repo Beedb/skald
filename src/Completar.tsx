@@ -96,6 +96,7 @@ function CompletarInfo({
   const [sugestoes, setSugestoes] = useState<Map<number, Sugestao>>(new Map());
   const [progresso, setProgresso] = useState<{ feitos: number; total: number; acao: string } | null>(null);
   const [noArquivo, setNoArquivo] = useState(false);
+  const [renomear, setRenomear] = useState(false);
   const parar = useRef(false);
   const rolagem = useRef<HTMLDivElement>(null);
 
@@ -183,6 +184,13 @@ function CompletarInfo({
       try {
         await invoke("metadata_apply", { id: i.id, campos, noArquivo, releaseCapa: null });
         ok++;
+        if (renomear) {
+          try {
+            await invoke("media_rename", { id: i.id });
+          } catch (e) {
+            falhas.push(`${i.title ?? i.id} (renomear): ${e}`);
+          }
+        }
       } catch (e) {
         falhas.push(`${i.title ?? i.id}: ${e}`);
       }
@@ -231,6 +239,10 @@ function CompletarInfo({
             <label>
               <input type="checkbox" checked={noArquivo} onChange={(e) => setNoArquivo(e.target.checked)} /> gravar
               também nos arquivos
+            </label>
+            <label title="Renomeia para “Artista - Título” na mesma pasta. Nunca substitui outro arquivo; playlists e histórico continuam iguais.">
+              <input type="checkbox" checked={renomear} onChange={(e) => setRenomear(e.target.checked)} /> renomear os
+              arquivos (Artista - Título)
             </label>
             <button className="primario" onClick={aplicar} disabled={prontas.length === 0}>
               Aplicar ({prontas.length})

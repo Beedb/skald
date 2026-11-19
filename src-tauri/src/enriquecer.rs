@@ -501,6 +501,56 @@ pub struct Incompleta {
     pub faltando: Vec<String>,
 }
 
+/// Nome de arquivo seguro em Linux, Windows e Android: sem `/\\:*?"<>|` nem controles, até 150 caracteres.
+fn nome_seguro(texto: &str) -> String {
+    let limpo: String = texto
+        .chars()
+        .map(|c| if c.is_control() || "/\\:*?\"<>|".contains(c) { ' ' } else { c })
+        .collect();
+    let limpo = limpo.split_whitespace().collect::<Vec<_>>().join(" ");
+    let limpo = limpo.trim_matches(['.', ' ']);
+    limpo.chars().take(150).collect()
+}
+
+/// Renomeia o arquivo da música para "Artista - Título.ext" (na mesma pasta), com o que está no
+/// banco. Nunca sobrescreve; o `.lrc` de mesmo nome vai junto. O registro (playlists, histórico,
+/// curtidas) segue o mesmo: só o caminho muda. Devolve o novo caminho (ou o atual, se já estava certo).
+pub fn renomear_arquivo(db: &std::sync::Mutex<Connection>, id: i64) -> Result<String, String> {
+    let conn = db.lock().map_err(|_| "Banco indisponível.".to_string())?;
+    let (caminho, titulo, artista): (String, Option<String>, Option<String>) = conn
+        .query_row("SELECT path, title, artist FROM media WHERE id = ?1", [id], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))
+        .map_err(|_| "Música não encontrada.".to_string())?;
+    let titulo = titulo.map(|t| nome_seguro(&t)).filter(|t| !t.is_empty()).ok_or("A música não tem título.")?;
+    let base = match artista.map(|a| nome_seguro(&a)).filter(|a| !a.is_empty()) {
+        Some(a) => format!("{a} - {titulo}"),
+        None => titulo,
+    };
+    let antigo = Path::new(&caminho);
+    let ext = antigo.extension().map(|e| format!(".{}", e.to_string_lossy())).unwrap_or_default();
+    let novo = antigo.with_file_name(format!("{base}{ext}"));
+    if novo == antigo {
+        return Ok(caminho);
+    }
+    // Mesmo arquivo com outra caixa (Windows) pode; outro arquivo com esse nome, nunca.
+    let mesmo = novo.to_string_lossy().to_lowercase() == caminho.to_lowercase();
+    if novo.exists() && !mesmo {
+        return Err(format!("Já existe um arquivo chamado \"{}\".", novo.file_name().unwrap_or_default().to_string_lossy()));
+    }
+    std::fs::rename(antigo, &novo).map_err(|e| format!("Não foi possível renomear: {e}"))?;
+    let novo_txt = novo.to_string_lossy().into_owned();
+    if let Err(e) = conn.execute("UPDATE media SET path = ?2 WHERE id = ?1", params![id, novo_txt]) {
+        // Banco recusou (caminho já registrado?): desfaz para não perder a ligação.
+        let _ = std::fs::rename(&novo, antigo);
+        return Err(e.to_string());
+    }
+    let lrc = antigo.with_extension("lrc");
+    let lrc_novo = novo.with_extension("lrc");
+    if lrc.exists() && !lrc_novo.exists() {
+        let _ = std::fs::rename(&lrc, &lrc_novo);
+    }
+    Ok(novo_txt)
+}
+
 /// Músicas presentes (arquivo encontrado) sem artista, álbum, ano ou gênero.
 pub fn incompletas(conn: &Connection) -> rusqlite::Result<Vec<Incompleta>> {
     let mut stmt = conn.prepare(
@@ -660,6 +710,28 @@ mod testes {
         assert_eq!((c[0].campos.year, c[0].campos.track_number, c[0].campos.disc_number), (Some(2023), Some(4), Some(1)));
         assert_eq!(c[0].campos.genre.as_deref(), Some("hip hop"));
         assert!(c[1].pontuacao < c[0].pontuacao); // duração bem diferente
+    }
+
+    #[test]
+    fn renomeia_sem_sobrescrever() {
+        let pasta = crate::teste_util::pasta("skald-renomear");
+        let velho = pasta.join("02 - x.mp3");
+        std::fs::write(&velho, b"a").unwrap();
+        std::fs::write(pasta.join("02 - x.lrc"), b"[00:01]oi").unwrap();
+        std::fs::write(pasta.join("Outro - Y.mp3"), b"b").unwrap();
+        let conn = crate::db::open(Path::new(":memory:")).unwrap();
+        conn.execute("INSERT INTO media (id, path, title, artist) VALUES (1, ?1, 'Música: A/B', 'Fulano')", [velho.to_string_lossy()]).unwrap();
+        conn.execute("INSERT INTO media (id, path, title, artist) VALUES (2, ?1, 'Y', 'Outro')", [pasta.join("y.mp3").to_string_lossy()]).unwrap();
+        std::fs::write(pasta.join("y.mp3"), b"c").unwrap();
+        let db = std::sync::Mutex::new(conn);
+        let novo = renomear_arquivo(&db, 1).unwrap();
+        assert!(novo.ends_with("Fulano - Música A B.mp3"), "{novo}");
+        assert!(!velho.exists() && Path::new(&novo).exists());
+        assert!(pasta.join("Fulano - Música A B.lrc").exists());
+        assert!(renomear_arquivo(&db, 2).is_err()); // "Outro - Y.mp3" já existe
+        assert!(pasta.join("y.mp3").exists());
+        let p: String = db.lock().unwrap().query_row("SELECT path FROM media WHERE id = 1", [], |r| r.get(0)).unwrap();
+        assert_eq!(p, novo);
     }
 
     #[test]

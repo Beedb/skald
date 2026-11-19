@@ -1955,6 +1955,17 @@ async fn batch_edit(
     Ok(r)
 }
 
+/// Renomeia o arquivo para "Artista - Título.ext" com os dados do banco (nunca sobrescreve).
+#[tauri::command]
+async fn media_rename(app: AppHandle, id: i64) -> Result<String, String> {
+    let h = app.clone();
+    let r = tauri::async_runtime::spawn_blocking(move || enriquecer::renomear_arquivo(&h.state::<db::Db>().0, id))
+        .await
+        .map_err(|e| e.to_string())??;
+    let _ = app.emit(EVENTO_FILA, ());
+    Ok(r)
+}
+
 /// Valores atuais da música para a janela de informações.
 #[tauri::command]
 fn metadata_get(db: State<db::Db>, id: i64) -> Result<enriquecer::Atual, String> {
@@ -2746,6 +2757,7 @@ pub fn run() {
             incomplete_list,
             batch_edit,
             metadata_lookup,
+            media_rename,
             metadata_apply,
             set_notifications,
             set_continue,
