@@ -6,6 +6,7 @@ Tudo o que o Skáld faz no computador funciona no celular, e mais algumas coisas
 
 - **Um toque** numa música já toca.
 - Com a tela apagada ou em outro app, a música continua. A notificação, a tela de bloqueio e o fone mostram os controles.
+- Tirou o fone (com fio) ou o fone Bluetooth desconectou: o Skáld **pausa**, em vez de seguir tocando no alto-falante.
 - Se outro app começar a tocar (um vídeo do YouTube, por exemplo), o Skáld pausa. Numa ligação ou aviso curto, ele pausa e volta sozinho depois.
 
 ## Widget
