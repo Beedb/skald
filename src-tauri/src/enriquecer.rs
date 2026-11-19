@@ -49,6 +49,12 @@ pub struct Candidato {
     pub release_id: Option<String>,
     /// Achado só pelo título (sem artista): a tela mostra a sugestão desmarcada.
     pub incerto: bool,
+    /// Tags da gravação (até 5, mais votadas primeiro), para as categorias.
+    #[serde(skip)]
+    pub tags: Vec<String>,
+    /// Id do primeiro artista creditado (gêneros do artista, para as categorias).
+    #[serde(skip)]
+    pub artista_id: Option<String>,
 }
 
 pub fn atual(conn: &Connection, id: i64) -> Result<Atual, String> {
@@ -108,13 +114,13 @@ fn termo(texto: &str) -> String {
 }
 
 /// Uma consulta ao MusicBrainz por vez, com 1,1 s entre elas (o serviço pede no máximo 1/s).
-/// Com 503 (ocupado), espera 2 s e tenta mais uma vez.
+/// Com 503 (ocupado), tenta de novo mais 3 vezes, esperando 2, 4 e 8 s.
 pub(crate) fn consultar_mb(url: &str, parametros: &[(&str, &str)]) -> Result<Value, String> {
     use std::sync::Mutex;
     use std::time::Instant;
     static ULTIMA: Mutex<Option<Instant>> = Mutex::new(None);
     let intervalo = Duration::from_millis(1100);
-    for tentativa in 0..2 {
+    for tentativa in 0..4u32 {
         {
             let mut ultima = ULTIMA.lock().unwrap_or_else(|e| e.into_inner());
             if let Some(t) = *ultima {
@@ -134,7 +140,7 @@ pub(crate) fn consultar_mb(url: &str, parametros: &[(&str, &str)]) -> Result<Val
                 let texto = r.body_mut().read_to_string().map_err(|e| erro_rede(e, "MusicBrainz"))?;
                 return serde_json::from_str(&texto).map_err(|_| "Resposta inesperada do MusicBrainz.".to_string());
             }
-            Err(ureq::Error::StatusCode(503)) if tentativa == 0 => std::thread::sleep(Duration::from_secs(2)),
+            Err(ureq::Error::StatusCode(503)) if tentativa < 3 => std::thread::sleep(Duration::from_secs(2 << tentativa)),
             Err(e) => return Err(erro_rede(e, "MusicBrainz")),
         }
     }
@@ -298,16 +304,21 @@ pub fn candidatos(json: &Value, duracao_ms: Option<i64>) -> Vec<Candidato> {
             let dif = (a - b).abs() / 1000;
             pontuacao -= ((dif - 3).max(0) * 2).min(60);
         }
-        // Gênero: a tag mais votada da gravação.
-        let genero = rec["tags"]
+        // Tags por votos; gênero = a mais votada.
+        let mut votadas: Vec<(i64, String)> = rec["tags"]
             .as_array()
-            .and_then(|t| t.iter().max_by_key(|x| x["count"].as_i64().unwrap_or(0)))
-            .and_then(|t| t["name"].as_str())
-            .map(String::from);
+            .into_iter()
+            .flatten()
+            .filter_map(|t| Some((t["count"].as_i64().unwrap_or(0), t["name"].as_str()?.to_string())))
+            .collect();
+        votadas.sort_by_key(|(n, _)| -n);
+        let tags: Vec<String> = votadas.into_iter().take(5).map(|(_, t)| t).collect();
+        let genero = tags.first().cloned();
+        let artista_id = rec["artist-credit"][0]["artist"]["id"].as_str().map(String::from);
         let lancamentos: Vec<&Value> = rec["releases"].as_array().map(|r| r.iter().take(3).collect()).unwrap_or_default();
         let base = Campos { title: titulo.clone(), artist: artista.clone(), genre: genero.clone(), ..Default::default() };
         if lancamentos.is_empty() {
-            lista.push(Candidato { campos: base, pontuacao, duracao_ms: duracao, release_id: None, incerto: false });
+            lista.push(Candidato { campos: base, pontuacao, duracao_ms: duracao, release_id: None, incerto: false, tags: tags.clone(), artista_id: artista_id.clone() });
             continue;
         }
         for rel in lancamentos {
@@ -328,6 +339,8 @@ pub fn candidatos(json: &Value, duracao_ms: Option<i64>) -> Vec<Candidato> {
                 duracao_ms: duracao,
                 release_id: rel["id"].as_str().map(String::from),
                 incerto: false,
+                tags: tags.clone(),
+                artista_id: artista_id.clone(),
             });
         }
     }

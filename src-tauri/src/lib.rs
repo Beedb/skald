@@ -4,6 +4,7 @@ mod drive;
 mod sincdados;
 mod sincpasta;
 mod artistas;
+mod categorias;
 mod backup;
 #[cfg(test)]
 mod teste_util;
@@ -1955,6 +1956,84 @@ async fn batch_edit(
     Ok(r)
 }
 
+const EVENTO_CATEGORIAS: &str = "categorias-mudou";
+
+#[tauri::command]
+fn categories_list(db: State<db::Db>) -> Result<Vec<categorias::Categoria>, String> {
+    let conn = db.0.lock().map_err(erro_db)?;
+    categorias::listar(&conn).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn category_name(db: State<db::Db>, id: i64) -> Result<Option<String>, String> {
+    let conn = db.0.lock().map_err(erro_db)?;
+    categorias::nome(&conn, id).map_err(|e| e.to_string())
+}
+
+/// Músicas de uma categoria, ou todas (`None`) com as categorias de cada uma.
+#[tauri::command]
+fn category_tracks(db: State<db::Db>, id: Option<i64>) -> Result<Vec<categorias::MusicaCategoria>, String> {
+    let conn = db.0.lock().map_err(erro_db)?;
+    categorias::musicas(&conn, id).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn media_categories(db: State<db::Db>, id: i64) -> Result<Vec<String>, String> {
+    let conn = db.0.lock().map_err(erro_db)?;
+    categorias::da_musica(&conn, id).map_err(|e| e.to_string())
+}
+
+/// Sugestões de categoria (internet: MusicBrainz, uma consulta por segundo). Não grava nada.
+#[tauri::command]
+async fn category_suggest(app: AppHandle, id: i64) -> Result<categorias::Sugestao, String> {
+    tauri::async_runtime::spawn_blocking(move || categorias::sugerir(&app.state::<db::Db>().0, id))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+fn category_add(app: AppHandle, db: State<db::Db>, id: i64, nomes: Vec<String>, sugestao: bool) -> Result<usize, String> {
+    let mut conn = db.0.lock().map_err(erro_db)?;
+    let n = categorias::adicionar(&mut conn, id, &nomes, if sugestao { "sugestao" } else { "manual" }).map_err(|e| e.to_string())?;
+    let _ = app.emit(EVENTO_CATEGORIAS, ());
+    Ok(n)
+}
+
+#[tauri::command]
+fn category_remove(app: AppHandle, db: State<db::Db>, id: i64, nome: String) -> Result<(), String> {
+    let conn = db.0.lock().map_err(erro_db)?;
+    categorias::remover(&conn, id, &nome).map_err(|e| e.to_string())?;
+    let _ = app.emit(EVENTO_CATEGORIAS, ());
+    Ok(())
+}
+
+#[tauri::command]
+fn category_delete(app: AppHandle, db: State<db::Db>, id: i64) -> Result<(), String> {
+    let conn = db.0.lock().map_err(erro_db)?;
+    categorias::excluir(&conn, id).map_err(|e| e.to_string())?;
+    let _ = app.emit(EVENTO_CATEGORIAS, ());
+    Ok(())
+}
+
+#[tauri::command]
+fn category_rename(app: AppHandle, db: State<db::Db>, id: i64, nome: String) -> Result<(), String> {
+    let mut conn = db.0.lock().map_err(erro_db)?;
+    categorias::renomear(&mut conn, id, &nome)?;
+    let _ = app.emit(EVENTO_CATEGORIAS, ());
+    Ok(())
+}
+
+/// Toca a categoria a partir da música `indice` (ordem da biblioteca).
+#[tauri::command]
+fn play_category(app: AppHandle, fila: State<FilaState>, id: i64, indice: usize) -> Result<(), String> {
+    let ids = {
+        let db = app.state::<db::Db>();
+        let conn = db.0.lock().map_err(erro_db)?;
+        categorias::ids(&conn, id).map_err(|e| e.to_string())?
+    };
+    tocar_lista(&app, &fila, ids, indice)
+}
+
 /// Renomeia o arquivo para "Artista - Título.ext" com os dados do banco (nunca sobrescreve).
 #[tauri::command]
 async fn media_rename(app: AppHandle, id: i64) -> Result<String, String> {
@@ -2758,6 +2837,16 @@ pub fn run() {
             batch_edit,
             metadata_lookup,
             media_rename,
+            categories_list,
+            category_name,
+            category_tracks,
+            media_categories,
+            category_suggest,
+            category_add,
+            category_remove,
+            category_delete,
+            category_rename,
+            play_category,
             metadata_apply,
             set_notifications,
             set_continue,

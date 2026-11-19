@@ -155,6 +155,18 @@ const MIGRATIONS: &[&str] = &[
     "ALTER TABLE podcast_episode ADD COLUMN audio_url TEXT;
     ALTER TABLE podcast_episode ADD COLUMN audio_tamanho INTEGER;
     ALTER TABLE podcast_episode ADD COLUMN audio_tipo TEXT;",
+    // v17: categorias (várias por música; só no banco). `origem`: manual ou sugestao.
+    "CREATE TABLE tag (
+        id   INTEGER PRIMARY KEY,
+        nome TEXT NOT NULL UNIQUE COLLATE NOCASE
+    );
+    CREATE TABLE media_tag (
+        media_id INTEGER NOT NULL REFERENCES media(id) ON DELETE CASCADE,
+        tag_id   INTEGER NOT NULL REFERENCES tag(id) ON DELETE CASCADE,
+        origem   TEXT NOT NULL DEFAULT 'manual',
+        PRIMARY KEY (media_id, tag_id)
+    );
+    CREATE INDEX idx_media_tag_tag ON media_tag(tag_id);",
 ];
 
 pub fn open(path: &Path) -> rusqlite::Result<Connection> {
