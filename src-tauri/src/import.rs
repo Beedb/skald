@@ -65,7 +65,7 @@ pub fn eh_audio(path: &Path) -> bool {
 
 fn ler_faixa(path: &Path) -> Result<Faixa, String> {
     let meta = std::fs::metadata(path).map_err(|e| e.to_string())?;
-    let arquivo = lofty::read_from_path(path).map_err(|e| e.to_string())?;
+    let arquivo = abrir_tolerante(path)?;
     let tag = arquivo.primary_tag().or_else(|| arquivo.first_tag());
     let texto = |s: Option<std::borrow::Cow<'_, str>>| {
         s.map(|v| v.trim().to_string()).filter(|v| !v.is_empty())
@@ -97,6 +97,42 @@ fn ler_faixa(path: &Path) -> Result<Faixa, String> {
             .and_then(|m| m.duration_since(UNIX_EPOCH).ok())
             .map(|d| d.as_secs() as i64),
     })
+}
+
+/// Erro do lofty com as causas (o texto de cima só diz "failed to parse Mpeg file").
+fn erro_completo(e: &dyn std::error::Error) -> String {
+    let mut texto = e.to_string();
+    let mut causa = e.source();
+    while let Some(c) = causa {
+        texto.push_str(": ");
+        texto.push_str(&c.to_string());
+        causa = c.source();
+    }
+    texto
+}
+
+/// Abre com o lofty; se as tags estiverem defeituosas (comum em MP3 baixado de sites que
+/// enfiam propaganda nas tags), tenta de modo tolerante e, por fim, só as propriedades
+/// (duração), sem tags: a música entra com o nome do arquivo como título.
+fn abrir_tolerante(path: &Path) -> Result<lofty::file::TaggedFile, String> {
+    use lofty::config::{ParseOptions, ParsingMode};
+    use lofty::probe::Probe;
+    let primeiro = match lofty::read_from_path(path) {
+        Ok(f) => return Ok(f),
+        Err(e) => erro_completo(&e),
+    };
+    let tentar = |opcoes: ParseOptions| {
+        let probe = Probe::open(path).ok()?.options(opcoes).guess_file_type().ok()?;
+        probe.read().ok()
+    };
+    tentar(
+        ParseOptions::new()
+            .parsing_mode(ParsingMode::Relaxed)
+            .read_cover_art(false)
+            .max_junk_bytes(64 * 1024),
+    )
+    .or_else(|| tentar(ParseOptions::new().read_tags(false).max_junk_bytes(64 * 1024)))
+    .ok_or(primeiro)
 }
 
 /// Lê a pasta (recursivamente) sem tocar no banco.
@@ -562,5 +598,47 @@ mod testes {
         println!("depois: {} músicas, {} ausentes", conta(&conn, "SELECT COUNT(*) FROM media"), conta(&conn, "SELECT COUNT(*) FROM media WHERE missing = 1"));
         println!("playlists/curtidas em ausentes: {}", conta(&conn, "SELECT COUNT(*) FROM playlist_item pi JOIN media m ON m.id = pi.media_id WHERE m.missing = 1"));
         println!("histórico em ausentes: {}", conta(&conn, "SELECT COUNT(*) FROM play_history h JOIN media m ON m.id = h.media_id WHERE m.missing = 1"));
+    }
+}
+
+#[cfg(test)]
+mod tolerante {
+    /// MP3 com um frame ID3v2 de codificação de texto inválida (como os baixados de alguns
+    /// sites): o lofty recusa o arquivo; `ler_faixa` entra com o nome do arquivo e a duração.
+    #[test]
+    fn mp3_com_tag_defeituosa() {
+        let dir = crate::teste_util::pasta("skald-teste-mp3-ruim");
+        std::fs::create_dir_all(&dir).unwrap();
+        let base = dir.join("base.mp3");
+        let local = format!("location={}", base.display().to_string().replace('\\', "/"));
+        let args = ["audiotestsrc", "num-buffers=200", "!", "audioconvert", "!", "lamemp3enc", "!", "filesink", &local];
+        match crate::teste_util::gst_launch(&args) {
+            None => {
+                eprintln!("gst-launch-1.0 não instalado; teste ignorado");
+                return;
+            }
+            Some(false) => {
+                eprintln!("sem lamemp3enc; teste ignorado");
+                return;
+            }
+            Some(true) => {}
+        }
+        let audio = std::fs::read(&base).unwrap();
+        let mut frame = b"TIT2".to_vec();
+        frame.extend_from_slice(&8u32.to_be_bytes());
+        frame.extend_from_slice(b"\x00\x00\x09abcdefg");
+        let n = frame.len() as u32;
+        let mut tag = b"ID3\x03\x00\x00".to_vec();
+        tag.extend([(n >> 21) as u8 & 127, (n >> 14) as u8 & 127, (n >> 7) as u8 & 127, n as u8 & 127]);
+        tag.extend(frame);
+        tag.extend(audio);
+        let ruim = dir.join("01. Artista - Música - www.site.org.mp3");
+        std::fs::write(&ruim, tag).unwrap();
+
+        assert!(lofty::read_from_path(&ruim).is_err());
+        let f = super::ler_faixa(&ruim).unwrap();
+        std::fs::remove_dir_all(&dir).unwrap();
+        assert_eq!(f.title.as_deref(), Some("01. Artista - Música - www.site.org"));
+        assert!(f.duration_ms > 0);
     }
 }
