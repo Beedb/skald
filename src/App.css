@@ -3064,6 +3064,28 @@ input[type="range"].trilha:disabled {
   width: fit-content;
 }
 
+/* Título e abas do Completar: as abas descem para a linha de baixo quando não cabem. */
+.completar > .cabecalho-colecao {
+  flex-wrap: wrap;
+  align-items: center;
+  row-gap: 0.6rem;
+}
+
+@media (max-width: 720px) {
+  .completar > .cabecalho-colecao > h2 {
+    flex-basis: 100%;
+  }
+
+  .completar .abas-compactas {
+    width: 100%;
+  }
+
+  .completar .abas-compactas button {
+    min-width: 0;
+    padding-inline: 0.4rem;
+  }
+}
+
 .linha-completar .detalhe.ok {
   color: var(--acento);
 }
