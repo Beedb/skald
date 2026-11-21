@@ -3161,6 +3161,28 @@ input[type="range"].trilha:disabled {
     overflow-x: auto;
   }
 
+  /* A barra rola para o lado e recortaria o painel aberto (Pastas monitoradas, Duplicados):
+     no celular ele fica solto na tela, logo abaixo da barra, na largura toda. */
+  .topo-acoes .pastas-lista {
+    position: fixed;
+    top: auto;
+    left: 0.75rem;
+    right: 0.75rem;
+    width: auto;
+    max-height: 65vh;
+    overflow-y: auto;
+    z-index: 25;
+  }
+
+  .grupo-duplicados {
+    flex-wrap: wrap;
+  }
+
+  .grupo-duplicados .caminho {
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+
   .contagem {
     display: none;
   }
