@@ -43,7 +43,7 @@ Reprodutor de áudio desktop para Linux, focado em arquivos locais e offline. Pl
 
 ## Fora de escopo por enquanto
 
-Pastas de playlists, playlists inteligentes, importar M3U, seletor de saída, equalizador manual, atalhos personalizáveis, ícones pixel art e audiolivros (podcasts: ver Fase 10).
+Atalhos personalizáveis e ícones pixel art. (Pastas de playlists, playlists inteligentes, importar M3U, seletor de saída, equalizador manual e audiolivros: Fase 12.)
 
 ## Como trabalhar (economizar tokens)
 
@@ -264,6 +264,26 @@ Etapas:
 | 64 | [x] | [x] | [x] |
 | 65 | [x] | [x] | [ ] |
 | 71 | [x] | [x] | [ ] |
+
+## Fase 12 (itens antes fora de escopo) — código feito em 2026-11-22, falta testar no app
+
+Um commit por item; testes do Rust cobrem a lógica (128 passando), telas só com `tsc`/`vite build`.
+
+- **Importar M3U**: `playlists::texto_m3u` (UTF-8/BOM ou Latin-1), `ler_m3u` (`#EXTINF`, relativos à pasta do arquivo, `file://`, `\` → `/`), `casar_m3u` (caminho → fim do caminho pasta+arquivo → só o arquivo, se único → "Artista - Título" do `#EXTINF` ou nome do arquivo, via `normalizar`). Comando `playlist_import_m3u(origem)` (lê com o plugin fs; `content://` no Android, nome decodificado do fim do endereço); só músicas da biblioteca. Lateral → "Importar M3U…".
+- **Equalizador personalizado**: `eq::Preset::Personalizado`, `Bandas`, `limitar` (±12 dB), `pre_atenuacao_de`, `efetivas`; `Player::definir_equalizador(bandas)`; configuração `equalizador_bandas` (JSON); `set_equalizer(preset, bandas?)`. `EqualizadorManual` em Configurações (10 controles, envio a cada 120 ms, Zerar).
+- **Seletor de saída** (só desktop): `saida.rs` (`DeviceMonitor` `Audio/Sink`; chave = `node.name`, `device.strid`, `device.id` não numérico…, senão o nome; sem repetir nome), `Player::definir_saida` (deck carregado vai a Ready, troca `audio-sink`, volta ao estado e à posição; teste `troca_saida_tocando`). Configuração `saida_audio`, comandos `audio_outputs` (async), `set_audio_output`; aplicada ao abrir numa thread. `SeletorSaida` em Reprodução (escondido no Android).
+- **Pastas de playlists**: migração v18 (`playlist_pasta`, `playlist.pasta_id` ON DELETE SET NULL; um nível). `playlists::pastas`/`criar_pasta`/`renomear_pasta`/`excluir_pasta` (solta as playlists)/`mover_para_pasta` (Curtidas não). Comandos `playlist_folders`, `playlist_folder_create/rename/delete`, `playlist_set_folder`. Lateral: pastas abrem/fecham (localStorage `skald-pastas-fechadas`), botão direito/toque longo → renomear/excluir, "Nova pasta"; menu ⋮ da playlist escolhe a pasta. Não sincroniza.
+- **Playlists inteligentes**: migração v19 (`playlist.regras` JSON; `kind` segue `user` porque tem CHECK). `inteligentes.rs` (`Regras { combinar, regras, limite, ordem }`; campos título/artista/álbum/gênero/ano/categoria/curtida/escutas/adicionada, tocada e não tocada nos últimos N dias/duração; função SQL `NORMALIZAR` em `db::open`; embaralhada estável por id; `atualizar` grava os itens só se mudou, chamado em `playlists::listar` e `itens`). Itens não se editam (`exigir_manual`); fora da sincronização (`sincdados::exportar` filtra `regras IS NULL`). Comandos `smart_playlist_save/rules/preview`; `src/EditorInteligente.tsx` (portal no body), "Nova playlist inteligente" na lateral, "Editar regras" na playlist.
+- **Audiolivros**: migração v20 (`audiolivro`: pasta única, título, autor, `capitulo_media_id`, `posicao_ms`, `ouvido_em`, `concluido_em`); extensão `.m4b`. `audiolivros.rs` (`marcar_pasta` → categoria `audiobook`; `sincronizar` cria livro por pasta, apaga sem arquivos; capítulos por disco, faixa e nome natural; `salvar_posicao` (concluído faltando ≤ 30 s do último), `retomada`, `para_tocar`, `proximos`, `marcar`, `em_andamento`). Em lib.rs: `falado()` (podcast ou audiolivro: velocidade, sem gapless/crossfade), `continuacao` dá o próximo capítulo sempre, `tocar_id` retoma, `acompanhar_retomar` grava, `podcast_info` devolve `livro`. Comandos `import_audiobook_folder`, `audiobooks_list`, `audiobook_get`, `audiobook_chapters`, `audiobooks_in_progress`, `play_audiobook(id, capitulo?)`, `audiobook_mark`; evento `audiolivros-mudou`. `src/Audiolivros.tsx` (estante e `LivroView`), item da lateral ativo, livros em "Continuar ouvindo" do Início. Wiki `Audiolivros.md`.
+
+| Item | Linux | Android | Windows |
+|---|---|---|---|
+| Importar M3U | [ ] | [ ] | [ ] |
+| Equalizador personalizado | [ ] | [ ] | [ ] |
+| Seletor de saída | [ ] | — | [ ] |
+| Pastas de playlists | [ ] | [ ] | [ ] |
+| Playlists inteligentes | [ ] | [ ] | [ ] |
+| Audiolivros | [ ] | [ ] | [ ] |
 
 ## Estado atual
 
