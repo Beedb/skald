@@ -1183,6 +1183,32 @@ fn playlist_export_m3u(db: State<db::Db>, id: i64, destino: String) -> Result<us
     Ok(n)
 }
 
+#[tauri::command]
+fn playlist_folders(db: State<db::Db>) -> Result<Vec<playlists::Pasta>, String> {
+    let conn = db.0.lock().map_err(erro_db)?;
+    playlists::pastas(&conn)
+}
+
+#[tauri::command]
+fn playlist_folder_create(app: AppHandle, nome: String) -> Result<i64, String> {
+    alterar_playlists(&app, |conn| playlists::criar_pasta(conn, &nome))
+}
+
+#[tauri::command]
+fn playlist_folder_rename(app: AppHandle, id: i64, nome: String) -> Result<(), String> {
+    alterar_playlists(&app, |conn| playlists::renomear_pasta(conn, id, &nome))
+}
+
+#[tauri::command]
+fn playlist_folder_delete(app: AppHandle, id: i64) -> Result<(), String> {
+    alterar_playlists(&app, |conn| playlists::excluir_pasta(conn, id))
+}
+
+#[tauri::command]
+fn playlist_set_folder(app: AppHandle, id: i64, pasta: Option<i64>) -> Result<(), String> {
+    alterar_playlists(&app, |conn| playlists::mover_para_pasta(conn, id, pasta))
+}
+
 /// Resultado de importar um M3U: a playlist criada e as músicas que não estão na biblioteca.
 #[derive(Serialize)]
 struct M3uImportado {
@@ -2964,6 +2990,11 @@ pub fn run() {
             playlist_cover,
             playlist_export_m3u,
             playlist_import_m3u,
+            playlist_folders,
+            playlist_folder_create,
+            playlist_folder_rename,
+            playlist_folder_delete,
+            playlist_set_folder,
             history_list,
             history_count,
             stats_summary,

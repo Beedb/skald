@@ -17,6 +17,15 @@ pub struct Resumo {
     pub capa_escolhida: bool,
     /// Última vez que foi tocada (segundos Unix), se já foi.
     pub tocada_em: Option<i64>,
+    /// Pasta da lateral em que está (nenhuma = solta).
+    pub pasta_id: Option<i64>,
+}
+
+/// Pasta de playlists (só organiza a lateral; não toca nem tem músicas próprias).
+#[derive(Serialize, Debug, PartialEq)]
+pub struct Pasta {
+    pub id: i64,
+    pub nome: String,
 }
 
 #[derive(Serialize, Debug)]
@@ -71,7 +80,7 @@ pub fn listar(conn: &Connection) -> Result<Vec<Resumo>, String> {
         .prepare_cached(
             "SELECT p.id, p.name, COUNT(pi.id), COALESCE(SUM(m.duration_ms), 0),
                     (SELECT media_id FROM playlist_item WHERE playlist_id = p.id ORDER BY position, id LIMIT 1),
-                    p.kind, p.cover_path IS NOT NULL, p.played_at
+                    p.kind, p.cover_path IS NOT NULL, p.played_at, p.pasta_id
              FROM playlist p
              LEFT JOIN playlist_item pi ON pi.playlist_id = p.id
              LEFT JOIN media m ON m.id = pi.media_id
@@ -90,6 +99,7 @@ pub fn listar(conn: &Connection) -> Result<Vec<Resumo>, String> {
                 kind: r.get(5)?,
                 capa_escolhida: r.get(6)?,
                 tocada_em: r.get(7)?,
+                pasta_id: r.get(8)?,
             })
         })
         .map_err(sql)?;
@@ -302,6 +312,57 @@ pub fn m3u(conn: &Connection, id: i64) -> Result<(String, usize), String> {
         n += 1;
     }
     Ok((texto, n))
+}
+
+fn nome_de_pasta(nome: &str) -> Result<String, String> {
+    let nome = nome.trim();
+    if nome.is_empty() {
+        return Err("O nome da pasta não pode ficar vazio.".into());
+    }
+    Ok(nome.chars().take(200).collect())
+}
+
+pub fn pastas(conn: &Connection) -> Result<Vec<Pasta>, String> {
+    let mut stmt = conn
+        .prepare_cached("SELECT id, nome FROM playlist_pasta ORDER BY nome COLLATE SEMACENTO, id")
+        .map_err(sql)?;
+    let linhas = stmt.query_map([], |r| Ok(Pasta { id: r.get(0)?, nome: r.get(1)? })).map_err(sql)?;
+    linhas.collect::<Result<_, _>>().map_err(sql)
+}
+
+pub fn criar_pasta(conn: &Connection, nome: &str) -> Result<i64, String> {
+    conn.execute("INSERT INTO playlist_pasta (nome) VALUES (?1)", [nome_de_pasta(nome)?]).map_err(sql)?;
+    Ok(conn.last_insert_rowid())
+}
+
+pub fn renomear_pasta(conn: &Connection, id: i64, nome: &str) -> Result<(), String> {
+    let n = conn
+        .execute("UPDATE playlist_pasta SET nome = ?2 WHERE id = ?1", params![id, nome_de_pasta(nome)?])
+        .map_err(sql)?;
+    if n == 0 { Err("Pasta não encontrada.".into()) } else { Ok(()) }
+}
+
+/// Exclui só a pasta: as playlists dela continuam, soltas.
+pub fn excluir_pasta(conn: &Connection, id: i64) -> Result<(), String> {
+    conn.execute("UPDATE playlist SET pasta_id = NULL WHERE pasta_id = ?1", [id]).map_err(sql)?;
+    conn.execute("DELETE FROM playlist_pasta WHERE id = ?1", [id]).map_err(sql)?;
+    Ok(())
+}
+
+/// Põe a playlist numa pasta (`None` = solta). Curtidas fica sempre fora.
+pub fn mover_para_pasta(conn: &Connection, id: i64, pasta: Option<i64>) -> Result<(), String> {
+    exigir_comum(conn, id, "posta numa pasta")?;
+    if let Some(p) = pasta {
+        let existe: Option<i64> = conn
+            .query_row("SELECT id FROM playlist_pasta WHERE id = ?1", [p], |r| r.get(0))
+            .optional()
+            .map_err(sql)?;
+        if existe.is_none() {
+            return Err("Pasta não encontrada.".into());
+        }
+    }
+    conn.execute("UPDATE playlist SET pasta_id = ?2 WHERE id = ?1", params![id, pasta]).map_err(sql)?;
+    Ok(())
 }
 
 /// Uma linha de música de um M3U: o caminho (ou URL) e o nome do `#EXTINF`, se houver.
@@ -525,6 +586,24 @@ mod testes {
         assert_eq!(capa(&conn, p).unwrap().as_deref(), Some("/capas/x.png"));
         assert_eq!(definir_capa(&conn, p, None).unwrap().as_deref(), Some("/capas/x.png"));
         assert!(!listar(&conn).unwrap().into_iter().find(|r| r.id == p).unwrap().capa_escolhida);
+    }
+
+    #[test]
+    fn pastas_de_playlists() {
+        let conn = banco();
+        let rock = criar_pasta(&conn, "  Rock  ").unwrap();
+        let a = criar(&conn, "A").unwrap();
+        assert!(criar_pasta(&conn, " ").is_err());
+        mover_para_pasta(&conn, a, Some(rock)).unwrap();
+        assert!(mover_para_pasta(&conn, a, Some(999)).is_err());
+        assert!(mover_para_pasta(&conn, curtidas_id(&conn).unwrap(), Some(rock)).is_err());
+        assert_eq!(pastas(&conn).unwrap(), [Pasta { id: rock, nome: "Rock".into() }]);
+        let pasta_de = |id| listar(&conn).unwrap().into_iter().find(|r| r.id == id).unwrap().pasta_id;
+        assert_eq!(pasta_de(a), Some(rock));
+        renomear_pasta(&conn, rock, "Rock nacional").unwrap();
+        excluir_pasta(&conn, rock).unwrap();
+        assert!(pastas(&conn).unwrap().is_empty());
+        assert_eq!(pasta_de(a), None);
     }
 
     #[test]

@@ -1,6 +1,7 @@
-import { useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { open } from "@tauri-apps/plugin-dialog";
+import { ask, open } from "@tauri-apps/plugin-dialog";
+import { listen } from "@tauri-apps/api/event";
 import {
   AudioLines,
   BookOpen,
@@ -8,6 +9,9 @@ import {
   ChevronDown,
   Disc3,
   FileInput,
+  Folder,
+  FolderOpen,
+  FolderPlus,
   Heart,
   History,
   House,
@@ -39,7 +43,11 @@ export type PlaylistResumo = {
   capa_escolhida: boolean;
   /** Última vez que foi tocada (segundos Unix). */
   tocada_em: number | null;
+  /** Pasta da lateral (nenhuma = solta). */
+  pasta_id: number | null;
 };
+
+type PastaPlaylists = { id: number; nome: string };
 
 export type Vista =
   | { tipo: "inicio" }
@@ -73,6 +81,7 @@ type Props = {
 
 const CHAVE_RECOLHIDA = "skald-lateral-recolhida";
 const CHAVE_GRUPOS = "skald-lateral-grupos";
+const CHAVE_PASTAS_FECHADAS = "skald-pastas-fechadas";
 
 function lerLocal<T>(chave: string, padrao: T): T {
   try {
@@ -126,6 +135,76 @@ export default function Lateral({ vista, playlists, onVista, onErro, onAviso, r,
   // Recolhida ou não e grupos abertos: preferências locais desta tela (lembradas entre aberturas).
   const [recolhida, setRecolhida] = useState(() => lerLocal(CHAVE_RECOLHIDA, false));
   const [grupos, setGrupos] = useState(() => lerLocal(CHAVE_GRUPOS, { biblioteca: true, playlists: true }));
+
+  // Pastas de playlists: lista, quais estão fechadas, menu (renomear/excluir) e nome sendo digitado.
+  const [pastas, setPastas] = useState<PastaPlaylists[]>([]);
+  const [fechadas, setFechadas] = useState<number[]>(() => lerLocal(CHAVE_PASTAS_FECHADAS, [] as number[]));
+  const [menuPasta, setMenuPasta] = useState<{ id: number; x: number; y: number } | null>(null);
+  const [editPasta, setEditPasta] = useState<{ id: number | null; nome: string } | null>(null);
+  const pastaFinalizada = useRef(false);
+
+  useEffect(() => {
+    const carregar = () =>
+      invoke<PastaPlaylists[]>("playlist_folders")
+        .then(setPastas)
+        .catch(() => {});
+    carregar();
+    const parar = listen("playlists-mudou", carregar);
+    return () => void parar.then((f) => f());
+  }, []);
+
+  useEffect(() => {
+    if (!menuPasta) return;
+    const fechar = () => setMenuPasta(null);
+    const tecla = (e: KeyboardEvent) => e.key === "Escape" && fechar();
+    window.addEventListener("click", fechar);
+    window.addEventListener("keydown", tecla);
+    window.addEventListener("scroll", fechar, true);
+    return () => {
+      window.removeEventListener("click", fechar);
+      window.removeEventListener("keydown", tecla);
+      window.removeEventListener("scroll", fechar, true);
+    };
+  }, [menuPasta]);
+
+  function alternarPasta(id: number) {
+    const novas = fechadas.includes(id) ? fechadas.filter((f) => f !== id) : [...fechadas, id];
+    setFechadas(novas);
+    gravarLocal(CHAVE_PASTAS_FECHADAS, novas);
+  }
+
+  function novaPasta() {
+    pastaFinalizada.current = false;
+    if (recolhida) alternar();
+    if (!grupos.playlists) alternarGrupo("playlists");
+    setEditPasta({ id: null, nome: "" });
+  }
+
+  async function concluirPasta() {
+    if (pastaFinalizada.current || !editPasta) return;
+    pastaFinalizada.current = true;
+    const { id, nome: n } = editPasta;
+    setEditPasta(null);
+    if (!n.trim()) return;
+    try {
+      if (id === null) await invoke("playlist_folder_create", { nome: n });
+      else await invoke("playlist_folder_rename", { id, nome: n });
+    } catch (e) {
+      onErro(String(e));
+    }
+  }
+
+  async function excluirPasta(id: number) {
+    const pasta = pastas.find((p) => p.id === id);
+    const ok = await ask(`Excluir a pasta “${pasta?.nome ?? ""}”? As playlists dela continuam, fora de pasta.`, {
+      title: "Excluir pasta",
+      kind: "warning",
+      okLabel: "Excluir",
+      cancelLabel: "Cancelar",
+    });
+    if (!ok) return;
+    invoke("playlist_folder_delete", { id }).catch((e) => onErro(String(e)));
+  }
 
   function alternar() {
     const nova = !recolhida;
@@ -227,6 +306,39 @@ export default function Lateral({ vista, playlists, onVista, onErro, onAviso, r,
   );
 
   const naPlaylist = (id: number) => vista.tipo === "playlist" && vista.id === id;
+
+  const linhaPlaylist = (p: PlaylistResumo) => (
+    <li key={p.id}>
+      {item(
+        naPlaylist(p.id),
+        <span className="inicial">{(p.name.trim()[0] ?? "♪").toUpperCase()}</span>,
+        p.name,
+        () => onVista({ tipo: "playlist", id: p.id }),
+        { qtd: p.total, dica: `${p.name} · ${p.total} ${p.total === 1 ? "música" : "músicas"}` },
+      )}
+    </li>
+  );
+
+  const entradaPasta = () => (
+    <input
+      className="nova-playlist"
+      autoFocus
+      placeholder="Nome da pasta"
+      aria-label="Nome da pasta"
+      maxLength={200}
+      value={editPasta?.nome ?? ""}
+      onChange={(e) => setEditPasta((p) => (p ? { ...p, nome: e.target.value } : p))}
+      onBlur={concluirPasta}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") concluirPasta();
+        if (e.key === "Escape") {
+          e.stopPropagation();
+          pastaFinalizada.current = true;
+          setEditPasta(null);
+        }
+      }}
+    />
+  );
   const tam = 18;
 
   return (
@@ -286,21 +398,38 @@ export default function Lateral({ vista, playlists, onVista, onErro, onAviso, r,
                   })}
                 </div>
               ))}
-            <ul>
-              {playlists
-                .filter((p) => p.kind === "user")
-                .map((p) => (
-                  <li key={p.id}>
-                    {item(
-                      naPlaylist(p.id),
-                      <span className="inicial">{(p.name.trim()[0] ?? "♪").toUpperCase()}</span>,
-                      p.name,
-                      () => onVista({ tipo: "playlist", id: p.id }),
-                      { qtd: p.total, dica: `${p.name} · ${p.total} ${p.total === 1 ? "música" : "músicas"}` },
-                    )}
-                  </li>
-                ))}
-            </ul>
+            {pastas.map((pa) => {
+              const dentro = playlists.filter((p) => p.kind === "user" && p.pasta_id === pa.id);
+              const aberta = !fechadas.includes(pa.id);
+              return (
+                <div key={pa.id} className="pasta-lateral">
+                  {editPasta?.id === pa.id ? (
+                    entradaPasta()
+                  ) : (
+                    <div
+                      onContextMenu={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        setMenuPasta({ id: pa.id, x: Math.min(e.clientX, window.innerWidth - 190), y: e.clientY });
+                      }}
+                    >
+                      {item(
+                        false,
+                        aberta ? <FolderOpen size={16} /> : <Folder size={16} />,
+                        pa.nome,
+                        () => alternarPasta(pa.id),
+                        {
+                          qtd: dentro.length,
+                          dica: `${pa.nome} · ${dentro.length} ${dentro.length === 1 ? "playlist" : "playlists"} (botão direito: renomear ou excluir)`,
+                        },
+                      )}
+                    </div>
+                  )}
+                  {aberta && dentro.length > 0 && <ul className="dentro-pasta">{dentro.map(linhaPlaylist)}</ul>}
+                </div>
+              );
+            })}
+            <ul>{playlists.filter((p) => p.kind === "user" && (p.pasta_id === null || !pastas.some((pa) => pa.id === p.pasta_id))).map(linhaPlaylist)}</ul>
             {criando ? (
               <input
                 className="nova-playlist"
@@ -322,7 +451,26 @@ export default function Lateral({ vista, playlists, onVista, onErro, onAviso, r,
             ) : (
               item(false, <Plus size={16} />, "Nova playlist", abrir, { classe: "criar" })
             )}
-            {!criando && item(false, <FileInput size={16} />, "Importar M3U…", importarM3u, { classe: "criar" })}
+            {editPasta?.id === null
+              ? entradaPasta()
+              : !criando && item(false, <FolderPlus size={16} />, "Nova pasta", novaPasta, { classe: "criar" })}
+            {!criando && !editPasta && item(false, <FileInput size={16} />, "Importar M3U…", importarM3u, { classe: "criar" })}
+            {menuPasta && (
+              <ul className="menu-contexto" role="menu" style={{ left: menuPasta.x, top: menuPasta.y }}>
+                <li
+                  role="menuitem"
+                  onClick={() => {
+                    pastaFinalizada.current = false;
+                    setEditPasta({ id: menuPasta.id, nome: pastas.find((p) => p.id === menuPasta.id)?.nome ?? "" });
+                  }}
+                >
+                  Renomear pasta
+                </li>
+                <li role="menuitem" className="perigo" onClick={() => excluirPasta(menuPasta.id)}>
+                  Excluir pasta
+                </li>
+              </ul>
+            )}
           </div>
         )}
       </div>

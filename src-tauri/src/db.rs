@@ -167,6 +167,12 @@ const MIGRATIONS: &[&str] = &[
         PRIMARY KEY (media_id, tag_id)
     );
     CREATE INDEX idx_media_tag_tag ON media_tag(tag_id);",
+    // v18: pastas de playlists (um nível; excluir a pasta solta as playlists dela).
+    "CREATE TABLE playlist_pasta (
+        id   INTEGER PRIMARY KEY,
+        nome TEXT NOT NULL
+    );
+    ALTER TABLE playlist ADD COLUMN pasta_id INTEGER REFERENCES playlist_pasta(id) ON DELETE SET NULL;",
 ];
 
 pub fn open(path: &Path) -> rusqlite::Result<Connection> {

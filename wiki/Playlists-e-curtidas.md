@@ -29,6 +29,10 @@ Na barra lateral, em **Playlists**, clique em **Nova playlist**, digite o nome e
 - **Exportar M3U**: gera um arquivo `.m3u` que outros reprodutores abrem.
 - **Excluir**: apaga só a playlist; as músicas continuam na biblioteca.
 
+## Pastas
+
+Para organizar muitas playlists, use **Nova pasta** na barra lateral (abaixo das playlists). Para pôr uma playlist numa pasta, abra a playlist → menu **⋮** → escolha a pasta (ou **Fora de pasta**). Clique na pasta para abrir ou fechar. Com o botão direito (no celular, toque longo) na pasta: **Renomear pasta** ou **Excluir pasta**. Excluir a pasta não exclui as playlists: elas voltam para fora de pasta. As pastas ficam só neste aparelho (não vão na sincronização).
+
 ## Importar M3U
 
 Na barra lateral, em **Playlists → Importar M3U…**, escolha um arquivo `.m3u` ou `.m3u8` (de outro reprodutor ou exportado pelo Skáld em outro aparelho). O Skáld cria uma playlist com o nome do arquivo e põe nela as músicas **que já estão na biblioteca**: procura pelo caminho, depois pelo nome do arquivo (serve para playlists feitas em outro computador) e por fim por "Artista - Título". As que não forem achadas aparecem no aviso; nada é copiado nem importado.

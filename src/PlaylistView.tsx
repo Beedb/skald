@@ -40,6 +40,7 @@ export default function PlaylistView({ playlist, versao, tocandoId, onExcluida, 
   const [aviso, setAviso] = useState<string | null>(null);
   const [adicionando, setAdicionando] = useState(false);
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
+  const [pastas, setPastas] = useState<{ id: number; nome: string }[]>([]);
   const fixa = playlist.kind === "curtidas";
   const finalizado = useRef(false);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -106,6 +107,9 @@ export default function PlaylistView({ playlist, versao, tocandoId, onExcluida, 
   function abrirMenuPlaylist(e: React.MouseEvent<HTMLButtonElement>) {
     e.stopPropagation();
     if (menu) return setMenu(null);
+    invoke<{ id: number; nome: string }[]>("playlist_folders")
+      .then(setPastas)
+      .catch(() => {});
     const r = e.currentTarget.getBoundingClientRect();
     setMenu({ x: Math.max(4, Math.min(r.left, window.innerWidth - 230)), y: r.bottom + 4 });
   }
@@ -268,6 +272,30 @@ export default function PlaylistView({ playlist, versao, tocandoId, onExcluida, 
           >
             Exportar M3U
           </li>
+          {!fixa && pastas.length > 0 && (
+            <>
+              <li role="separator" className="separador" />
+              <li className="titulo-menu">Pasta</li>
+              {pastas.map((pa) => (
+                <li
+                  key={pa.id}
+                  role="menuitemradio"
+                  aria-checked={playlist.pasta_id === pa.id}
+                  onClick={() => acao("playlist_set_folder", { id: playlist.id, pasta: pa.id })}
+                >
+                  {playlist.pasta_id === pa.id ? "✓ " : ""}
+                  {pa.nome}
+                </li>
+              ))}
+              <li
+                role="menuitemradio"
+                aria-checked={playlist.pasta_id === null}
+                onClick={() => acao("playlist_set_folder", { id: playlist.id, pasta: null })}
+              >
+                {playlist.pasta_id === null ? "✓ " : ""}Fora de pasta
+              </li>
+            </>
+          )}
           {!fixa && (
             <>
               <li role="separator" className="separador" />
