@@ -16,6 +16,7 @@ import Duplicados from "./Duplicados";
 import { Albuns, AlbumView, Artistas, ArtistaView } from "./Colecao";
 import Inicio from "./Inicio";
 import Podcasts, { ProgramaView } from "./Podcasts";
+import Audiolivros, { LivroView } from "./Audiolivros";
 import { esquecerMiniatura, miniatura } from "./Capa";
 import Informacoes from "./Informacoes";
 import EdicaoLote from "./EdicaoLote";
@@ -87,6 +88,7 @@ function App() {
   const [curtidas, setCurtidas] = useState<Set<number>>(new Set());
   const [versaoHistorico, setVersaoHistorico] = useState(0);
   const [versaoPodcasts, setVersaoPodcasts] = useState(0);
+  const [versaoLivros, setVersaoLivros] = useState(0);
   const [podcast, setPodcast] = useState<Reproducao["podcast"]>(null);
   // Aviso deixado antes de recarregar (ex.: backup restaurado).
   const [aviso, setAviso] = useState<string | null>(() => {
@@ -187,6 +189,7 @@ function App() {
       listen<string>("player-erro", (e) => mostrarErro(e.payload)),
       listen("historico-mudou", () => setVersaoHistorico((v) => v + 1)),
       listen("podcasts-mudou", () => setVersaoPodcasts((v) => v + 1)),
+      listen("audiolivros-mudou", () => setVersaoLivros((v) => v + 1)),
       listen<ImportResumo>("biblioteca-mudou", (e) => {
         setAviso(avisoMonitoramento(e.payload));
         carregarStatus();
@@ -347,7 +350,7 @@ function App() {
     const arquivos = await open({
       multiple: true,
       title: "Escolha os arquivos de música",
-      filters: [{ name: "Áudio", extensions: ["mp3", "flac", "ogg", "opus", "oga", "m4a", "aac", "wav"] }],
+      filters: [{ name: "Áudio", extensions: ["mp3", "flac", "ogg", "opus", "oga", "m4a", "m4b", "aac", "wav"] }],
     });
     if (!arquivos || arquivos.length === 0) return;
     await importar("import_files", { paths: arquivos });
@@ -529,6 +532,22 @@ function App() {
               <Podcasts versao={versaoPodcasts} onAbrir={(id) => setVista({ tipo: "programa", id })} onErro={setErro} />
             </div>
           )}
+          {vista.tipo === "audiolivros" && (
+            <div className="area">
+              <Audiolivros versao={versaoLivros} onAbrir={(id) => setVista({ tipo: "livro", id })} onErro={setErro} />
+            </div>
+          )}
+          {vista.tipo === "livro" && (
+            <div className="area">
+              <LivroView
+                id={vista.id}
+                versao={versaoLivros + versaoHistorico}
+                idAtual={idAtual}
+                onVoltar={() => setVista({ tipo: "audiolivros" })}
+                onErro={setErro}
+              />
+            </div>
+          )}
           {vista.tipo === "programa" && (
             <div className="area">
               <ProgramaView
@@ -543,8 +562,9 @@ function App() {
           {vista.tipo === "inicio" && (
             <div className="area">
               <Inicio
-                versao={versao + versaoHistorico + versaoPodcasts}
+                versao={versao + versaoHistorico + versaoPodcasts + versaoLivros}
                 onPrograma={(id) => setVista({ tipo: "programa", id })}
+                onLivro={(id) => setVista({ tipo: "livro", id })}
                 playlists={playlists}
                 totalMusicas={status?.media_count ?? 0}
                 onPlaylist={(id) => setVista({ tipo: "playlist", id })}

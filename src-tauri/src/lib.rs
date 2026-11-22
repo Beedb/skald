@@ -1,5 +1,6 @@
 mod acustico;
 mod apelidos;
+mod audiolivros;
 mod caminhos;
 mod drive;
 mod sincdados;
@@ -105,6 +106,7 @@ fn importar_pasta(app: &AppHandle, path: &str) -> Result<import::ImportResumo, S
             incluir_novas(app, Origem::Biblioteca)?;
         }
         podcasts::sincronizar(&app.state::<db::Db>().0)?;
+        audiolivros::sincronizar(&app.state::<db::Db>().0)?;
         Ok(resumo)
     }
 }
@@ -164,22 +166,106 @@ fn play_episode(app: AppHandle, id: i64) -> Result<(), String> {
     tocar_id(&app, media)
 }
 
-/// Faixa atual é um episódio? (o player mostra −15/+30 s e a velocidade).
+/// Faixa atual é um episódio ou um capítulo de audiolivro? (o player mostra −15/+30 s e a
+/// velocidade).
 #[derive(Serialize)]
 struct InfoPodcast {
-    episodio: i64,
-    programa: i64,
+    episodio: Option<i64>,
+    programa: Option<i64>,
+    livro: Option<i64>,
     velocidade: f64,
 }
 
 #[tauri::command]
 fn podcast_info(db: State<db::Db>, media_id: i64) -> Result<Option<InfoPodcast>, String> {
     let conn = db.0.lock().map_err(erro_db)?;
-    let Some((episodio, programa, _, _)) = podcasts::de_media(&conn, media_id).map_err(|e| e.to_string())? else {
-        return Ok(None);
-    };
     let velocidade = settings::podcast_velocidade(&conn).map_err(|e| e.to_string())?;
-    Ok(Some(InfoPodcast { episodio, programa, velocidade }))
+    if let Some((episodio, programa, _, _)) = podcasts::de_media(&conn, media_id).map_err(|e| e.to_string())? {
+        return Ok(Some(InfoPodcast { episodio: Some(episodio), programa: Some(programa), livro: None, velocidade }));
+    }
+    Ok(audiolivros::livro_do_arquivo(&conn, media_id)
+        .map(|livro| InfoPodcast { episodio: None, programa: None, livro: Some(livro), velocidade }))
+}
+
+// ---------- Audiolivros ----------
+
+const EVENTO_AUDIOLIVROS: &str = "audiolivros-mudou";
+
+/// Importa uma pasta como Audiolivros: cada pasta com arquivos dentro vira um livro.
+#[tauri::command]
+async fn import_audiobook_folder(app: tauri::AppHandle, path: String) -> Result<import::ImportResumo, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        if !std::path::Path::new(&path).is_dir() {
+            return Err("A pasta selecionada não existe.".to_string());
+        }
+        {
+            let db = app.state::<db::Db>();
+            let conn = db.0.lock().map_err(erro_db)?;
+            audiolivros::marcar_pasta(&conn, &path).map_err(|e| e.to_string())?;
+        }
+        let r = importar_pasta(&app, &path)?;
+        audiolivros::sincronizar(&app.state::<db::Db>().0)?;
+        let _ = app.emit(EVENTO_BIBLIOTECA, &r);
+        let _ = app.emit(EVENTO_AUDIOLIVROS, ());
+        Ok(r)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+fn audiobooks_list(db: State<db::Db>) -> Result<Vec<audiolivros::Livro>, String> {
+    let conn = db.0.lock().map_err(erro_db)?;
+    audiolivros::livros(&conn).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn audiobook_get(db: State<db::Db>, id: i64) -> Result<Option<audiolivros::Livro>, String> {
+    let conn = db.0.lock().map_err(erro_db)?;
+    audiolivros::livro(&conn, id).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn audiobook_chapters(db: State<db::Db>, id: i64) -> Result<Vec<audiolivros::Capitulo>, String> {
+    let conn = db.0.lock().map_err(erro_db)?;
+    audiolivros::capitulos(&conn, id).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn audiobooks_in_progress(db: State<db::Db>) -> Result<Vec<audiolivros::Livro>, String> {
+    let conn = db.0.lock().map_err(erro_db)?;
+    audiolivros::em_andamento(&conn, 10).map_err(|e| e.to_string())
+}
+
+/// Toca o livro: de onde parou ou, com `capitulo`, desse capítulo (do começo, ou de onde
+/// parou se for o capítulo atual). Os capítulos seguintes vêm em ordem ao terminar cada um.
+#[tauri::command]
+fn play_audiobook(app: AppHandle, id: i64, capitulo: Option<i64>) -> Result<(), String> {
+    let media = {
+        let db = app.state::<db::Db>();
+        let conn = db.0.lock().map_err(erro_db)?;
+        match capitulo {
+            Some(c) => c,
+            None => audiolivros::para_tocar(&conn, id).map_err(|e| e.to_string())?.ok_or("Este livro não tem capítulos.")?,
+        }
+    };
+    app.state::<FilaState>().0.lock().map_err(erro_db)?.tocar_do_contexto(vec![media], media);
+    definir_origem(&app, None)?;
+    let _ = app.emit(EVENTO_FILA, ());
+    tocar_id(&app, media)?;
+    let _ = app.emit(EVENTO_AUDIOLIVROS, ());
+    Ok(())
+}
+
+#[tauri::command]
+fn audiobook_mark(app: AppHandle, id: i64, concluido: bool) -> Result<(), String> {
+    {
+        let db = app.state::<db::Db>();
+        let conn = db.0.lock().map_err(erro_db)?;
+        audiolivros::marcar(&conn, id, concluido).map_err(|e| e.to_string())?;
+    }
+    let _ = app.emit(EVENTO_AUDIOLIVROS, ());
+    Ok(())
 }
 
 /// Velocidade dos podcasts (0,8× a 2×); vale na hora se um episódio estiver tocando.
@@ -190,7 +276,7 @@ fn set_podcast_speed(app: AppHandle, velocidade: f64) -> Result<f64, String> {
         let conn = db.0.lock().map_err(erro_db)?;
         let v = settings::definir_podcast_velocidade(&conn, velocidade).map_err(|e| e.to_string())?;
         let atual = app.state::<player::Player>().estado().id;
-        (v, atual.is_some_and(|id| podcasts::e_podcast(&conn, id)))
+        (v, atual.is_some_and(|id| falado(&conn, id)))
     };
     if atual_e_podcast {
         app.state::<player::Player>().definir_velocidade(v);
@@ -451,6 +537,9 @@ pub(crate) fn biblioteca_mudou(app: &AppHandle, mut resumo: import::ImportResumo
         if let Err(e) = podcasts::sincronizar(&app.state::<db::Db>().0) {
             eprintln!("Podcasts: {e}");
         }
+        if let Err(e) = audiolivros::sincronizar(&app.state::<db::Db>().0) {
+            eprintln!("Audiolivros: {e}");
+        }
     }
     if !resumo.mudou_algo() {
         return;
@@ -513,8 +602,9 @@ fn remove_from_library(app: AppHandle, ids: Vec<i64>) -> Result<usize, String> {
     if atual_saiu {
         avancar(&app, false)?;
     }
-    // Episódios locais desses registros saem junto.
+    // Episódios locais e livros sem arquivos saem junto.
     podcasts::sincronizar(&app.state::<db::Db>().0)?;
+    audiolivros::sincronizar(&app.state::<db::Db>().0)?;
     let _ = app.emit(EVENTO_FILA, ());
     let _ = app.emit(EVENTO_PLAYLISTS, ());
     let _ = app.emit(EVENTO_HISTORICO, ());
@@ -694,6 +784,13 @@ fn acompanhar_retomar(app: &AppHandle, estado: &player::EstadoPlayer) {
             if virou == Some(true) {
                 let _ = h.emit(EVENTO_PODCASTS, ());
             }
+            // Audiolivro: capítulo e posição onde parou.
+            let terminou = h.state::<db::Db>().0.lock().ok().and_then(|c| {
+                audiolivros::salvar_posicao(&c, id, posicao as i64, duracao as i64).ok()
+            });
+            if terminou == Some(true) {
+                let _ = h.emit(EVENTO_AUDIOLIVROS, ());
+            }
         }
     });
 }
@@ -842,6 +939,10 @@ struct GaplessState(Mutex<Option<Pendente>>);
 fn continuacao(app: &AppHandle, ultima: Option<i64>) -> Option<Vec<i64>> {
     let db = app.state::<db::Db>();
     let conn = db.0.lock().ok()?;
+    // Audiolivro: o capítulo seguinte, sempre (é a continuação do mesmo livro); no fim, para.
+    if let Some(u) = ultima.filter(|&u| audiolivros::e_audiolivro(&conn, u)) {
+        return Some(audiolivros::proximos(&conn, u)).filter(|ids| !ids.is_empty());
+    }
     if !settings::carregar(&conn).ok()?.continuar_tocando {
         return None;
     }
@@ -881,7 +982,7 @@ fn preparar_proxima(app: &AppHandle) -> Option<player::Proxima> {
             }
             // Podcast (o atual ou o próximo): sem crossfade nem emenda; a faixa termina e o
             // próximo começa pelo `tocar_id` (retomada e velocidade de cada episódio).
-            if antes.atual().is_some_and(|a| podcasts::e_podcast(&conn, a)) || podcasts::e_podcast(&conn, id) {
+            if antes.atual().is_some_and(|a| falado(&conn, a)) || falado(&conn, id) {
                 return None;
             }
             let mesmo_album = antes.atual().is_some_and(|a| library::mesmo_album(&conn, a, id).unwrap_or(false));
@@ -944,11 +1045,16 @@ fn ganho_de(app: &AppHandle, id: i64, path: &str) -> ganho::Ganho {
     g
 }
 
-/// Velocidade de reprodução: a dos podcasts para episódios, 1× para música.
+/// Podcast ou audiolivro: velocidade, −15/+30 s, retomada e nada de crossfade ou emenda.
+fn falado(conn: &rusqlite::Connection, id: i64) -> bool {
+    podcasts::e_podcast(conn, id) || audiolivros::e_audiolivro(conn, id)
+}
+
+/// Velocidade de reprodução: a da fala para podcasts e audiolivros, 1× para música.
 fn velocidade_de(app: &AppHandle, id: i64) -> f64 {
     let db = app.state::<db::Db>();
     let Ok(conn) = db.0.lock() else { return 1.0 };
-    if podcasts::e_podcast(&conn, id) {
+    if falado(&conn, id) {
         settings::podcast_velocidade(&conn).unwrap_or(1.0)
     } else {
         1.0
@@ -994,6 +1100,7 @@ fn tocar_id(app: &AppHandle, id: i64) -> Result<(), String> {
             .ok()
             .flatten()
             .and_then(|(_, _, pos, ouvido)| pos.filter(|&p| !ouvido && p > 5_000))
+            .or_else(|| audiolivros::retomada(&conn, id))
     };
     match retomar {
         Some(pos) => player.tocar_em(id, &path, ganho, pos as u64)?,
@@ -3075,6 +3182,13 @@ pub fn run() {
             sync_cancel,
             sync_now,
             import_podcast_folder,
+            import_audiobook_folder,
+            audiobooks_list,
+            audiobook_get,
+            audiobook_chapters,
+            audiobooks_in_progress,
+            play_audiobook,
+            audiobook_mark,
             podcast_shows,
             podcast_show,
             podcast_episodes,

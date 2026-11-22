@@ -7,7 +7,7 @@ use rusqlite::{Connection, params};
 use serde::Serialize;
 use walkdir::WalkDir;
 
-const EXTENSOES: &[&str] = &["mp3", "flac", "ogg", "opus", "oga", "m4a", "aac", "wav"];
+const EXTENSOES: &[&str] = &["mp3", "flac", "ogg", "opus", "oga", "m4a", "m4b", "aac", "wav"];
 
 #[derive(Serialize, Default)]
 pub struct ImportResumo {

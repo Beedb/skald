@@ -21,6 +21,7 @@ Esta ajuda mostra desde como baixar até como usar cada função.
 | [Artistas e álbuns](Artistas-e-albuns) | Navegar pela coleção e unir grafias do mesmo artista |
 | [Organizar a biblioteca](Organizar-a-biblioteca) | Corrigir informações, completar pelo MusicBrainz, editar várias, duplicados |
 | [Podcasts](Podcasts) | Assinar por RSS, baixar episódios, velocidade e retomar |
+| [Audiolivros](Audiolivros) | Livros por pasta, continuar de onde parou, capítulos, velocidade |
 | [Histórico e estatísticas](Historico-e-estatisticas) | Histórico, Máquina do Tempo e retrospectivas |
 | [Som](Som) | Crossfade, gapless, normalização de volume e equalizador |
 | [Aparência](Aparencia) | Temas, claro/escuro, cores da capa e barra lateral |

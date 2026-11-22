@@ -42,7 +42,8 @@ export type Reproducao = {
   aleatorio: boolean;
   repetir: Repetir;
   /** Faixa atual é um episódio de podcast (null: música). */
-  podcast: { episodio: number; programa: number; velocidade: number } | null;
+  /** Episódio de podcast ou capítulo de audiolivro: −15/+30 s e velocidade. */
+  podcast: { episodio: number | null; programa: number | null; livro: number | null; velocidade: number } | null;
   onVelocidade: (v: number) => void;
 };
 

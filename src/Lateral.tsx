@@ -70,7 +70,9 @@ export type Vista =
   | { tipo: "categorias" }
   | { tipo: "categoria"; id: number }
   | { tipo: "podcasts" }
-  | { tipo: "programa"; id: number };
+  | { tipo: "programa"; id: number }
+  | { tipo: "audiolivros" }
+  | { tipo: "livro"; id: number };
 
 type Props = {
   vista: Vista;
@@ -370,7 +372,9 @@ export default function Lateral({ vista, playlists, onVista, onErro, onAviso, r,
             {item(vista.tipo === "podcasts" || vista.tipo === "programa", <Podcast size={16} />, "Podcasts", () =>
               onVista({ tipo: "podcasts" }),
             )}
-            {item(false, <BookOpen size={16} />, "Audiolivros", () => {}, { desativado: true, dica: "Em breve" })}
+            {item(vista.tipo === "audiolivros" || vista.tipo === "livro", <BookOpen size={16} />, "Audiolivros", () =>
+              onVista({ tipo: "audiolivros" }),
+            )}
             {item(false, <AudioLines size={16} />, "Outros áudios", () => {}, { desativado: true, dica: "Em breve" })}
           </div>
         )}

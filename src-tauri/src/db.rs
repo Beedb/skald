@@ -175,6 +175,17 @@ const MIGRATIONS: &[&str] = &[
     ALTER TABLE playlist ADD COLUMN pasta_id INTEGER REFERENCES playlist_pasta(id) ON DELETE SET NULL;",
     // v19: playlists inteligentes (regras em JSON; nulo = playlist comum).
     "ALTER TABLE playlist ADD COLUMN regras TEXT;",
+    // v20: audiolivros (um por pasta; guarda capítulo e posição onde parou).
+    "CREATE TABLE audiolivro (
+        id                INTEGER PRIMARY KEY,
+        pasta             TEXT    NOT NULL UNIQUE,
+        titulo            TEXT    NOT NULL,
+        autor             TEXT,
+        capitulo_media_id INTEGER REFERENCES media(id) ON DELETE SET NULL,
+        posicao_ms        INTEGER NOT NULL DEFAULT 0,
+        ouvido_em         INTEGER,
+        concluido_em      INTEGER
+    );",
 ];
 
 pub fn open(path: &Path) -> rusqlite::Result<Connection> {

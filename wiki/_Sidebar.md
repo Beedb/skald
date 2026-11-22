@@ -7,6 +7,7 @@
 - [Artistas e álbuns](Artistas-e-albuns)
 - [Organizar a biblioteca](Organizar-a-biblioteca)
 - [Podcasts](Podcasts)
+- [Audiolivros](Audiolivros)
 - [Histórico e estatísticas](Historico-e-estatisticas)
 - [Som](Som)
 - [Aparência](Aparencia)

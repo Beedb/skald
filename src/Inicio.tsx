@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { ArrowRight, Play, Sparkle } from "lucide-react";
 import Capa from "./Capa";
 import { estadoEpisodio, type Episodio } from "./Podcasts";
+import { estadoLivro, type Livro } from "./Audiolivros";
 import { Album, CartaoAlbum, ChaveAlbum } from "./Colecao";
 import type { PlaylistResumo } from "./Lateral";
 import { useMenuMusica } from "./MenuMusica";
@@ -113,6 +114,7 @@ export default function Inicio({
   onHistorico,
   onTocarMusica,
   onPrograma,
+  onLivro,
   onErro,
 }: {
   versao: number;
@@ -125,14 +127,19 @@ export default function Inicio({
   onHistorico: () => void;
   onTocarMusica: (id: number) => void;
   onPrograma: (id: number) => void;
+  onLivro: (id: number) => void;
   onErro: (m: string) => void;
 }) {
   const [dados, setDados] = useState<DadosInicio | null>(null);
   const [ouvindo, setOuvindo] = useState<Episodio[]>([]);
+  const [lendo, setLendo] = useState<Livro[]>([]);
   useEffect(() => {
     invoke<Episodio[]>("podcast_in_progress")
       .then(setOuvindo)
       .catch(() => setOuvindo([]));
+    invoke<Livro[]>("audiobooks_in_progress")
+      .then(setLendo)
+      .catch(() => setLendo([]));
   }, [versao]);
   const abrirMenu = useMenuMusica();
   useEffect(() => {
@@ -169,9 +176,28 @@ export default function Inicio({
         <p className="vazio">A biblioteca está vazia. Use "Importar pasta" ou "Arquivos" no topo.</p>
       )}
 
-      {ouvindo.length > 0 && (
+      {ouvindo.length + lendo.length > 0 && (
         <Secao titulo="Continuar ouvindo">
           <div className="faixa-cartoes">
+            {lendo.map((l) => (
+              <div key={"livro" + l.id} className="cartao-album cartao-episodio" style={{ width: 160 }}>
+                <button
+                  className="cartao-episodio-tocar"
+                  onClick={() => invoke("play_audiobook", { id: l.id, capitulo: null }).catch((x) => onErro(String(x)))}
+                  title={`Continuar ${l.titulo}`}
+                >
+                  <Capa id={l.capa_media} />
+                  <span className="nome">{l.titulo}</span>
+                </button>
+                <button className="link detalhe" onClick={() => onLivro(l.id)} title="Abrir o livro">
+                  {l.autor ? `${l.autor} · ` : ""}
+                  {estadoLivro(l)}
+                </button>
+                <span className="progresso-episodio" aria-hidden="true">
+                  <span style={{ width: `${l.duracao_ms ? (l.ouvido_ms / l.duracao_ms) * 100 : 0}%` }} />
+                </span>
+              </div>
+            ))}
             {ouvindo.map((e) => (
               <div key={e.id} className="cartao-album cartao-episodio" style={{ width: 160 }}>
                 <button

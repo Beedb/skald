@@ -3664,6 +3664,11 @@ input[type="range"].trilha:disabled {
   overflow: hidden;
 }
 
+.progresso-livro {
+  max-width: 20rem;
+  margin: 0.45rem 0 0.2rem;
+}
+
 .progresso-episodio > span {
   display: block;
   height: 100%;
