@@ -29,15 +29,28 @@ fn chave_de(d: &gst::Device) -> String {
         .unwrap_or_else(|| d.display_name().to_string())
 }
 
+/// Um monitor só, ligado na primeira consulta e nunca parado: os elementos criados a partir
+/// de um dispositivo (o `pipewiresink`, por exemplo) seguem usando o provedor do monitor, e
+/// parar o monitor com um deles em uso derruba o app (SIGSEGV em
+/// `gst_device_provider_device_remove` ao trocar de saída).
+fn monitor() -> Option<&'static gst::DeviceMonitor> {
+    struct Monitor(gst::DeviceMonitor);
+    // O DeviceMonitor do GStreamer pode ser usado de qualquer thread.
+    unsafe impl Sync for Monitor {}
+    unsafe impl Send for Monitor {}
+    static MONITOR: std::sync::OnceLock<Option<Monitor>> = std::sync::OnceLock::new();
+    MONITOR
+        .get_or_init(|| {
+            let m = gst::DeviceMonitor::new();
+            m.add_filter(Some("Audio/Sink"), None);
+            m.start().ok().map(|_| Monitor(m))
+        })
+        .as_ref()
+        .map(|m| &m.0)
+}
+
 fn dispositivos() -> Vec<gst::Device> {
-    let monitor = gst::DeviceMonitor::new();
-    monitor.add_filter(Some("Audio/Sink"), None);
-    if monitor.start().is_err() {
-        return Vec::new();
-    }
-    let lista = monitor.devices().into_iter().collect();
-    monitor.stop();
-    lista
+    monitor().map(|m| m.devices().into_iter().collect()).unwrap_or_default()
 }
 
 /// Saídas disponíveis agora (sem repetir o mesmo nome, que alguns sistemas listam por dois

@@ -245,7 +245,10 @@ fn play_audiobook(app: AppHandle, id: i64, capitulo: Option<i64>) -> Result<(), 
         let db = app.state::<db::Db>();
         let conn = db.0.lock().map_err(erro_db)?;
         match capitulo {
-            Some(c) => c,
+            Some(c) => {
+                audiolivros::reabrir(&conn, id).map_err(|e| e.to_string())?;
+                c
+            }
             None => audiolivros::para_tocar(&conn, id).map_err(|e| e.to_string())?.ok_or("Este livro não tem capítulos.")?,
         }
     };

@@ -322,11 +322,11 @@ pub fn salvar_posicao(conn: &Connection, media_id: i64, posicao_ms: i64, duracao
     let antes: bool = conn.query_row("SELECT concluido_em IS NOT NULL FROM audiolivro WHERE id = ?1", [livro], |r| r.get(0))?;
     conn.execute(
         "UPDATE audiolivro SET capitulo_media_id = ?2, posicao_ms = ?3, ouvido_em = unixepoch(),
-                concluido_em = CASE WHEN ?4 THEN COALESCE(concluido_em, unixepoch()) ELSE NULL END
+                concluido_em = CASE WHEN ?4 THEN COALESCE(concluido_em, unixepoch()) ELSE concluido_em END
          WHERE id = ?1",
         params![livro, media_id, posicao_ms.max(0), terminou],
     )?;
-    Ok(terminou != antes)
+    Ok(terminou && !antes)
 }
 
 /// Ponto de onde `media_id` deve começar (capítulo onde o livro parou, não concluído).
@@ -354,6 +354,12 @@ pub fn para_tocar(conn: &Connection, id: i64) -> rusqlite::Result<Option<i64>> {
         return Ok(caps.first().copied());
     }
     Ok(p.capitulo.filter(|c| caps.contains(c)).or(caps.first().copied()))
+}
+
+/// Livro terminado volta a "em andamento" (tocar um capítulo dele de novo), sem perder o ponto.
+pub fn reabrir(conn: &Connection, id: i64) -> rusqlite::Result<()> {
+    conn.execute("UPDATE audiolivro SET concluido_em = NULL WHERE id = ?1", [id])?;
+    Ok(())
 }
 
 /// Marca à mão como terminado ou não (não terminado volta ao começo).
@@ -430,6 +436,9 @@ mod testes {
 
         // Fim do último capítulo: concluído; "Continuar" recomeça.
         assert!(salvar_posicao(&c, 1, 80_000, 100_000).unwrap());
+        assert!(livro(&c, dom.id).unwrap().unwrap().concluido);
+        // Seguir tocando (ou marcar terminado enquanto toca) não desfaz o "terminado".
+        assert!(!salvar_posicao(&c, 2, 1_000, 200_000).unwrap());
         assert!(livro(&c, dom.id).unwrap().unwrap().concluido);
         assert_eq!(retomada(&c, 1), None);
         assert_eq!(para_tocar(&c, dom.id).unwrap(), Some(3));
