@@ -2366,6 +2366,27 @@ async fn metadata_lookup(
         .map_err(|e| e.to_string())?
 }
 
+/// Item da busca em lote (`metadata_lookup_batch`).
+#[derive(serde::Deserialize)]
+struct ItemBusca {
+    titulo: String,
+    artista: Option<String>,
+    duracao_ms: Option<i64>,
+}
+
+/// Várias músicas numa consulta só ao MusicBrainz (até `enriquecer::LOTE`; o resto é
+/// ignorado); devolve os candidatos de cada uma, na mesma ordem.
+#[tauri::command]
+async fn metadata_lookup_batch(itens: Vec<ItemBusca>) -> Result<enriquecer::LoteBusca, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let todos: Vec<(String, Option<String>, Option<i64>)> =
+            itens.into_iter().take(enriquecer::LOTE).map(|i| (i.titulo, i.artista, i.duracao_ms)).collect();
+        enriquecer::buscar_lote(&todos)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
 /// Grava os campos escolhidos (banco, e arquivo se pedido, com a capa opcional).
 #[tauri::command]
 async fn metadata_apply(
@@ -3239,6 +3260,7 @@ pub fn run() {
             incomplete_list,
             batch_edit,
             metadata_lookup,
+            metadata_lookup_batch,
             media_rename,
             acoustic_available,
             metadata_recognize,

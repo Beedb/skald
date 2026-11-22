@@ -116,6 +116,23 @@ pub fn gravacoes(json: &Value) -> Vec<(String, f64)> {
     v
 }
 
+/// O AcoustID aceita até 3 consultas por segundo; várias músicas são reconhecidas ao mesmo
+/// tempo (a impressão digital é calculada em paralelo), então as consultas passam por aqui.
+fn espacar_acoustid() {
+    use std::sync::Mutex;
+    use std::time::{Duration, Instant};
+    static ULTIMA: Mutex<Option<Instant>> = Mutex::new(None);
+    let intervalo = Duration::from_millis(350);
+    let mut ultima = ULTIMA.lock().unwrap_or_else(|e| e.into_inner());
+    if let Some(u) = *ultima {
+        let passou = u.elapsed();
+        if passou < intervalo {
+            std::thread::sleep(intervalo - passou);
+        }
+    }
+    *ultima = Some(Instant::now());
+}
+
 /// Reconhece pelo som e devolve candidatos no mesmo formato da busca por texto.
 /// Só aceita resultado com pontuação ≥ 0,5 no AcoustID.
 pub fn reconhecer(path: &Path, duracao_ms: Option<i64>) -> Result<Vec<Candidato>, String> {
@@ -131,6 +148,7 @@ pub fn reconhecer(path: &Path, duracao_ms: Option<i64>) -> Result<Vec<Candidato>
     ];
     let mut sem_rede = 0;
     let mut resposta = loop {
+        espacar_acoustid();
         match enriquecer::agente().post(ACOUSTID).send_form(corpo) {
             Ok(r) => break r,
             Err(e) if enriquecer::transitorio(&e) && sem_rede < 4 => {
@@ -146,17 +164,25 @@ pub fn reconhecer(path: &Path, duracao_ms: Option<i64>) -> Result<Vec<Candidato>
         let msg = json["error"]["message"].as_str().unwrap_or("erro desconhecido");
         return Err(format!("O AcoustID recusou: {msg}"));
     }
-    // As 3 melhores gravações, pelo id no MusicBrainz (mesmo formato da busca por texto).
+    // As 3 melhores gravações, pelo id no MusicBrainz (mesmo formato da busca por texto), numa
+    // consulta só.
+    let melhores: Vec<(String, f64)> = gravacoes(&json).into_iter().filter(|(_, s)| *s >= 0.5).take(3).collect();
+    if melhores.is_empty() {
+        return Ok(Vec::new());
+    }
+    let consulta = format!("rid:({})", melhores.iter().map(|(id, _)| id.as_str()).collect::<Vec<_>>().join(" OR "));
+    let limite = melhores.len().to_string();
+    let json = enriquecer::consultar_mb(
+        "https://musicbrainz.org/ws/2/recording",
+        &[("query", &consulta), ("fmt", "json"), ("limit", &limite)],
+    )?;
     let mut lista = Vec::new();
-    for (id, score) in gravacoes(&json).into_iter().filter(|(_, s)| *s >= 0.5).take(3) {
-        let consulta = format!("rid:{id}");
-        let Ok(json) = enriquecer::consultar_mb(
-            "https://musicbrainz.org/ws/2/recording",
-            &[("query", &consulta), ("fmt", "json"), ("limit", "1")],
-        ) else {
+    for rec in json["recordings"].as_array().into_iter().flatten() {
+        let Some(score) = melhores.iter().find(|(id, _)| rec["id"].as_str() == Some(id)).map(|(_, s)| *s) else {
             continue;
         };
-        let mut c = enriquecer::candidatos(&json, duracao_ms);
+        let um = serde_json::json!({ "recordings": [rec] });
+        let mut c = enriquecer::candidatos(&um, duracao_ms);
         for x in &mut c {
             // A certeza vem do som: pontuação do AcoustID; abaixo de 0,8 a pessoa confere.
             x.pontuacao = x.pontuacao.min((score * 100.0).round() as i64).max(if score >= 0.8 { 90 } else { 0 });

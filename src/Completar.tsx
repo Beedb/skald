@@ -35,6 +35,8 @@ const NOMES: Record<Campo, string> = { title: "Título", artist: "Artista", albu
 /** Campos que podem faltar (o título nunca falta; ele só pode vir sujo do nome do arquivo). */
 const FALTAVEIS: Campo[] = ["artist", "album", "year", "genre"];
 const ALTURA = 64;
+/** Músicas por consulta ao MusicBrainz (enriquecer::LOTE). */
+const LOTE = 8;
 
 const normal = (t: string) =>
   t
@@ -148,52 +150,113 @@ function CompletarInfo({
     setSugestoes((m) => new Map(m).set(id, s));
   }
 
+  /** Melhor candidato pelo nome: o do lote ou, se o lote achou algo sem confiança (ou falhou),
+   *  a busca sozinha, que tenta as formas limpas do nome. Se o lote não achou nada, a música
+   *  não está no MusicBrainz por nome (o lote já tentou "Artista - Título" nos dois sentidos). */
+  async function porTexto(i: Incompleta, doLote: Candidato[] | null, semTexto: boolean) {
+    let melhor = escolher(doLote ?? [], i.duration_ms);
+    if ((!melhor || melhor.incerto) && !semTexto) {
+      const c = await invoke<Candidato[]>("metadata_lookup", { titulo: i.title, artista: i.artist, duracaoMs: i.duration_ms });
+      const sozinha = escolher(c, i.duration_ms);
+      if (sozinha && (!melhor || !sozinha.incerto)) melhor = sozinha;
+    }
+    return melhor;
+  }
+
+  /** Nome não bastou (ou só achou pelo título): tenta pelo som. */
+  async function porSom(i: Incompleta, melhor: Candidato | null) {
+    try {
+      const s = await invoke<Candidato[]>("metadata_recognize", { id: i.id });
+      const pelo = escolher(s, i.duration_ms);
+      if (pelo && (!melhor || !pelo.incerto)) return pelo;
+    } catch {
+      // Sem resultado pelo som: fica a busca por texto.
+    }
+    return melhor;
+  }
+
+  function sugerir(i: Incompleta, melhor: Candidato | null) {
+    const valores: Partial<Record<Campo, string | number>> = {};
+    for (const f of i.faltando) {
+      const v = melhor?.campos[f];
+      if (v !== null && v !== undefined && v !== "") valores[f] = v;
+    }
+    // Título vindo do nome do arquivo ("02 - Música"): sugere o título limpo.
+    if (melhor && tituloSujo(i.title, melhor.campos.title)) valores.title = melhor.campos.title as string;
+    const campos = Object.keys(valores) as Campo[];
+    // Achado só pelo título: a pessoa confere antes (nada marcado).
+    const marcados = new Set(melhor?.incerto ? [] : campos);
+    definir(i.id, campos.length ? { valores, marcados, incerto: !!melhor?.incerto } : "nada");
+  }
+
   async function buscar() {
     parar.current = false;
     const fila = lista.filter((i) => !sugestoes.has(i.id) && i.title);
+    const total = fila.length;
+    // Músicas que ficaram sem espaço num lote cheio voltam uma vez para o lote seguinte.
+    const devolvidas = new Set<number>();
+    let feitos = 0;
+    const contar = (avisar: (t: string) => void) => {
+      feitos++;
+      setProgresso({ feitos, total, acao: "Buscando" });
+      avisar(`Completando informações: ${feitos} de ${total}`);
+    };
     await emSegundoPlano("Completando informações…", async (avisar) => {
-      for (let n = 0; n < fila.length && !parar.current; n++) {
-        const i = fila[n];
-        setProgresso({ feitos: n, total: fila.length, acao: "Buscando" });
-        avisar(`Completando informações: ${n + 1} de ${fila.length}`);
+      while (fila.length > 0 && !parar.current) {
+        // Várias músicas por consulta: o MusicBrainz aceita uma consulta por segundo.
+        const lote = fila.splice(0, LOTE);
+        setProgresso({ feitos, total, acao: "Buscando" });
+        let r: { candidatos: Candidato[][]; cheio: boolean } | null = null;
         try {
-          // O Rust já espaça as consultas (uma por segundo) e tenta formas limpas do nome do arquivo.
-          const c = await invoke<Candidato[]>("metadata_lookup", {
-            titulo: i.title,
-            artista: i.artist,
-            duracaoMs: i.duration_ms,
+          r = await invoke("metadata_lookup_batch", {
+            itens: lote.map((i) => ({ titulo: i.title, artista: i.artist, duracao_ms: i.duration_ms })),
           });
-          let melhor = escolher(c, i.duration_ms);
-          // Nome não bastou (ou só achou pelo título): tenta pelo som.
-          if ((!melhor || melhor.incerto) && temSom && pelSom && !parar.current) {
-            setProgresso({ feitos: n, total: fila.length, acao: "Ouvindo" });
-            try {
-              const s = await invoke<Candidato[]>("metadata_recognize", { id: i.id });
-              const pelo = escolher(s, i.duration_ms);
-              if (pelo && (!melhor || !pelo.incerto)) melhor = pelo;
-            } catch {
-              // Sem resultado pelo som: fica a busca por texto.
-            }
-          }
-          const valores: Partial<Record<Campo, string | number>> = {};
-          for (const f of i.faltando) {
-            const v = melhor?.campos[f];
-            if (v !== null && v !== undefined && v !== "") valores[f] = v;
-          }
-          // Título vindo do nome do arquivo ("02 - Música"): sugere o título limpo.
-          if (melhor && tituloSujo(i.title, melhor.campos.title)) valores.title = melhor.campos.title as string;
-          const campos = Object.keys(valores) as Campo[];
-          // Achado só pelo título: a pessoa confere antes (nada marcado).
-          const marcados = new Set(melhor?.incerto ? [] : campos);
-          definir(i.id, campos.length ? { valores, marcados, incerto: !!melhor?.incerto } : "nada");
         } catch (e) {
-          definir(i.id, "erro");
-          // Sem internet: não adianta seguir tentando.
           if (String(e).includes("Sem conexão")) {
+            lote.forEach((i) => definir(i.id, "erro"));
             onErro(String(e));
             break;
           }
+          // Outro erro no lote: cada música é procurada sozinha.
         }
+        // 1º pelo nome; quem não for achado vai para o som.
+        const peloSom: { i: Incompleta; melhor: Candidato | null }[] = [];
+        for (let k = 0; k < lote.length && !parar.current; k++) {
+          const i = lote[k];
+          const c = r?.candidatos[k] ?? null;
+          if (r && c && c.length === 0 && r.cheio && !devolvidas.has(i.id)) {
+            devolvidas.add(i.id);
+            fila.unshift(i);
+            continue;
+          }
+          try {
+            const melhor = (await porTexto(i, c, !!r && !!c && c.length === 0)) ?? null;
+            if ((!melhor || melhor.incerto) && temSom && pelSom) {
+              peloSom.push({ i, melhor });
+              continue;
+            }
+            sugerir(i, melhor);
+          } catch (e) {
+            definir(i.id, "erro");
+            // Sem internet: não adianta seguir tentando.
+            if (String(e).includes("Sem conexão")) {
+              onErro(String(e));
+              parar.current = true;
+            }
+          }
+          contar(avisar);
+        }
+        // Pelo som, 3 ao mesmo tempo (a impressão digital é calculada em paralelo).
+        const proximo = { n: 0 };
+        const trabalhar = async () => {
+          while (proximo.n < peloSom.length && !parar.current) {
+            const { i, melhor } = peloSom[proximo.n++];
+            setProgresso({ feitos, total, acao: "Ouvindo" });
+            sugerir(i, await porSom(i, melhor));
+            contar(avisar);
+          }
+        };
+        await Promise.all([trabalhar(), trabalhar(), trabalhar()]);
       }
     });
     setProgresso(null);
@@ -249,7 +312,7 @@ function CompletarInfo({
     <>
       <p className="nota">
         {itens.length} {itens.length === 1 ? "música" : "músicas"} sem artista, álbum, ano ou gênero. A busca usa o
-        MusicBrainz (precisa de internet, uma música por segundo) e só sugere quando a semelhança é alta e a duração
+        MusicBrainz (precisa de internet; procura 8 músicas por vez) e só sugere quando a semelhança é alta e a duração
         bate. Nomes de arquivo como "02 - Artista - Música" são separados antes da busca. Só os campos vazios são
         preenchidos (e o título, quando vem do nome do arquivo), e só os que ficarem marcados.
       </p>
@@ -268,7 +331,7 @@ function CompletarInfo({
         {progresso ? (
           <>
             <span className="detalhe">
-              {progresso.acao} {progresso.feitos + 1} de {progresso.total}…
+              {progresso.acao} {Math.min(progresso.feitos + 1, progresso.total)} de {progresso.total}…
             </span>
             <button onClick={() => (parar.current = true)}>Parar</button>
           </>

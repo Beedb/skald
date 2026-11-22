@@ -298,6 +298,134 @@ pub fn buscar_flexivel(titulo: &str, artista: Option<&str>, duracao_ms: Option<i
     }
 }
 
+/// Quantas músicas vão juntas numa consulta da busca em lote.
+pub const LOTE: usize = 8;
+
+/// Semelhança de 0 a 100 entre dois textos (sem acento, maiúsculas nem pontuação): iguais =
+/// 100; um contido no outro = 90; senão, a fração de palavras em comum.
+fn semelhanca(a: &str, b: &str) -> i64 {
+    let limpar = |s: &str| -> String {
+        crate::search::normalizar(s)
+            .chars()
+            .map(|c| if c.is_alphanumeric() { c } else { ' ' })
+            .collect::<String>()
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ")
+    };
+    let (a, b) = (limpar(a), limpar(b));
+    if a.is_empty() || b.is_empty() {
+        return 0;
+    }
+    if a == b {
+        return 100;
+    }
+    if a.contains(&b) || b.contains(&a) {
+        return 90;
+    }
+    let pa: std::collections::HashSet<&str> = a.split(' ').collect();
+    let pb: std::collections::HashSet<&str> = b.split(' ').collect();
+    let comuns = pa.intersection(&pb).count();
+    (comuns * 100 / pa.union(&pb).count().max(1)) as i64
+}
+
+/// Nota de uma gravação para a música procurada: a menor entre a semelhança do título e a
+/// do artista (se a música tem artista; basta um dos artistas creditados bater).
+fn nota_lote(rec: &Value, titulo: &str, artista: Option<&str>) -> i64 {
+    let t = semelhanca(rec["title"].as_str().unwrap_or(""), titulo);
+    match artista.map(str::trim).filter(|a| !a.is_empty()) {
+        None => t,
+        Some(a) => {
+            let creditados: Vec<&str> = rec["artist-credit"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .filter_map(|p| p["name"].as_str().or_else(|| p["artist"]["name"].as_str()))
+                .collect();
+            let inteiro = credito(&rec["artist-credit"]).unwrap_or_default();
+            let ar = crate::artistas::separar(a)
+                .iter()
+                .flat_map(|n| creditados.iter().map(move |c| semelhanca(c, n)))
+                .chain(std::iter::once(semelhanca(&inteiro, a)))
+                .max()
+                .unwrap_or(0);
+            t.min(ar)
+        }
+    }
+}
+
+/// Busca em lote: até `LOTE` músicas (título, artista, duração) numa consulta só ao
+/// MusicBrainz, que aceita uma consulta por segundo. Cada gravação devolvida vai para a música
+/// que ela lembra (título e artista parecidos), com a nota calculada aqui. Uma música sem
+/// candidato confiável deve ser procurada sozinha depois (`buscar_flexivel`), que tenta as
+/// formas limpas do nome do arquivo.
+/// Resultado da busca em lote. `cheio`: o MusicBrainz devolveu o máximo de gravações, então
+/// uma música sem candidato pode só ter ficado sem espaço (músicas com muitas gravações
+/// ocupam a lista): vale tentar de novo noutro lote.
+#[derive(Serialize, Debug)]
+pub struct LoteBusca {
+    pub candidatos: Vec<Vec<Candidato>>,
+    pub cheio: bool,
+}
+
+/// Formas de ler uma música no lote: com artista ("Artista - Título" do nome do arquivo nos
+/// dois sentidos, quando falta o artista); sem nenhuma com artista, o título limpo sozinho.
+fn leituras(titulo: &str, artista: Option<&str>) -> Vec<(String, Option<String>)> {
+    let v = variantes(titulo, artista);
+    let com: Vec<_> = v.iter().filter(|(_, a)| a.is_some()).cloned().collect();
+    if !com.is_empty() {
+        return com;
+    }
+    v.into_iter().last().into_iter().collect()
+}
+
+pub fn buscar_lote(itens: &[(String, Option<String>, Option<i64>)]) -> Result<LoteBusca, String> {
+    let leituras_de: Vec<Vec<(String, Option<String>)>> = itens.iter().map(|(t, a, _)| leituras(t, a.as_deref())).collect();
+    let partes: Vec<String> = itens
+        .iter()
+        .zip(&leituras_de)
+        .flat_map(|((_, _, d), ls)| ls.iter().map(move |(t, a)| (t, a, d)))
+        .filter(|(t, ..)| !t.trim().is_empty())
+        .map(|(t, a, d)| {
+            let mut q = format!("recording:{}", termo(t.trim()));
+            if let Some(a) = a.as_deref().map(str::trim).filter(|a| !a.is_empty()) {
+                let nomes: Vec<String> = crate::artistas::separar(a).iter().map(|n| format!("artist:{}", termo(n))).collect();
+                if !nomes.is_empty() {
+                    q.push_str(&format!(" AND ({})", nomes.join(" OR ")));
+                }
+            }
+            // Só gravações com a duração do arquivo (±5 s): tira ao vivo, versões estendidas e
+            // a avalanche de gravações das músicas famosas, que ocupariam a lista do lote.
+            if let Some(d) = d.filter(|&d| d > 10_000) {
+                q.push_str(&format!(" AND dur:[{} TO {}]", d - 5000, d + 5000));
+            }
+            format!("({q})")
+        })
+        .collect();
+    if partes.is_empty() {
+        return Ok(LoteBusca { candidatos: itens.iter().map(|_| Vec::new()).collect(), cheio: false });
+    }
+    let consulta = partes.join(" OR ");
+    let json = consultar_mb(MUSICBRAINZ, &[("query", &consulta), ("fmt", "json"), ("limit", "100")])?;
+    let recs: Vec<&Value> = json["recordings"].as_array().into_iter().flatten().collect();
+    let cheio = recs.len() >= 100;
+    let candidatos = itens
+        .iter()
+        .zip(&leituras_de)
+        .map(|((_, _, d), ls)| {
+            let nota = |r: &Value| ls.iter().map(|(t, a)| nota_lote(r, t, a.as_deref())).max().unwrap_or(0);
+            let meus = recs.iter().copied().filter(|r| nota(r) >= 70);
+            let mut c = candidatos_com(meus, *d, nota);
+            // Lida só pelo título (sem artista nenhum): a pessoa confere antes.
+            if ls.iter().all(|(_, a)| a.is_none()) {
+                c.iter_mut().for_each(|x| x.incerto = true);
+            }
+            c
+        })
+        .collect();
+    Ok(LoteBusca { candidatos, cheio })
+}
+
 /// Procura gravações pelo título (e artista, se houver). `duracao_ms` ajuda a ordenar.
 pub fn buscar(titulo: &str, artista: Option<&str>, duracao_ms: Option<i64>) -> Result<Vec<Candidato>, String> {
     let titulo = titulo.trim();
@@ -331,12 +459,22 @@ fn credito(v: &Value) -> Option<String> {
 
 /// Transforma a resposta da busca em candidatos (até 3 lançamentos por gravação).
 pub fn candidatos(json: &Value, duracao_ms: Option<i64>) -> Vec<Candidato> {
+    candidatos_com(json["recordings"].as_array().into_iter().flatten(), duracao_ms, |r| r["score"].as_i64().unwrap_or(0))
+}
+
+/// Como `candidatos`, com a nota base dada por `nota` (a do MusicBrainz ou a semelhança
+/// calculada aqui, na busca em lote).
+fn candidatos_com<'a>(
+    recs: impl Iterator<Item = &'a Value>,
+    duracao_ms: Option<i64>,
+    nota: impl Fn(&Value) -> i64,
+) -> Vec<Candidato> {
     let mut lista = Vec::new();
-    for rec in json["recordings"].as_array().into_iter().flatten() {
+    for rec in recs {
         let titulo = rec["title"].as_str().map(String::from);
         let artista = credito(&rec["artist-credit"]);
         let duracao = rec["length"].as_i64();
-        let mut pontuacao = rec["score"].as_i64().unwrap_or(0);
+        let mut pontuacao = nota(rec);
         if let (Some(a), Some(b)) = (duracao, duracao_ms) {
             // Até 3 s de diferença não pesa; depois, perde pontos.
             let dif = (a - b).abs() / 1000;
@@ -715,6 +853,60 @@ pub fn lote_aplicar(conn_db: &std::sync::Mutex<Connection>, ids: &[i64], campos:
 #[cfg(test)]
 mod testes {
     use super::*;
+
+    #[test]
+    fn lote_reparte_por_semelhanca() {
+        assert_eq!(semelhanca("Água de Beber", "agua de beber"), 100);
+        assert_eq!(semelhanca("Bohemian Rhapsody (Remastered 2011)", "Bohemian Rhapsody"), 90);
+        assert!(semelhanca("Yesterday", "Let It Be") < 70);
+        let json: Value = serde_json::json!({"recordings": [
+            {"title": "Yesterday", "length": 125000, "artist-credit": [{"name": "The Beatles"}], "releases": []},
+            {"title": "Garota de Ipanema", "length": 300000, "artist-credit": [{"name": "Tom Jobim"}, {"joinphrase": " & "}, {"name": "Vinicius de Moraes"}], "releases": []},
+            {"title": "Yesterday", "length": 200000, "artist-credit": [{"name": "Outra Banda"}], "releases": []}
+        ]});
+        let recs: Vec<&Value> = json["recordings"].as_array().unwrap().iter().collect();
+        let nota = |i: usize, t: &str, a: Option<&str>| nota_lote(recs[i], t, a);
+        assert_eq!(nota(0, "Yesterday", Some("Beatles")), 90);
+        assert!(nota(2, "Yesterday", Some("Beatles")) < 70);
+        assert_eq!(nota(1, "Garota de Ipanema", Some("Vinicius de Moraes")), 100);
+        assert_eq!(nota(0, "Yesterday", None), 100);
+    }
+
+    /// Rede de verdade: `cargo test ensaio_lote -- --ignored --nocapture`.
+    #[test]
+    #[ignore]
+    fn ensaio_lote() {
+        let itens: Vec<(String, Option<String>, Option<i64>)> = [
+            ("Bohemian Rhapsody", "Queen", 354_000), ("Garota de Ipanema", "Tom Jobim", 324_000), ("Yesterday", "The Beatles", 125_000),
+            ("Aquarela", "Toquinho", 253_000), ("Smells Like Teen Spirit", "Nirvana", 301_000), ("Asa Branca", "Luiz Gonzaga", 166_000),
+            ("Wonderwall", "Oasis", 258_000), ("Construção", "Chico Buarque", 384_000),
+        ].iter().map(|(t, a, d)| (t.to_string(), Some(a.to_string()), Some(*d))).collect();
+        // Sem artista nas tags, como vem de sites de download: "Artista - Título" e o inverso.
+        let soltos: Vec<(String, Option<String>, Option<i64>)> = [
+            ("01 - Queen - Bohemian Rhapsody (Official Video)", 354_000), ("Wonderwall - Oasis", 258_000),
+            ("anirap - Até Demônios Choram", 0), ("7 Minutoz - Rap do Zetsu", 211_000),
+        ].iter().map(|(t, d)| (t.to_string(), None, Some(*d).filter(|&d| d > 0))).collect();
+        let l = buscar_lote(&soltos).unwrap();
+        for ((t, ..), c) in soltos.iter().zip(&l.candidatos) {
+            println!("solto: {t} -> {} cand.; {:?}", c.len(), c.first().map(|m| (m.campos.title.clone(), m.campos.artist.clone(), m.pontuacao, m.incerto)));
+        }
+        let t = std::time::Instant::now();
+        let l = buscar_lote(&itens).unwrap();
+        println!("{:?} cheio={}", t.elapsed(), l.cheio);
+        let faltam: Vec<_> = itens.iter().zip(&l.candidatos).filter(|(_, c)| c.is_empty()).map(|(i, _)| i.clone()).collect();
+        let l2 = buscar_lote(&faltam).unwrap();
+        println!("2ª rodada ({} músicas): cheio={}", faltam.len(), l2.cheio);
+        for ((t, ..), c) in faltam.iter().zip(&l2.candidatos) {
+            println!("  {t} -> {} cand.; {:?}", c.len(), c.first().map(|m| (m.campos.album.clone(), m.pontuacao)));
+        }
+        let r = l.candidatos;
+
+        for ((t, a, _), c) in itens.iter().zip(&r) {
+            let m = c.first();
+            println!("{t} / {a:?} -> {} cand.; {:?} {:?} {:?} ({})", c.len(), m.and_then(|m| m.campos.album.clone()),
+                m.and_then(|m| m.campos.year), m.and_then(|m| m.campos.artist.clone()), m.map_or(0, |m| m.pontuacao));
+        }
+    }
 
     #[test]
     fn lista_incompletas() {
