@@ -20,6 +20,10 @@ Deixa as músicas com volume parecido, sem você ficar mexendo no botão:
 
 O Skáld usa as tags de ReplayGain dos arquivos. Para músicas sem essas tags, ele **analisa o volume em segundo plano** (cerca de 1 s por música) e guarda o resultado só no banco; os arquivos não são alterados. O progresso aparece logo abaixo da opção.
 
+## Saída de áudio
+
+No computador, em **Configurações → Reprodução → Saída de áudio**, escolha por onde o som sai (caixas, fone, HDMI, Bluetooth…). Em **Padrão do sistema** o Skáld segue a saída que estiver escolhida no sistema. A troca vale na hora, com um corte curtinho no som. Se a saída escolhida estiver desligada ao abrir o Skáld, ele usa a padrão até ela voltar (escolha de novo na lista). No Android quem decide é o próprio sistema.
+
 ## Equalizador
 
 Presets prontos: **Desligado**, **Grave**, **Agudo**, **Bateria**, **Voz** e **Instrumental**. A mudança vale na hora.

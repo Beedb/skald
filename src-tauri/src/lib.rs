@@ -42,6 +42,7 @@ mod temporizador;
 mod stats;
 mod watch;
 mod rganalise;
+mod saida;
 mod search;
 
 use std::sync::Mutex;
@@ -2690,6 +2691,44 @@ fn set_normalization(db: State<db::Db>, player: State<player::Player>, modo: gan
     Ok(())
 }
 
+/// Saídas de áudio disponíveis agora e a escolhida (`None` = padrão do sistema).
+#[derive(Serialize)]
+struct Saidas {
+    lista: Vec<saida::Saida>,
+    escolhida: Option<String>,
+}
+
+#[tauri::command]
+async fn audio_outputs(app: AppHandle) -> Result<Saidas, String> {
+    let escolhida = {
+        let db = app.state::<db::Db>();
+        let conn = db.0.lock().map_err(erro_db)?;
+        settings::saida(&conn).map_err(|e| e.to_string())?
+    };
+    let lista = tauri::async_runtime::spawn_blocking(saida::listar).await.map_err(|e| e.to_string())?;
+    Ok(Saidas { lista, escolhida })
+}
+
+/// Escolhe a saída de áudio (`None` = padrão do sistema); vale na hora.
+#[tauri::command]
+async fn set_audio_output(app: AppHandle, chave: Option<String>) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let elementos = match &chave {
+            Some(c) => Some(saida::criar(c).ok_or("Essa saída de áudio não está mais disponível.")?),
+            None => None,
+        };
+        {
+            let db = app.state::<db::Db>();
+            let conn = db.0.lock().map_err(erro_db)?;
+            settings::definir_saida(&conn, chave.as_deref()).map_err(|e| e.to_string())?;
+        }
+        app.state::<player::Player>().definir_saida(elementos);
+        Ok(())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
 /// Escolhe o preset; com `bandas`, grava também o ajuste do personalizado.
 #[tauri::command]
 fn set_equalizer(
@@ -2803,6 +2842,15 @@ pub fn run() {
                 app.state::<player::Player>().definir_crossfade(cfg.crossfade_ms);
                 app.state::<player::Player>().definir_normalizacao(cfg.normalizacao);
                 app.state::<player::Player>().definir_equalizador(cfg.equalizador.efetivas(&cfg.equalizador_bandas));
+                // Saída escolhida: procurada numa thread; se sumiu, fica a padrão do sistema.
+                if let Some(chave) = settings::saida(&conn)? {
+                    let h = app.handle().clone();
+                    std::thread::spawn(move || {
+                        if let Some(e) = saida::criar(&chave) {
+                            h.state::<player::Player>().definir_saida(Some(e));
+                        }
+                    });
+                }
                 // Aleatório e repetir voltam como estavam.
                 let (aleatorio, repetir) = settings::modos_fila(&conn)?;
                 let fila = app.state::<FilaState>();
@@ -2999,7 +3047,9 @@ pub fn run() {
             set_autostart,
             set_crossfade,
             set_normalization,
-            set_equalizer
+            set_equalizer,
+            audio_outputs,
+            set_audio_output
         ])
         .build(tauri::generate_context!())
         .expect("falha ao iniciar o Skáld")

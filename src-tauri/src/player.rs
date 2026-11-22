@@ -363,6 +363,32 @@ impl Player {
         }
     }
 
+    /// Troca a saída de áudio dos dois decks (`None` = padrão do sistema). O `playbin` só
+    /// aceita outra saída parado, então o deck que estava tocando ou pausado volta ao mesmo
+    /// ponto e ao mesmo estado (um corte curto no som).
+    pub fn definir_saida(&self, saidas: Option<[gst::Element; 2]>) {
+        let taxas = self.int.lock().unwrap().taxa;
+        for (i, deck) in self.decks.iter().enumerate() {
+            let (_, atual, _) = deck.state(gst::ClockTime::ZERO);
+            let carregado = atual >= gst::State::Paused;
+            let posicao = if carregado { deck.query_position::<gst::ClockTime>() } else { None };
+            if carregado {
+                let _ = deck.set_state(gst::State::Ready);
+            }
+            deck.set_property("audio-sink", saidas.as_ref().map(|s| &s[i]));
+            if carregado {
+                let _ = deck.set_state(gst::State::Paused);
+                let _ = deck.state(gst::ClockTime::from_seconds(5));
+                if let Some(p) = posicao {
+                    let _ = buscar_com_taxa(deck, p.mseconds(), taxas[i]);
+                }
+                if atual == gst::State::Playing {
+                    let _ = deck.set_state(gst::State::Playing);
+                }
+            }
+        }
+    }
+
     /// Estado atual (para a interface ao abrir, antes do primeiro aviso).
     pub fn estado(&self) -> EstadoPlayer {
         let (ativo, atual) = {
@@ -846,6 +872,33 @@ mod testes {
         assert!(posicoes.first().is_some_and(|&(_, p)| (900..1600).contains(&p)), "não começou em 1 s: {posicoes:?}");
         let t = chegou.unwrap_or_else(|| panic!("não chegou ao fim: {posicoes:?}"));
         assert!(t > Duration::from_millis(900) && t < Duration::from_millis(2200), "chegou ao fim em {t:?}; posições {posicoes:?}");
+        drop(p);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Trocar a saída no meio da música: segue tocando do mesmo ponto, sem aviso de fim.
+    #[test]
+    fn troca_saida_tocando() {
+        let dir = crate::teste_util::pasta("skald-teste-saida");
+        let a = dir.join("música.wav");
+        gerar_wav(&a, 400);
+        let (tx, rx) = mpsc::channel();
+        let p = Player::new(move |e| { let _ = tx.send(e); }, || None).unwrap();
+        silenciar(&p);
+        p.tocar_em(1, &a.to_string_lossy(), Ganho::default(), 2000).unwrap();
+        std::thread::sleep(Duration::from_millis(500));
+        let antes = p.posicao_ms();
+        let mudos = [0, 1].map(|_| gst::ElementFactory::make("fakesink").property("sync", true).build().unwrap());
+        p.definir_saida(Some(mudos.clone()));
+        let sink: gst::Element = p.decks[p.ativo()].property("audio-sink");
+        assert_eq!(sink, mudos[p.ativo()]);
+        std::thread::sleep(Duration::from_millis(400));
+        let depois = p.posicao_ms();
+        assert!(depois >= antes && depois < antes + 1500, "antes {antes} ms, depois {depois} ms");
+        assert_eq!(p.estado().estado, Estado::Tocando);
+        while let Ok(e) = rx.try_recv() {
+            assert!(!e.fim && e.erro.is_none(), "{e:?}");
+        }
         drop(p);
         let _ = std::fs::remove_dir_all(&dir);
     }

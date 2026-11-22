@@ -36,6 +36,59 @@ const PRESETS: [Preset, string][] = [
   ["personalizado", "Personalizado"],
 ];
 
+type Saida = { chave: string; nome: string };
+
+/** Saída de áudio (só no computador; no Android quem escolhe é o sistema). */
+function SeletorSaida({ onErro }: { onErro: (m: string) => void }) {
+  const [lista, setLista] = useState<Saida[] | null>(null);
+  const [escolhida, setEscolhida] = useState<string | null>(null);
+  const carregar = () =>
+    invoke<{ lista: Saida[]; escolhida: string | null }>("audio_outputs")
+      .then((r) => {
+        setLista(r.lista);
+        setEscolhida(r.escolhida);
+      })
+      .catch((e) => onErro(String(e)));
+  useEffect(() => {
+    carregar();
+  }, []);
+  async function escolher(chave: string | null) {
+    const anterior = escolhida;
+    setEscolhida(chave);
+    try {
+      await invoke("set_audio_output", { chave });
+    } catch (e) {
+      setEscolhida(anterior);
+      onErro(String(e));
+      carregar();
+    }
+  }
+  // A escolhida pode estar desligada agora (fone Bluetooth): aparece mesmo assim.
+  const sumiu = escolhida !== null && lista !== null && !lista.some((s) => s.chave === escolhida);
+  return (
+    <Linha
+      titulo="Saída de áudio"
+      nota="Onde o som sai. Na padrão do sistema, o Skáld segue o que você escolher no sistema (ao ligar um fone, por exemplo). Vale na hora."
+    >
+      <select
+        value={escolhida ?? ""}
+        aria-label="Saída de áudio"
+        disabled={lista === null}
+        onFocus={carregar}
+        onChange={(e) => escolher(e.target.value || null)}
+      >
+        <option value="">Padrão do sistema</option>
+        {sumiu && <option value={escolhida}>Escolhida antes (desconectada)</option>}
+        {(lista ?? []).map((s) => (
+          <option key={s.chave} value={s.chave}>
+            {s.nome}
+          </option>
+        ))}
+      </select>
+    </Linha>
+  );
+}
+
 /** Frequências do equalizer-10bands do GStreamer. */
 const FREQUENCIAS = ["29 Hz", "59 Hz", "119 Hz", "237 Hz", "474 Hz", "947 Hz", "1,9 kHz", "3,8 kHz", "7,5 kHz", "15 kHz"];
 
@@ -756,6 +809,7 @@ export default function Configuracoes({ onErro }: { onErro: (m: string) => void 
           </select>
         </Linha>
         {equalizador === "personalizado" && <EqualizadorManual bandas={bandas} onMudar={gravarBandas} />}
+        {!noAndroid && <SeletorSaida onErro={onErro} />}
       </Cartao>
 
       <Cartao icone={Library} titulo="Biblioteca">

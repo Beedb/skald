@@ -21,6 +21,7 @@ const VERIFICAR_VERSAO: &str = "verificar_versao";
 const SYNC_ENVIAR: &str = "sync_enviar";
 const SYNC_PASTA: &str = "sync_pasta";
 const PODCAST_VELOCIDADE: &str = "podcast_velocidade";
+const SAIDA: &str = "saida_audio";
 /// Tema padrão do Skáld (docs/temas.css).
 const TEMA_PADRAO: &str = "carmesim";
 /// Crossfade padrão: ligado, 5 s (desligado entre faixas do mesmo álbum).
@@ -143,6 +144,15 @@ pub fn definir_repetir(conn: &Connection, modo: crate::queue::Repetir) -> rusqli
 pub enum TemporizadorSalvo {
     FimDaFaixa,
     Ate(i64),
+}
+
+/// Saída de áudio escolhida (`saida::Saida::chave`); `None` = padrão do sistema.
+pub fn saida(conn: &Connection) -> rusqlite::Result<Option<String>> {
+    Ok(ler(conn, SAIDA)?.filter(|v| !v.is_empty()))
+}
+
+pub fn definir_saida(conn: &Connection, chave: Option<&str>) -> rusqlite::Result<()> {
+    gravar(conn, SAIDA, chave.unwrap_or(""))
 }
 
 /// Fila, posição e origem da última reprodução (JSON), para retomar ao reabrir.
