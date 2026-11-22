@@ -111,7 +111,8 @@ pub fn exportar(conn: &Connection) -> Result<Dados, String> {
     let mut playlists = Vec::new();
     {
         let mut st = conn
-            .prepare("SELECT id, uuid, name, kind, updated_at, played_at FROM playlist ORDER BY id")
+            // Inteligentes ficam fora: as regras dependem do histórico e da biblioteca de cada aparelho.
+            .prepare("SELECT id, uuid, name, kind, updated_at, played_at FROM playlist WHERE regras IS NULL ORDER BY id")
             .map_err(sql)?;
         let mut itens = conn
             .prepare(

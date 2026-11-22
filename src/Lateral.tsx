@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { invoke } from "@tauri-apps/api/core";
 import { ask, open } from "@tauri-apps/plugin-dialog";
 import { listen } from "@tauri-apps/api/event";
@@ -27,11 +28,13 @@ import {
   Plus,
   Podcast,
   Settings,
+  Sparkles,
   Tags,
 } from "lucide-react";
 import type { ChaveAlbum } from "./Colecao";
 import { ativo, Capa, type Reproducao } from "./PlayerBar";
 import { noAndroid } from "./android";
+import EditorInteligente from "./EditorInteligente";
 
 export type PlaylistResumo = {
   id: number;
@@ -45,6 +48,8 @@ export type PlaylistResumo = {
   tocada_em: number | null;
   /** Pasta da lateral (nenhuma = solta). */
   pasta_id: number | null;
+  /** Músicas escolhidas por regras. */
+  inteligente: boolean;
 };
 
 type PastaPlaylists = { id: number; nome: string };
@@ -141,6 +146,7 @@ export default function Lateral({ vista, playlists, onVista, onErro, onAviso, r,
   const [fechadas, setFechadas] = useState<number[]>(() => lerLocal(CHAVE_PASTAS_FECHADAS, [] as number[]));
   const [menuPasta, setMenuPasta] = useState<{ id: number; x: number; y: number } | null>(null);
   const [editPasta, setEditPasta] = useState<{ id: number | null; nome: string } | null>(null);
+  const [criandoInteligente, setCriandoInteligente] = useState(false);
   const pastaFinalizada = useRef(false);
 
   useEffect(() => {
@@ -311,7 +317,7 @@ export default function Lateral({ vista, playlists, onVista, onErro, onAviso, r,
     <li key={p.id}>
       {item(
         naPlaylist(p.id),
-        <span className="inicial">{(p.name.trim()[0] ?? "♪").toUpperCase()}</span>,
+        p.inteligente ? <Sparkles size={16} /> : <span className="inicial">{(p.name.trim()[0] ?? "♪").toUpperCase()}</span>,
         p.name,
         () => onVista({ tipo: "playlist", id: p.id }),
         { qtd: p.total, dica: `${p.name} · ${p.total} ${p.total === 1 ? "música" : "músicas"}` },
@@ -454,7 +460,24 @@ export default function Lateral({ vista, playlists, onVista, onErro, onAviso, r,
             {editPasta?.id === null
               ? entradaPasta()
               : !criando && item(false, <FolderPlus size={16} />, "Nova pasta", novaPasta, { classe: "criar" })}
+            {!criando &&
+              !editPasta &&
+              item(false, <Sparkles size={16} />, "Nova playlist inteligente", () => setCriandoInteligente(true), { classe: "criar" })}
             {!criando && !editPasta && item(false, <FileInput size={16} />, "Importar M3U…", importarM3u, { classe: "criar" })}
+            {/* No body: no celular a lateral é uma gaveta com transform, que prenderia o modal. */}
+            {criandoInteligente &&
+              createPortal(
+                <EditorInteligente
+                  id={null}
+                  onFechar={() => setCriandoInteligente(false)}
+                  onSalvo={(id) => {
+                    setCriandoInteligente(false);
+                    onVista({ tipo: "playlist", id });
+                  }}
+                  onErro={onErro}
+                />,
+                document.body,
+              )}
             {menuPasta && (
               <ul className="menu-contexto" role="menu" style={{ left: menuPasta.x, top: menuPasta.y }}>
                 <li

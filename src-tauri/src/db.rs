@@ -173,6 +173,8 @@ const MIGRATIONS: &[&str] = &[
         nome TEXT NOT NULL
     );
     ALTER TABLE playlist ADD COLUMN pasta_id INTEGER REFERENCES playlist_pasta(id) ON DELETE SET NULL;",
+    // v19: playlists inteligentes (regras em JSON; nulo = playlist comum).
+    "ALTER TABLE playlist ADD COLUMN regras TEXT;",
 ];
 
 pub fn open(path: &Path) -> rusqlite::Result<Connection> {
@@ -184,6 +186,13 @@ pub fn open(path: &Path) -> rusqlite::Result<Connection> {
         crate::search::normalizar(a).cmp(&crate::search::normalizar(b))
     })?;
     crate::artistas::registrar(&conn)?;
+    // Texto sem acentos e em minúsculas (regras das playlists inteligentes).
+    conn.create_scalar_function(
+        "NORMALIZAR",
+        1,
+        rusqlite::functions::FunctionFlags::SQLITE_UTF8 | rusqlite::functions::FunctionFlags::SQLITE_DETERMINISTIC,
+        |ctx| Ok(ctx.get::<Option<String>>(0)?.map(|t| crate::search::normalizar(&t))),
+    )?;
     migrate(&mut conn)?;
     crate::search::preencher_pendentes(&mut conn)?;
     Ok(conn)

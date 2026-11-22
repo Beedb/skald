@@ -19,6 +19,8 @@ pub struct Resumo {
     pub tocada_em: Option<i64>,
     /// Pasta da lateral em que está (nenhuma = solta).
     pub pasta_id: Option<i64>,
+    /// Escolhe as músicas por regras (itens não se editam à mão).
+    pub inteligente: bool,
 }
 
 /// Pasta de playlists (só organiza a lateral; não toca nem tem músicas próprias).
@@ -76,11 +78,12 @@ pub fn marcar_tocada(conn: &Connection, id: i64) -> Result<(), String> {
 }
 
 pub fn listar(conn: &Connection) -> Result<Vec<Resumo>, String> {
+    crate::inteligentes::atualizar_todas(conn)?;
     let mut stmt = conn
         .prepare_cached(
             "SELECT p.id, p.name, COUNT(pi.id), COALESCE(SUM(m.duration_ms), 0),
                     (SELECT media_id FROM playlist_item WHERE playlist_id = p.id ORDER BY position, id LIMIT 1),
-                    p.kind, p.cover_path IS NOT NULL, p.played_at, p.pasta_id
+                    p.kind, p.cover_path IS NOT NULL, p.played_at, p.pasta_id, p.regras IS NOT NULL
              FROM playlist p
              LEFT JOIN playlist_item pi ON pi.playlist_id = p.id
              LEFT JOIN media m ON m.id = pi.media_id
@@ -100,6 +103,7 @@ pub fn listar(conn: &Connection) -> Result<Vec<Resumo>, String> {
                 capa_escolhida: r.get(6)?,
                 tocada_em: r.get(7)?,
                 pasta_id: r.get(8)?,
+                inteligente: r.get(9)?,
             })
         })
         .map_err(sql)?;
@@ -154,8 +158,30 @@ pub fn excluir(conn: &Connection, id: i64) -> Result<(), String> {
     Ok(())
 }
 
+/// Itens de playlist inteligente vêm das regras: não se adicionam, tiram nem movem à mão.
+fn exigir_manual(conn: &Connection, id: i64) -> Result<(), String> {
+    let inteligente: bool = conn
+        .query_row("SELECT regras IS NOT NULL FROM playlist WHERE id = ?1", [id], |r| r.get(0))
+        .optional()
+        .map_err(sql)?
+        .unwrap_or(false);
+    if inteligente {
+        return Err("As músicas desta playlist vêm das regras. Edite as regras para mudar.".into());
+    }
+    Ok(())
+}
+
+fn exigir_manual_item(conn: &Connection, item_id: i64) -> Result<(), String> {
+    let id: Option<i64> = conn
+        .query_row("SELECT playlist_id FROM playlist_item WHERE id = ?1", [item_id], |r| r.get(0))
+        .optional()
+        .map_err(sql)?;
+    id.map_or(Ok(()), |id| exigir_manual(conn, id))
+}
+
 /// Acrescenta músicas ao fim da ordem personalizada.
 pub fn adicionar(conn: &mut Connection, id: i64, media_ids: &[i64]) -> Result<(), String> {
+    exigir_manual(conn, id)?;
     let tx = conn.transaction().map_err(sql)?;
     let existe: Option<i64> = tx
         .query_row("SELECT id FROM playlist WHERE id = ?1", [id], |r| r.get(0))
@@ -181,6 +207,7 @@ pub fn adicionar(conn: &mut Connection, id: i64, media_ids: &[i64]) -> Result<()
 }
 
 pub fn itens(conn: &Connection, id: i64, ordem: Ordem) -> Result<Vec<Item>, String> {
+    crate::inteligentes::atualizar(conn, id)?;
     let mut stmt = conn
         .prepare_cached(&format!(
             "SELECT m.id, m.title, m.artist, m.album, m.duration_ms, m.missing, pi.id
@@ -197,6 +224,7 @@ pub fn itens(conn: &Connection, id: i64, ordem: Ordem) -> Result<Vec<Item>, Stri
 
 /// Remove a música desta playlist apenas (não da biblioteca nem de outras playlists).
 pub fn remover_item(conn: &Connection, item_id: i64) -> Result<(), String> {
+    exigir_manual_item(conn, item_id)?;
     conn.execute(
         "UPDATE playlist SET updated_at = unixepoch()
          WHERE id = (SELECT playlist_id FROM playlist_item WHERE id = ?1)",
@@ -209,6 +237,7 @@ pub fn remover_item(conn: &Connection, item_id: i64) -> Result<(), String> {
 
 /// Move um item para `nova_posicao` (0 = topo) na ordem personalizada e renumera a playlist.
 pub fn mover_item(conn: &mut Connection, item_id: i64, nova_posicao: usize) -> Result<(), String> {
+    exigir_manual_item(conn, item_id)?;
     let tx = conn.transaction().map_err(sql)?;
     let playlist: i64 = tx
         .query_row("SELECT playlist_id FROM playlist_item WHERE id = ?1", [item_id], |r| r.get(0))

@@ -18,6 +18,7 @@ mod eq;
 mod ganho;
 mod history;
 mod import;
+mod inteligentes;
 mod letras;
 mod library;
 mod miniaturas;
@@ -1207,6 +1208,25 @@ fn playlist_folder_delete(app: AppHandle, id: i64) -> Result<(), String> {
 #[tauri::command]
 fn playlist_set_folder(app: AppHandle, id: i64, pasta: Option<i64>) -> Result<(), String> {
     alterar_playlists(&app, |conn| playlists::mover_para_pasta(conn, id, pasta))
+}
+
+/// Cria (`id` nulo) ou altera uma playlist inteligente; devolve o id.
+#[tauri::command]
+fn smart_playlist_save(app: AppHandle, id: Option<i64>, nome: String, regras: inteligentes::Regras) -> Result<i64, String> {
+    alterar_playlists(&app, |conn| inteligentes::salvar(conn, id, &nome, &regras))
+}
+
+#[tauri::command]
+fn smart_playlist_rules(db: State<db::Db>, id: i64) -> Result<Option<inteligentes::Regras>, String> {
+    let conn = db.0.lock().map_err(erro_db)?;
+    inteligentes::regras(&conn, id)
+}
+
+/// Quantas músicas as regras escolhem agora (prévia no editor).
+#[tauri::command]
+fn smart_playlist_preview(db: State<db::Db>, regras: inteligentes::Regras) -> Result<usize, String> {
+    let conn = db.0.lock().map_err(erro_db)?;
+    inteligentes::escolher(&conn, &regras, 0).map(|v| v.len())
 }
 
 /// Resultado de importar um M3U: a playlist criada e as músicas que não estão na biblioteca.
@@ -2995,6 +3015,9 @@ pub fn run() {
             playlist_folder_rename,
             playlist_folder_delete,
             playlist_set_folder,
+            smart_playlist_save,
+            smart_playlist_rules,
+            smart_playlist_preview,
             history_list,
             history_count,
             stats_summary,

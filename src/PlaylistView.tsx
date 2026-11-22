@@ -8,7 +8,8 @@ import { Capa } from "./PlayerBar";
 import type { PlaylistResumo } from "./Lateral";
 import { useMenuMusica } from "./MenuMusica";
 import AdicionarMusicas from "./AdicionarMusicas";
-import { EllipsisVertical, Play, Plus } from "lucide-react";
+import EditorInteligente from "./EditorInteligente";
+import { EllipsisVertical, Play, Plus, Sparkles } from "lucide-react";
 
 type Item = MediaRow & { item_id: number };
 type Ordem = "personalizada" | "titulo" | "artista";
@@ -42,6 +43,8 @@ export default function PlaylistView({ playlist, versao, tocandoId, onExcluida, 
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
   const [pastas, setPastas] = useState<{ id: number; nome: string }[]>([]);
   const fixa = playlist.kind === "curtidas";
+  const inteligente = playlist.inteligente;
+  const [editandoRegras, setEditandoRegras] = useState(false);
   const finalizado = useRef(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -206,9 +209,15 @@ export default function PlaylistView({ playlist, versao, tocandoId, onExcluida, 
             <button className="primario" onClick={() => tocar(0)} disabled={itens.length === 0}>
               <Play size={15} aria-hidden="true" /> Tocar
             </button>
-            <button onClick={() => setAdicionando(true)}>
-              <Plus size={15} aria-hidden="true" /> Adicionar músicas
-            </button>
+            {inteligente ? (
+              <button onClick={() => setEditandoRegras(true)} title="As músicas desta playlist vêm de regras">
+                <Sparkles size={15} aria-hidden="true" /> Editar regras
+              </button>
+            ) : (
+              <button onClick={() => setAdicionando(true)}>
+                <Plus size={15} aria-hidden="true" /> Adicionar músicas
+              </button>
+            )}
             <button
               className="pl-mais"
               onClick={abrirMenuPlaylist}
@@ -306,6 +315,15 @@ export default function PlaylistView({ playlist, versao, tocandoId, onExcluida, 
           )}
         </ul>
       )}
+      {editandoRegras && (
+        <EditorInteligente
+          id={playlist.id}
+          nomeInicial={playlist.name}
+          onFechar={() => setEditandoRegras(false)}
+          onSalvo={() => setEditandoRegras(false)}
+          onErro={onErro}
+        />
+      )}
       {adicionando && (
         <AdicionarMusicas
           playlistId={playlist.id}
@@ -320,7 +338,9 @@ export default function PlaylistView({ playlist, versao, tocandoId, onExcluida, 
         <p className="vazio">
           {fixa
             ? "Nenhuma música curtida ainda. Clique no ♡ de uma música para curtir."
-            : "Playlist vazia. Use “Adicionar músicas” ou, na biblioteca, clique com o botão direito numa música."}
+            : inteligente
+              ? "Nenhuma música atende às regras agora. Use “Editar regras” para mudar."
+              : "Playlist vazia. Use “Adicionar músicas” ou, na biblioteca, clique com o botão direito numa música."}
         </p>
       ) : (
         <>
@@ -356,7 +376,7 @@ export default function PlaylistView({ playlist, versao, tocandoId, onExcluida, 
                       onClick={(e) => e.stopPropagation()}
                       onDoubleClick={(e) => e.stopPropagation()}
                     >
-                      {personalizada && (
+                      {personalizada && !inteligente && (
                         <>
                           <button
                             disabled={v.index === 0}
@@ -376,13 +396,15 @@ export default function PlaylistView({ playlist, versao, tocandoId, onExcluida, 
                           </button>
                         </>
                       )}
-                      <button
-                        onClick={() => acao("playlist_remove_item", { itemId: m.item_id })}
-                        aria-label="Remover da playlist"
-                        title="Remover da playlist (a música continua na biblioteca)"
-                      >
-                        ×
-                      </button>
+                      {!inteligente && (
+                        <button
+                          onClick={() => acao("playlist_remove_item", { itemId: m.item_id })}
+                          aria-label="Remover da playlist"
+                          title="Remover da playlist (a música continua na biblioteca)"
+                        >
+                          ×
+                        </button>
+                      )}
                     </span>
                   </div>
                 );

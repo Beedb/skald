@@ -64,6 +64,7 @@ impl Preset {
     }
 
     /// Fator de volume que compensa o maior reforço do preset fixo.
+    #[cfg(test)]
     pub fn pre_atenuacao(self) -> f64 {
         pre_atenuacao_de(&self.bandas())
     }

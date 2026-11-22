@@ -3353,6 +3353,73 @@ input[type="range"].trilha:disabled {
   background: none;
 }
 
+.editor-inteligente {
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+}
+
+.ei-nome {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  font-weight: 600;
+}
+
+.ei-nome input {
+  font-weight: normal;
+}
+
+.ei-combinar {
+  margin: 0;
+}
+
+.ei-regras {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ei-regras li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.ei-texto {
+  flex: 1;
+  min-width: 8rem;
+}
+
+.ei-numero {
+  width: 5.5rem;
+}
+
+.ei-mais {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.ei-opcoes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem 1.4rem;
+}
+
+.editor-inteligente footer {
+  flex-wrap: wrap;
+}
+
+.ei-previa {
+  margin-right: auto;
+}
+
 .modal.adicionar-musicas {
   display: flex;
   flex-direction: column;
