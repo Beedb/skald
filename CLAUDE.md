@@ -265,9 +265,9 @@ Etapas:
 | 65 | [x] | [x] | [ ] |
 | 71 | [x] | [x] | [ ] |
 
-## Fase 12 (itens antes fora de escopo) — código feito em 2026-11-22, falta testar no app
+## Fase 12 (itens antes fora de escopo) — testada no Linux em 2026-11-22 (v0.4.0)
 
-Um commit por item; testes do Rust cobrem a lógica (128 passando), telas só com `tsc`/`vite build`.
+Um commit por item; 129 testes do Rust. Teste no Linux (2026-11-22) com o app aberto: comandos chamados pela página via inspetor do WebKit (`WEBKIT_INSPECTOR_HTTP_SERVER=127.0.0.1:9333`, WebSocket `socket/1/1/WebPage`, `Target.sendMessageToTarget` + `Runtime.evaluate` e `Runtime.awaitPromise`; o vite precisa estar rodando, senão "Origin header is not a valid URL") e cliques no DOM. Achados e corrigidos: tocar o livro desfazia o "terminado"; trocar a saída derrubava o app (SIGSEGV em `gst_device_provider_device_remove`: o `pipewiresink` criado pelo dispositivo usa o provedor do monitor, então `saida.rs` mantém um `DeviceMonitor` único sempre ligado). MP3 de teste do `lamemp3enc` sem cabeçalho Xing: o `lofty` erra a duração e a busca é imprecisa (não é bug do Skáld).
 
 - **Importar M3U**: `playlists::texto_m3u` (UTF-8/BOM ou Latin-1), `ler_m3u` (`#EXTINF`, relativos à pasta do arquivo, `file://`, `\` → `/`), `casar_m3u` (caminho → fim do caminho pasta+arquivo → só o arquivo, se único → "Artista - Título" do `#EXTINF` ou nome do arquivo, via `normalizar`). Comando `playlist_import_m3u(origem)` (lê com o plugin fs; `content://` no Android, nome decodificado do fim do endereço); só músicas da biblioteca. Lateral → "Importar M3U…".
 - **Equalizador personalizado**: `eq::Preset::Personalizado`, `Bandas`, `limitar` (±12 dB), `pre_atenuacao_de`, `efetivas`; `Player::definir_equalizador(bandas)`; configuração `equalizador_bandas` (JSON); `set_equalizer(preset, bandas?)`. `EqualizadorManual` em Configurações (10 controles, envio a cada 120 ms, Zerar).
@@ -278,16 +278,17 @@ Um commit por item; testes do Rust cobrem a lógica (128 passando), telas só co
 
 | Item | Linux | Android | Windows |
 |---|---|---|---|
-| Importar M3U | [ ] | [ ] | [ ] |
-| Equalizador personalizado | [ ] | [ ] | [ ] |
-| Seletor de saída | [ ] | — | [ ] |
-| Pastas de playlists | [ ] | [ ] | [ ] |
-| Playlists inteligentes | [ ] | [ ] | [ ] |
-| Audiolivros | [ ] | [ ] | [ ] |
+| Duplicados (manter/lixeira/renomear) | [x] | [ ] | [ ] |
+| Importar M3U | [x] | [ ] | [ ] |
+| Equalizador personalizado | [x] | [ ] | [ ] |
+| Seletor de saída | [x] | — | [ ] |
+| Pastas de playlists | [x] | [ ] | [ ] |
+| Playlists inteligentes | [x] | [ ] | [ ] |
+| Audiolivros | [x] | [ ] | [ ] |
 
 ## Estado atual
 
-**MVP, Fase 2 (etapas 10 a 19), Fase 3 (20 a 23), Fase 4 (24 a 28), Fase 5 (29 a 32) e Fase 6 (33 a 35) concluídos; Fase 7 concluída no Linux (36 a 41), no Android (36 a 43) e no Windows (36 a 41); Fase 8 (Windows) concluída (44 a 53). Fase 9 concluída (66 a 70) no Linux, Android e Windows. Fase 11: widget (60, 61) e Android Auto (62) concluídos no Android; 63, 64, 65 e 71 testados no Linux e no Android; app do Google em produção. Fase 10 (podcasts, 54 a 59) testada no Linux, Android e Windows; 65 e 71 testadas no Linux e no Android (Windows segue em andamento). Versão atual: **0.3.1** (release v0.3.1, 2026-11-18: Linux e Android, com a sincronização de dados por pasta; Windows anexado em 2026-11-18 após o teste). Windows: seção "Windows (testado em 2026-11-18, v0.3.1)" abaixo.**
+**MVP, Fase 2 (etapas 10 a 19), Fase 3 (20 a 23), Fase 4 (24 a 28), Fase 5 (29 a 32) e Fase 6 (33 a 35) concluídos; Fase 7 concluída no Linux (36 a 41), no Android (36 a 43) e no Windows (36 a 41); Fase 8 (Windows) concluída (44 a 53). Fase 9 concluída (66 a 70) no Linux, Android e Windows. Fase 11: widget (60, 61) e Android Auto (62) concluídos no Android; 63, 64, 65 e 71 testados no Linux e no Android; app do Google em produção. Fase 10 (podcasts, 54 a 59) testada no Linux, Android e Windows; 65 e 71 testadas no Linux e no Android (Windows segue em andamento). Versão atual: **0.4.0** (2026-11-22: Fase 12, duplicados, betas; Windows marcado "em breve"). Antes: **0.3.1** (release v0.3.1, 2026-11-18: Linux e Android, com a sincronização de dados por pasta; Windows anexado em 2026-11-18 após o teste). Windows: seção "Windows (testado em 2026-11-18, v0.3.1)" abaixo.**
 
 ### Fase 7 (36 a 43; testada no Linux e no Android)
 

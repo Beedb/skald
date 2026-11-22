@@ -13,7 +13,7 @@ use serde_json::Value;
 const MUSICBRAINZ: &str = "https://musicbrainz.org/ws/2/recording";
 const CAPAS: &str = "https://coverartarchive.org/release";
 /// Identificação genérica do cliente (o MusicBrainz pede um User-Agent próprio).
-pub(crate) const CLIENTE: &str = "Skald/0.3.2 (reprodutor de musica local)";
+pub(crate) const CLIENTE: &str = "Skald/0.4.0 (reprodutor de musica local)";
 const LIMITE_CAPA: u64 = 15 * 1024 * 1024;
 
 /// Campos editáveis de uma música. Na gravação, só os `Some` são alterados.
