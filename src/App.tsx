@@ -391,6 +391,7 @@ function App() {
             setGaveta(false);
           }}
           onErro={setErro}
+          onAviso={setAviso}
           r={r}
           onAbrirPlayer={() => {
             setTela("player");

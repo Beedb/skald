@@ -1182,6 +1182,51 @@ fn playlist_export_m3u(db: State<db::Db>, id: i64, destino: String) -> Result<us
     Ok(n)
 }
 
+/// Resultado de importar um M3U: a playlist criada e as músicas que não estão na biblioteca.
+#[derive(Serialize)]
+struct M3uImportado {
+    id: i64,
+    nome: String,
+    achadas: usize,
+    faltando: Vec<String>,
+}
+
+/// Cria uma playlist a partir de um M3U/M3U8 (caminho do disco ou content:// no Android).
+/// Só entram músicas que já estão na biblioteca; nada é copiado nem importado.
+#[tauri::command]
+fn playlist_import_m3u(app: AppHandle, origem: String) -> Result<M3uImportado, String> {
+    use tauri_plugin_fs::FsExt;
+    let caminho: tauri_plugin_fs::FilePath = origem.parse().unwrap_or_else(|e| match e {});
+    let bytes = app.fs().read(caminho).map_err(|_| "Não foi possível ler a playlist.")?;
+    let texto = playlists::texto_m3u(&bytes);
+    let local = (!e_content(&origem)).then(|| std::path::Path::new(&origem));
+    let entradas = playlists::ler_m3u(&texto, local.and_then(|p| p.parent()));
+    if entradas.is_empty() {
+        return Err("O arquivo não tem nenhuma música.".into());
+    }
+    // Nome = nome do arquivo (no content:// do Android ele vem codificado no fim do endereço).
+    let fim = origem.rsplit(['/', '\\']).next().unwrap_or_default();
+    let fim = playlists::decodificar_url(fim);
+    let fim = fim.rsplit(['/', ':']).next().unwrap_or_default();
+    let nome = fim.rsplit_once('.').map_or(fim, |(n, _)| n).trim();
+    let nome = if nome.is_empty() { "Playlist importada" } else { nome }.to_string();
+    let mut faltando = Vec::new();
+    let mut achadas = 0;
+    let mut id = 0;
+    alterar_playlists(&app, |conn| {
+        let (ids, f) = playlists::casar_m3u(conn, &entradas)?;
+        if ids.is_empty() {
+            return Err("Nenhuma música dessa playlist está na biblioteca.".into());
+        }
+        id = playlists::criar(conn, &nome)?;
+        playlists::adicionar(conn, id, &ids)?;
+        achadas = ids.len();
+        faltando = f;
+        Ok(())
+    })?;
+    Ok(M3uImportado { id, nome, achadas, faltando })
+}
+
 #[tauri::command]
 fn playlist_add(app: AppHandle, id: i64, media_ids: Vec<i64>) -> Result<(), String> {
     alterar_playlists(&app, |conn| playlists::adicionar(conn, id, &media_ids))?;
@@ -2860,6 +2905,7 @@ pub fn run() {
             playlist_clear_cover,
             playlist_cover,
             playlist_export_m3u,
+            playlist_import_m3u,
             history_list,
             history_count,
             stats_summary,

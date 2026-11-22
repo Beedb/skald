@@ -1,11 +1,13 @@
 import { useRef, useState, type ReactNode } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { open } from "@tauri-apps/plugin-dialog";
 import {
   AudioLines,
   BookOpen,
   ChartColumn,
   ChevronDown,
   Disc3,
+  FileInput,
   Heart,
   History,
   House,
@@ -25,6 +27,7 @@ import {
 } from "lucide-react";
 import type { ChaveAlbum } from "./Colecao";
 import { ativo, Capa, type Reproducao } from "./PlayerBar";
+import { noAndroid } from "./android";
 
 export type PlaylistResumo = {
   id: number;
@@ -61,6 +64,7 @@ type Props = {
   playlists: PlaylistResumo[];
   onVista: (v: Vista) => void;
   onErro: (mensagem: string) => void;
+  onAviso: (mensagem: string) => void;
   r: Reproducao;
   onAbrirPlayer: () => void;
   /** Tela estreita: gaveta aberta por cima do conteúdo. */
@@ -113,7 +117,7 @@ function TocandoAgora({ r, onAbrir }: { r: Reproducao; onAbrir: () => void }) {
 }
 
 /** Barra lateral: marca, navegação, playlists e música atual. Pode ser recolhida a uma coluna de ícones. */
-export default function Lateral({ vista, playlists, onVista, onErro, r, onAbrirPlayer, aberta = false }: Props) {
+export default function Lateral({ vista, playlists, onVista, onErro, onAviso, r, onAbrirPlayer, aberta = false }: Props) {
   const [criando, setCriando] = useState(false);
   const [nome, setNome] = useState("");
   // Enter/Esc e o blur ao desmontar disparam juntos: só a primeira ação vale.
@@ -159,6 +163,27 @@ export default function Lateral({ vista, playlists, onVista, onErro, r, onAbrirP
     try {
       const id = await invoke<number>("playlist_create", { name: n });
       onVista({ tipo: "playlist", id });
+    } catch (e) {
+      onErro(String(e));
+    }
+  }
+
+  /** Cria uma playlist a partir de um M3U com as músicas que já estão na biblioteca. */
+  async function importarM3u() {
+    const origem = await open({
+      title: "Escolha a playlist (M3U)",
+      multiple: false,
+      // No Android o filtro por extensão vira tipo de arquivo e esconde os .m3u.
+      filters: noAndroid ? undefined : [{ name: "Playlist M3U", extensions: ["m3u", "m3u8"] }],
+    });
+    if (typeof origem !== "string") return;
+    try {
+      const r = await invoke<{ id: number; nome: string; achadas: number; faltando: string[] }>("playlist_import_m3u", { origem });
+      const falta = r.faltando.length
+        ? ` ${r.faltando.length} não ${r.faltando.length === 1 ? "está" : "estão"} na biblioteca: ${r.faltando.slice(0, 5).join(", ")}${r.faltando.length > 5 ? "…" : ""}.`
+        : "";
+      onAviso(`Playlist “${r.nome}” criada com ${r.achadas} ${r.achadas === 1 ? "música" : "músicas"}.${falta}`);
+      onVista({ tipo: "playlist", id: r.id });
     } catch (e) {
       onErro(String(e));
     }
@@ -297,6 +322,7 @@ export default function Lateral({ vista, playlists, onVista, onErro, r, onAbrirP
             ) : (
               item(false, <Plus size={16} />, "Nova playlist", abrir, { classe: "criar" })
             )}
+            {!criando && item(false, <FileInput size={16} />, "Importar M3U…", importarM3u, { classe: "criar" })}
           </div>
         )}
       </div>

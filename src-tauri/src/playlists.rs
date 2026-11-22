@@ -304,6 +304,131 @@ pub fn m3u(conn: &Connection, id: i64) -> Result<(String, usize), String> {
     Ok((texto, n))
 }
 
+/// Uma linha de música de um M3U: o caminho (ou URL) e o nome do `#EXTINF`, se houver.
+#[derive(Debug, PartialEq)]
+pub struct EntradaM3u {
+    pub caminho: String,
+    pub nome: Option<String>,
+}
+
+/// Texto de um M3U em UTF-8 (com ou sem BOM) ou, se não for, Latin-1 (comum em `.m3u` antigos).
+pub fn texto_m3u(bytes: &[u8]) -> String {
+    let bytes = bytes.strip_prefix(b"\xEF\xBB\xBF").unwrap_or(bytes);
+    match std::str::from_utf8(bytes) {
+        Ok(t) => t.to_string(),
+        Err(_) => bytes.iter().map(|&b| b as char).collect(),
+    }
+}
+
+/// "%20" e afins de URLs `file://`.
+pub fn decodificar_url(s: &str) -> String {
+    let b = s.as_bytes();
+    let mut saida = Vec::with_capacity(b.len());
+    let mut i = 0;
+    while i < b.len() {
+        if b[i] == b'%' && i + 2 < b.len() {
+            if let Some(v) = std::str::from_utf8(&b[i + 1..i + 3]).ok().and_then(|h| u8::from_str_radix(h, 16).ok()) {
+                saida.push(v);
+                i += 3;
+                continue;
+            }
+        }
+        saida.push(b[i]);
+        i += 1;
+    }
+    String::from_utf8_lossy(&saida).into_owned()
+}
+
+/// Lê as entradas do M3U. Caminhos relativos são resolvidos a partir de `base` (a pasta do
+/// arquivo); `\` vira `/` fora do Windows (playlists feitas no Windows).
+pub fn ler_m3u(texto: &str, base: Option<&std::path::Path>) -> Vec<EntradaM3u> {
+    let mut entradas = Vec::new();
+    let mut nome = None;
+    for linha in texto.lines().map(str::trim) {
+        if linha.is_empty() {
+            continue;
+        }
+        if let Some(info) = linha.strip_prefix("#EXTINF:") {
+            nome = info.split_once(',').map(|(_, n)| n.trim().to_string()).filter(|n| !n.is_empty());
+            continue;
+        }
+        if linha.starts_with('#') {
+            continue;
+        }
+        let mut caminho = match linha.strip_prefix("file://") {
+            Some(resto) => decodificar_url(resto.strip_prefix("localhost").unwrap_or(resto)),
+            None => linha.to_string(),
+        };
+        if cfg!(not(windows)) {
+            caminho = caminho.replace('\\', "/");
+        }
+        let p = std::path::Path::new(&caminho);
+        let absoluto = p.is_absolute() || caminho.contains("://") || caminho.get(1..3) == Some(":/");
+        if !absoluto {
+            if let Some(b) = base {
+                caminho = b.join(p).to_string_lossy().into_owned();
+            }
+        }
+        entradas.push(EntradaM3u { caminho, nome: nome.take() });
+    }
+    entradas
+}
+
+/// Acha cada entrada na biblioteca: pelo caminho; senão pelo fim do caminho (pasta + arquivo,
+/// depois só o arquivo, se for único: playlist feita noutro aparelho); senão pelo nome do
+/// `#EXTINF` ("Artista - Título") ou pelo nome do arquivo. Devolve os ids na ordem e os que
+/// não foram achados.
+pub fn casar_m3u(conn: &Connection, entradas: &[EntradaM3u]) -> Result<(Vec<i64>, Vec<String>), String> {
+    use crate::search::normalizar;
+    let mut stmt = conn.prepare("SELECT id, path, title, artist FROM media").map_err(sql)?;
+    let todas: Vec<(i64, String, Option<String>, Option<String>)> = stmt
+        .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)))
+        .map_err(sql)?
+        .collect::<Result<_, _>>()
+        .map_err(sql)?;
+    let sep = |p: &str| p.replace('\\', "/");
+    let mut por_caminho = std::collections::HashMap::new();
+    let mut por_fim: std::collections::HashMap<String, Vec<i64>> = std::collections::HashMap::new();
+    let mut por_nome: std::collections::HashMap<String, Vec<i64>> = std::collections::HashMap::new();
+    let fim = |p: &str, n: usize| -> String {
+        let partes: Vec<&str> = p.rsplit('/').take(n).collect();
+        normalizar(&partes.into_iter().rev().collect::<Vec<_>>().join("/"))
+    };
+    for (id, path, titulo, artista) in &todas {
+        let p = sep(path);
+        por_caminho.insert(p.clone(), *id);
+        por_fim.entry(fim(&p, 2)).or_default().push(*id);
+        por_fim.entry(fim(&p, 1)).or_default().push(*id);
+        if let Some(t) = titulo {
+            if let Some(a) = artista {
+                por_nome.entry(normalizar(&format!("{a} - {t}"))).or_default().push(*id);
+            }
+            por_nome.entry(normalizar(t)).or_default().push(*id);
+        }
+    }
+    let unico = |v: Option<&Vec<i64>>| match v.map(Vec::as_slice) {
+        Some([id]) => Some(*id),
+        _ => None,
+    };
+    let (mut ids, mut faltando) = (Vec::new(), Vec::new());
+    for e in entradas {
+        let p = sep(&e.caminho);
+        let tronco = std::path::Path::new(&p).file_stem().map(|s| s.to_string_lossy().into_owned());
+        let achado = por_caminho
+            .get(&p)
+            .copied()
+            .or_else(|| unico(por_fim.get(&fim(&p, 2))))
+            .or_else(|| unico(por_fim.get(&fim(&p, 1))))
+            .or_else(|| e.nome.as_ref().and_then(|n| unico(por_nome.get(&normalizar(n)))))
+            .or_else(|| tronco.as_ref().and_then(|t| unico(por_nome.get(&normalizar(t)))));
+        match achado {
+            Some(id) => ids.push(id),
+            None => faltando.push(e.nome.clone().or(tronco).unwrap_or_else(|| e.caminho.clone())),
+        }
+    }
+    Ok((ids, faltando))
+}
+
 #[cfg(test)]
 mod testes {
     use super::*;
@@ -400,6 +525,37 @@ mod testes {
         assert_eq!(capa(&conn, p).unwrap().as_deref(), Some("/capas/x.png"));
         assert_eq!(definir_capa(&conn, p, None).unwrap().as_deref(), Some("/capas/x.png"));
         assert!(!listar(&conn).unwrap().into_iter().find(|r| r.id == p).unwrap().capa_escolhida);
+    }
+
+    #[test]
+    fn le_m3u() {
+        let texto = "#EXTM3U\n#EXTINF:61,Banda - Zebra\n/musicas/z.mp3\n\nsub/b.flac\nfile:///m/a%20b.mp3\n#EXTINF:-1,X\nC:\\Music\\c.mp3\n";
+        let e = ler_m3u(texto, Some(std::path::Path::new("/listas")));
+        assert_eq!(e[0], EntradaM3u { caminho: "/musicas/z.mp3".into(), nome: Some("Banda - Zebra".into()) });
+        assert_eq!(e[1].caminho, "/listas/sub/b.flac");
+        assert_eq!(e[1].nome, None);
+        assert_eq!(e[2].caminho, "/m/a b.mp3");
+        if cfg!(not(windows)) {
+            assert_eq!(e[3].caminho, "C:/Music/c.mp3");
+        }
+        assert_eq!(texto_m3u(b"\xEF\xBB\xBF#EXTM3U"), "#EXTM3U");
+        assert_eq!(texto_m3u(b"M\xFAsica"), "Música");
+    }
+
+    #[test]
+    fn casa_m3u() {
+        let conn = banco();
+        conn.execute("INSERT INTO media (id, path, title, artist) VALUES (10, '/home/x/Rock/Faixa.mp3', 'Faixa', 'Grupo')", []).unwrap();
+        conn.execute("INSERT INTO media (id, path, title) VALUES (11, '/sd/Outra Pasta/unica.flac', 'Sem par')", []).unwrap();
+        let entradas = vec![
+            EntradaM3u { caminho: "/home/x/Rock/Faixa.mp3".into(), nome: None },
+            EntradaM3u { caminho: "C:/Users/y/Music/unica.flac".into(), nome: None },
+            EntradaM3u { caminho: "/nao/existe.mp3".into(), nome: Some("grupo - faixa".into()) },
+            EntradaM3u { caminho: "/nao/sumida.mp3".into(), nome: Some("Sumida".into()) },
+        ];
+        let (ids, faltando) = casar_m3u(&conn, &entradas).unwrap();
+        assert_eq!(ids, [10, 11, 10]);
+        assert_eq!(faltando, ["Sumida"]);
     }
 
     #[test]

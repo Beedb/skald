@@ -17,7 +17,7 @@ Esta ajuda mostra desde como baixar até como usar cada função.
 | [Baixar e instalar](Baixar-e-instalar) | Onde baixar, como instalar e como atualizar |
 | [Primeiros passos](Primeiros-passos) | Importar pastas e arquivos, buscar, pastas monitoradas |
 | [Tocar músicas](Tocar-musicas) | Player, player completo, fila, aleatório, repetir, continuar tocando, temporizador, letras |
-| [Playlists e curtidas](Playlists-e-curtidas) | Criar, organizar, capa, exportar M3U |
+| [Playlists e curtidas](Playlists-e-curtidas) | Criar, organizar, capa, importar e exportar M3U |
 | [Artistas e álbuns](Artistas-e-albuns) | Navegar pela coleção e unir grafias do mesmo artista |
 | [Organizar a biblioteca](Organizar-a-biblioteca) | Corrigir informações, completar pelo MusicBrainz, editar várias, duplicados |
 | [Podcasts](Podcasts) | Assinar por RSS, baixar episódios, velocidade e retomar |
