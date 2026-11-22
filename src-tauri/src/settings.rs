@@ -6,6 +6,7 @@ use serde::Serialize;
 const CROSSFADE: &str = "crossfade_ms";
 const NORMALIZACAO: &str = "normalizacao";
 const EQUALIZADOR: &str = "equalizador";
+const EQUALIZADOR_BANDAS: &str = "equalizador_bandas";
 const TEMA: &str = "tema";
 const MODO_TEMA: &str = "modo_tema";
 const CORES_DINAMICAS: &str = "cores_dinamicas";
@@ -32,6 +33,8 @@ pub struct Configuracoes {
     /// ReplayGain: desligada, faixa (padrão) ou álbum.
     pub normalizacao: crate::ganho::Modo,
     pub equalizador: crate::eq::Preset,
+    /// Bandas do preset personalizado (dB).
+    pub equalizador_bandas: crate::eq::Bandas,
     /// Família de cores de docs/temas.css (ex.: "carmesim", "fiorde").
     pub tema: String,
     /// "claro", "escuro" ou "sistema" (padrão).
@@ -78,6 +81,10 @@ pub fn carregar(conn: &Connection) -> rusqlite::Result<Configuracoes> {
     let equalizador = ler(conn, EQUALIZADOR)?
         .and_then(|v| crate::eq::Preset::de_texto(&v))
         .unwrap_or_default();
+    let equalizador_bandas = ler(conn, EQUALIZADOR_BANDAS)?
+        .and_then(|v| serde_json::from_str::<crate::eq::Bandas>(&v).ok())
+        .map(crate::eq::limitar)
+        .unwrap_or([0.0; 10]);
     let tema = ler(conn, TEMA)?.unwrap_or_else(|| TEMA_PADRAO.into());
     // Temas renomeados (nomes de outros projetos trocados por nomes próprios).
     let tema = match tema.as_str() {
@@ -99,6 +106,7 @@ pub fn carregar(conn: &Connection) -> rusqlite::Result<Configuracoes> {
         crossfade_ms,
         normalizacao,
         equalizador,
+        equalizador_bandas,
         tema,
         modo_tema,
         cores_dinamicas,
@@ -201,6 +209,13 @@ pub fn definir_aparencia(conn: &Connection, tema: &str, modo: &str) -> Result<()
 
 pub fn definir_equalizador(conn: &Connection, preset: crate::eq::Preset) -> rusqlite::Result<()> {
     gravar(conn, EQUALIZADOR, &preset.texto())
+}
+
+/// Grava as bandas do personalizado (limitadas) e devolve o que ficou.
+pub fn definir_bandas(conn: &Connection, bandas: crate::eq::Bandas) -> rusqlite::Result<crate::eq::Bandas> {
+    let b = crate::eq::limitar(bandas);
+    gravar(conn, EQUALIZADOR_BANDAS, &serde_json::to_string(&b).unwrap_or_default())?;
+    Ok(b)
 }
 
 pub fn definir_normalizacao(conn: &Connection, modo: crate::ganho::Modo) -> rusqlite::Result<()> {
@@ -328,5 +343,10 @@ mod testes {
         assert_eq!(carregar(&conn).unwrap().equalizador, Preset::Desligado);
         definir_equalizador(&conn, Preset::Voz).unwrap();
         assert_eq!(carregar(&conn).unwrap().equalizador, Preset::Voz);
+        assert_eq!(carregar(&conn).unwrap().equalizador_bandas, [0.0; 10]);
+        let mut b = [1.5; 10];
+        b[3] = 40.0;
+        definir_bandas(&conn, b).unwrap();
+        assert_eq!(carregar(&conn).unwrap().equalizador_bandas[3], 12.0);
     }
 }

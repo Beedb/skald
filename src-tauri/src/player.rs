@@ -438,15 +438,15 @@ impl Player {
         self.aplicar_volume(&g);
     }
 
-    /// Preset do equalizador; vale na hora, nos dois decks.
-    pub fn definir_equalizador(&self, preset: eq::Preset) {
+    /// Ganho das bandas do equalizador (`eq::Preset::efetivas`); vale na hora, nos dois decks.
+    pub fn definir_equalizador(&self, bandas: eq::Bandas) {
         for e in self.eqs.iter().flatten() {
-            for (i, db) in preset.bandas().into_iter().enumerate() {
+            for (i, db) in bandas.into_iter().enumerate() {
                 e.set_property(&format!("band{i}"), db);
             }
         }
         let mut g = self.int.lock().unwrap();
-        g.pre_eq = if self.eqs.iter().any(Option::is_some) { preset.pre_atenuacao() } else { 1.0 };
+        g.pre_eq = if self.eqs.iter().any(Option::is_some) { eq::pre_atenuacao_de(&bandas) } else { 1.0 };
         self.aplicar_volume(&g);
     }
 
@@ -944,13 +944,13 @@ mod testes {
             eprintln!("equalizer-10bands indisponível; teste ignorado");
             return;
         }
-        p.definir_equalizador(eq::Preset::Grave);
+        p.definir_equalizador(eq::Preset::Grave.bandas());
         for e in p.eqs.iter().flatten() {
             assert_eq!(e.property::<f64>("band0"), 6.0);
             assert_eq!(e.property::<f64>("band9"), 0.0);
         }
         assert!((p.int.lock().unwrap().pre_eq - eq::Preset::Grave.pre_atenuacao()).abs() < 1e-9);
-        p.definir_equalizador(eq::Preset::Desligado);
+        p.definir_equalizador(eq::Preset::Desligado.bandas());
         assert_eq!(p.eqs[1].as_ref().unwrap().property::<f64>("band0"), 0.0);
         assert_eq!(p.int.lock().unwrap().pre_eq, 1.0);
     }

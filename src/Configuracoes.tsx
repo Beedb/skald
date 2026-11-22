@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { getVersion } from "@tauri-apps/api/app";
 import { ask, open, save } from "@tauri-apps/plugin-dialog";
@@ -9,11 +9,12 @@ import { escolherPasta, garantirPermissao, noAndroid } from "./android";
 import { Bell, Cloud, Database, FolderOpen, Library, Monitor, Palette, Play, type LucideIcon } from "lucide-react";
 
 type Normalizacao = "desligada" | "faixa" | "album";
-type Preset = "desligado" | "grave" | "agudo" | "bateria" | "voz" | "instrumental";
+type Preset = "desligado" | "grave" | "agudo" | "bateria" | "voz" | "instrumental" | "personalizado";
 type Config = {
   crossfade_ms: number;
   normalizacao: Normalizacao;
   equalizador: Preset;
+  equalizador_bandas: number[];
   tema: string;
   modo_tema: ModoTema;
   cores_dinamicas: boolean;
@@ -32,7 +33,40 @@ const PRESETS: [Preset, string][] = [
   ["bateria", "Bateria"],
   ["voz", "Voz"],
   ["instrumental", "Instrumental"],
+  ["personalizado", "Personalizado"],
 ];
+
+/** Frequências do equalizer-10bands do GStreamer. */
+const FREQUENCIAS = ["29 Hz", "59 Hz", "119 Hz", "237 Hz", "474 Hz", "947 Hz", "1,9 kHz", "3,8 kHz", "7,5 kHz", "15 kHz"];
+
+/** Ajuste manual das 10 bandas (−12 a +12 dB). Grava enquanto arrasta, no máximo a cada 120 ms. */
+function EqualizadorManual({ bandas, onMudar }: { bandas: number[]; onMudar: (b: number[]) => void }) {
+  return (
+    <div className="eq-manual" role="group" aria-label="Equalizador personalizado">
+      {bandas.map((db, i) => (
+        <label key={i} className="eq-banda">
+          <span className="eq-freq">{FREQUENCIAS[i]}</span>
+          <input
+            type="range"
+            min={-12}
+            max={12}
+            step={0.5}
+            value={db}
+            aria-label={`${FREQUENCIAS[i]}: ${db} dB`}
+            onChange={(e) => onMudar(bandas.map((v, j) => (j === i ? Number(e.target.value) : v)))}
+          />
+          <span className="eq-db">
+            {db > 0 ? "+" : ""}
+            {db.toLocaleString("pt-BR")} dB
+          </span>
+        </label>
+      ))}
+      <button className="eq-zerar" onClick={() => onMudar(bandas.map(() => 0))}>
+        Zerar
+      </button>
+    </div>
+  );
+}
 
 function tamanho(bytes: number) {
   if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
@@ -350,6 +384,8 @@ export default function Configuracoes({ onErro }: { onErro: (m: string) => void 
   const [crossfade, setCrossfade] = useState<number | null>(null);
   const [normalizacao, setNormalizacao] = useState<Normalizacao>("faixa");
   const [equalizador, setEqualizador] = useState<Preset>("desligado");
+  const [bandas, setBandas] = useState<number[]>(Array(10).fill(0));
+  const envioBandas = useRef<number | null>(null);
   const [tema, setTema] = useState("carmesim");
   const [modo, setModo] = useState<ModoTema>("sistema");
   const [coresDinamicas, setCoresDinamicas] = useState(true);
@@ -376,6 +412,7 @@ export default function Configuracoes({ onErro }: { onErro: (m: string) => void 
         setCrossfade(c.crossfade_ms / 1000);
         setNormalizacao(c.normalizacao);
         setEqualizador(c.equalizador);
+        setBandas(c.equalizador_bandas);
         setTema(c.tema);
         setModo(c.modo_tema);
         setCoresDinamicas(c.cores_dinamicas);
@@ -568,6 +605,15 @@ export default function Configuracoes({ onErro }: { onErro: (m: string) => void 
     invoke("set_equalizer", { preset }).catch((e) => onErro(String(e)));
   }
 
+  function gravarBandas(b: number[]) {
+    setBandas(b);
+    if (envioBandas.current !== null) window.clearTimeout(envioBandas.current);
+    envioBandas.current = window.setTimeout(() => {
+      envioBandas.current = null;
+      invoke("set_equalizer", { preset: "personalizado", bandas: b }).catch((e) => onErro(String(e)));
+    }, 120);
+  }
+
   function gravarNormalizacao(modo: Normalizacao) {
     setNormalizacao(modo);
     invoke("set_normalization", { modo }).catch((e) => onErro(String(e)));
@@ -699,7 +745,7 @@ export default function Configuracoes({ onErro }: { onErro: (m: string) => void 
         </Linha>
         <Linha
           titulo="Equalizador"
-          nota="Grave e agudo reforçam as pontas; bateria destaca o bumbo e a caixa; voz realça os médios; instrumental dá mais clareza e corpo. O volume é compensado para não distorcer. Vale na hora."
+          nota="Grave e agudo reforçam as pontas; bateria destaca o bumbo e a caixa; voz realça os médios; instrumental dá mais clareza e corpo; personalizado deixa você ajustar cada faixa de frequência. O volume é compensado para não distorcer. Vale na hora."
         >
           <select value={equalizador} aria-label="Equalizador" onChange={(e) => gravarEqualizador(e.target.value as Preset)}>
             {PRESETS.map(([valor, nome]) => (
@@ -709,6 +755,7 @@ export default function Configuracoes({ onErro }: { onErro: (m: string) => void 
             ))}
           </select>
         </Linha>
+        {equalizador === "personalizado" && <EqualizadorManual bandas={bandas} onMudar={gravarBandas} />}
       </Cartao>
 
       <Cartao icone={Library} titulo="Biblioteca">

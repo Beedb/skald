@@ -801,6 +801,42 @@ body {
   gap: 0.5rem;
 }
 
+.eq-manual {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.25rem 0.8rem;
+  padding: 0 0 0.9rem;
+}
+
+.eq-banda {
+  display: contents;
+}
+
+.eq-freq,
+.eq-db {
+  font-size: 0.85rem;
+  color: var(--fraco);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.eq-db {
+  text-align: right;
+  min-width: 4.2rem;
+}
+
+.eq-manual input[type="range"] {
+  width: 100%;
+  accent-color: var(--acento);
+}
+
+.eq-zerar {
+  grid-column: 1 / -1;
+  justify-self: start;
+  margin-top: 0.3rem;
+}
+
 .cfg-faixa {
   width: 11rem;
   accent-color: var(--acento);

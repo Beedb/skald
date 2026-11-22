@@ -2690,13 +2690,23 @@ fn set_normalization(db: State<db::Db>, player: State<player::Player>, modo: gan
     Ok(())
 }
 
+/// Escolhe o preset; com `bandas`, grava também o ajuste do personalizado.
 #[tauri::command]
-fn set_equalizer(db: State<db::Db>, player: State<player::Player>, preset: eq::Preset) -> Result<(), String> {
-    {
+fn set_equalizer(
+    db: State<db::Db>,
+    player: State<player::Player>,
+    preset: eq::Preset,
+    bandas: Option<eq::Bandas>,
+) -> Result<(), String> {
+    let personalizadas = {
         let conn = db.0.lock().map_err(erro_db)?;
         settings::definir_equalizador(&conn, preset).map_err(|e| e.to_string())?;
-    }
-    player.definir_equalizador(preset);
+        match bandas {
+            Some(b) => settings::definir_bandas(&conn, b).map_err(|e| e.to_string())?,
+            None => settings::carregar(&conn).map_err(|e| e.to_string())?.equalizador_bandas,
+        }
+    };
+    player.definir_equalizador(preset.efetivas(&personalizadas));
     Ok(())
 }
 
@@ -2792,7 +2802,7 @@ pub fn run() {
                 let cfg = settings::carregar(&conn)?;
                 app.state::<player::Player>().definir_crossfade(cfg.crossfade_ms);
                 app.state::<player::Player>().definir_normalizacao(cfg.normalizacao);
-                app.state::<player::Player>().definir_equalizador(cfg.equalizador);
+                app.state::<player::Player>().definir_equalizador(cfg.equalizador.efetivas(&cfg.equalizador_bandas));
                 // Aleatório e repetir voltam como estavam.
                 let (aleatorio, repetir) = settings::modos_fila(&conn)?;
                 let fila = app.state::<FilaState>();

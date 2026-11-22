@@ -23,3 +23,5 @@ O Skáld usa as tags de ReplayGain dos arquivos. Para músicas sem essas tags, e
 ## Equalizador
 
 Presets prontos: **Desligado**, **Grave**, **Agudo**, **Bateria**, **Voz** e **Instrumental**. A mudança vale na hora.
+
+Em **Personalizado**, aparecem 10 controles, um por faixa de frequência (dos graves, 29 Hz, aos agudos, 15 kHz), de −12 a +12 dB. O ajuste vale enquanto você arrasta e fica guardado; **Zerar** volta tudo a 0. O volume é baixado na mesma medida do maior reforço, para o som não distorcer.
