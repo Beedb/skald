@@ -567,14 +567,30 @@ fn nome_seguro(texto: &str) -> String {
 /// banco. Nunca sobrescreve; o `.lrc` de mesmo nome vai junto. O registro (playlists, histórico,
 /// curtidas) segue o mesmo: só o caminho muda. Devolve o novo caminho (ou o atual, se já estava certo).
 pub fn renomear_arquivo(db: &std::sync::Mutex<Connection>, id: i64) -> Result<String, String> {
+    renomear_para(db, id, None)
+}
+
+/// Como `renomear_arquivo`, mas com o nome escolhido (sem a extensão, que é mantida).
+pub fn renomear_para(db: &std::sync::Mutex<Connection>, id: i64, nome: Option<&str>) -> Result<String, String> {
     let conn = db.lock().map_err(|_| "Banco indisponível.".to_string())?;
     let (caminho, titulo, artista): (String, Option<String>, Option<String>) = conn
         .query_row("SELECT path, title, artist FROM media WHERE id = ?1", [id], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))
         .map_err(|_| "Música não encontrada.".to_string())?;
-    let titulo = titulo.map(|t| nome_seguro(&t)).filter(|t| !t.is_empty()).ok_or("A música não tem título.")?;
-    let base = match artista.map(|a| nome_seguro(&a)).filter(|a| !a.is_empty()) {
-        Some(a) => format!("{a} - {titulo}"),
-        None => titulo,
+    let base = match nome {
+        Some(n) => {
+            let n = nome_seguro(n);
+            if n.is_empty() {
+                return Err("Escreva um nome para o arquivo.".into());
+            }
+            n
+        }
+        None => {
+            let titulo = titulo.map(|t| nome_seguro(&t)).filter(|t| !t.is_empty()).ok_or("A música não tem título.")?;
+            match artista.map(|a| nome_seguro(&a)).filter(|a| !a.is_empty()) {
+                Some(a) => format!("{a} - {titulo}"),
+                None => titulo,
+            }
+        }
     };
     let antigo = Path::new(&caminho);
     let ext = antigo.extension().map(|e| format!(".{}", e.to_string_lossy())).unwrap_or_default();

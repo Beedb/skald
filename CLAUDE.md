@@ -14,7 +14,7 @@ Reprodutor de áudio desktop para Linux, focado em arquivos locais e offline. Pl
 ## Regras fixas
 
 - Idioma da interface e dos textos ao usuário: português do Brasil.
-- Nunca apagar arquivos de áudio do disco. Remover da biblioteca = remover só o registro.
+- Nunca apagar arquivos de áudio do disco. Remover da biblioteca = remover só o registro. Única exceção: no painel Duplicados, a pedido, a cópia descartada vai para a Lixeira do sistema (recuperável; só no computador), nunca apagada de vez.
 - Arquivo ausente: manter registro, marcar como não encontrado, preservar playlists e histórico.
 - Playlists guardam referências às músicas, nunca cópias.
 - Nunca sobrescrever metadados silenciosamente.
@@ -25,7 +25,7 @@ Reprodutor de áudio desktop para Linux, focado em arquivos locais e offline. Pl
 ## Decisões principais
 
 - Formatos: MP3, FLAC, OGG/Opus, M4A/AAC, WAV.
-- Duplicados: detectar por hash e avisar, sem apagar.
+- Duplicados: detectar por hash e avisar. Painel: tocar, renomear o arquivo, "Manter esta" (as outras saem da biblioteca com playlists/curtidas/histórico passados para a que fica; no computador, opcionalmente para a Lixeira com a crate `trash`), ignorar aviso. Comandos `duplicate_resolve(manter, outros, lixeira)` (`import::unir_duplicados`) e `duplicate_rename(id, nome)` (`enriquecer::renomear_para`).
 - Aleatório: Shuffle Bag; fila manual sempre antes do aleatório.
 - Repetir: desligado, fila, faixa.
 - Crossfade desligado entre faixas do mesmo álbum (gapless).

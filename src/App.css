@@ -667,6 +667,66 @@ body {
   flex-direction: column;
 }
 
+.grupo-duplicados {
+  align-items: flex-start;
+}
+
+.copia-duplicada {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.3rem 0;
+  border-top: 1px solid var(--linha);
+}
+
+.copia-duplicada .caminho {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.copia-duplicada .arquivo {
+  color: var(--texto);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.copia-duplicada .pasta {
+  color: var(--fraco);
+  font-size: 0.8rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.acoes-copia {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  flex: none;
+}
+
+.acoes-copia button,
+.confirmar-copia button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.confirmar-copia,
+.renomear-copia {
+  flex-basis: 100%;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.renomear-copia input {
+  flex: 1;
+  min-width: 10rem;
+}
+
 .aviso {
   margin: 0.4rem 1rem;
   padding: 0.4rem 0.6rem;

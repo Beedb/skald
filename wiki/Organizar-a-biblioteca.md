@@ -51,7 +51,15 @@ Dá para trocar **artista, álbum, gênero e ano** de todas juntas. Campos com v
 
 ## Duplicados
 
-O Skáld calcula uma "impressão digital" de cada arquivo. Quando acha **arquivos idênticos**, aparece o botão **Duplicados** no topo com os grupos. Nada é apagado: você decide o que fazer com os arquivos. **Ignorar aviso** mantém as cópias e para de avisar sobre aquele grupo.
+O Skáld calcula uma "impressão digital" de cada arquivo. Quando acha **arquivos idênticos**, aparece o botão **Duplicados** no topo com os grupos. Para cada cópia você vê o nome do arquivo e a pasta, e pode:
+
+- **▶** tocar aquela cópia;
+- **✎** renomear o arquivo (a extensão fica; nunca substitui um arquivo que já existe);
+- **Manter esta**: fica só essa cópia. As playlists, curtidas e o histórico das outras passam para ela. Depois você escolhe o que fazer com as outras:
+  - **Mandar para a Lixeira** (só no computador): os arquivos vão para a Lixeira do sistema, de onde dá para recuperar. O Skáld nunca apaga de vez.
+  - **Só tirar da biblioteca**: os arquivos continuam no disco, só saem do Skáld (e a importação não traz de volta).
+
+**Ignorar aviso** mantém todas as cópias e para de avisar sobre aquele grupo.
 
 ## Músicas não encontradas
 

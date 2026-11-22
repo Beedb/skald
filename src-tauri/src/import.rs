@@ -320,6 +320,27 @@ pub fn duplicados(conn: &Connection) -> rusqlite::Result<Vec<GrupoDuplicados>> {
     Ok(grupos)
 }
 
+/// Fica só a cópia `manter`: playlists, curtidas e histórico das outras passam para ela (sem
+/// repetir a mesma música numa playlist) e os registros das outras saem da biblioteca (o
+/// caminho fica lembrado, para a importação não trazer de volta). Não mexe em arquivo nenhum.
+pub fn unir_duplicados(conn: &mut Connection, manter: i64, outros: &[i64]) -> rusqlite::Result<usize> {
+    let outros: Vec<i64> = outros.iter().copied().filter(|&o| o != manter).collect();
+    {
+        let tx = conn.transaction()?;
+        for &o in &outros {
+            tx.execute(
+                "DELETE FROM playlist_item WHERE media_id = ?1
+                   AND playlist_id IN (SELECT playlist_id FROM playlist_item WHERE media_id = ?2)",
+                params![o, manter],
+            )?;
+            tx.execute("UPDATE playlist_item SET media_id = ?2 WHERE media_id = ?1", params![o, manter])?;
+            tx.execute("UPDATE play_history SET media_id = ?2 WHERE media_id = ?1", params![o, manter])?;
+        }
+        tx.commit()?;
+    }
+    crate::library::excluir(conn, &outros)
+}
+
 /// O usuário decidiu manter as cópias: o grupo deixa de ser avisado.
 pub fn ignorar_duplicado(conn: &Connection, hash: &str) -> rusqlite::Result<()> {
     conn.execute("INSERT OR IGNORE INTO duplicate_ignored (file_hash) VALUES (?1)", [hash])?;
@@ -406,6 +427,25 @@ mod testes {
     use super::*;
 
     /// Rodar com: SKALD_TEST_DIR=/pasta cargo test -- --nocapture
+    #[test]
+    fn une_duplicados_sem_repetir() {
+        let mut conn = crate::db::open(Path::new(":memory:")).unwrap();
+        conn.execute_batch(
+            "INSERT INTO media (id, path, title, file_hash) VALUES (1, '/a.mp3', 'A', 'h'), (2, '/b/a.mp3', 'A', 'h');
+             INSERT INTO playlist (id, name) VALUES (9, 'P'), (10, 'Q');
+             INSERT INTO playlist_item (playlist_id, media_id, position) VALUES (9, 1, 0), (9, 2, 1), (10, 2, 0);
+             INSERT INTO play_history (media_id, title, started_at) VALUES (2, 'A', 0);",
+        )
+        .unwrap();
+        assert_eq!(unir_duplicados(&mut conn, 1, &[2, 1]).unwrap(), 1);
+        let conta = |sql: &str| conn.query_row(sql, [], |r| r.get::<_, i64>(0)).unwrap();
+        assert_eq!(conta("SELECT COUNT(*) FROM playlist_item WHERE playlist_id = 9"), 1);
+        assert_eq!(conta("SELECT COUNT(*) FROM playlist_item WHERE playlist_id = 10 AND media_id = 1"), 1);
+        assert_eq!(conta("SELECT COUNT(*) FROM play_history WHERE media_id = 1"), 1);
+        assert_eq!(conta("SELECT COUNT(*) FROM excluded_path WHERE path = '/b/a.mp3'"), 1);
+        assert!(duplicados(&conn).unwrap().is_empty());
+    }
+
     #[test]
     fn importa_pasta_de_teste() {
         let Ok(dir) = std::env::var("SKALD_TEST_DIR") else { return };

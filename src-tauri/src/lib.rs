@@ -587,8 +587,15 @@ fn remove_from_library(app: AppHandle, ids: Vec<i64>) -> Result<usize, String> {
         let mut conn = db.0.lock().map_err(erro_db)?;
         library::excluir(&mut conn, &ids).map_err(|e| e.to_string())?
     };
+    depois_de_remover(&app, &ids)?;
+    Ok(n)
+}
+
+/// Limpeza depois de tirar registros da biblioteca: capa e letra guardadas, fila, podcasts e
+/// audiolivros, e avisos para a tela.
+fn depois_de_remover(app: &AppHandle, ids: &[i64]) -> Result<(), String> {
     // A capa guardada no Skáld era só deste registro.
-    for &id in &ids {
+    for &id in ids {
         details::remover_capa_salva(id);
         letras::remover_salva(id);
     }
@@ -600,7 +607,7 @@ fn remove_from_library(app: AppHandle, ids: Vec<i64>) -> Result<usize, String> {
         fila.atual().is_some_and(|a| conjunto.contains(&a))
     };
     if atual_saiu {
-        avancar(&app, false)?;
+        avancar(app, false)?;
     }
     // Episódios locais e livros sem arquivos saem junto.
     podcasts::sincronizar(&app.state::<db::Db>().0)?;
@@ -608,7 +615,7 @@ fn remove_from_library(app: AppHandle, ids: Vec<i64>) -> Result<usize, String> {
     let _ = app.emit(EVENTO_FILA, ());
     let _ = app.emit(EVENTO_PLAYLISTS, ());
     let _ = app.emit(EVENTO_HISTORICO, ());
-    Ok(n)
+    Ok(())
 }
 
 /// Músicas marcadas como não encontradas (arquivo sumiu do disco).
@@ -646,6 +653,76 @@ fn remove_missing(app: AppHandle) -> Result<usize, String> {
 fn duplicates_list(db: State<db::Db>) -> Result<Vec<import::GrupoDuplicados>, String> {
     let conn = db.0.lock().map_err(erro_db)?;
     import::duplicados(&conn).map_err(|e| e.to_string())
+}
+
+#[derive(Serialize)]
+struct DuplicadoResolvido {
+    removidas: usize,
+    na_lixeira: usize,
+    falhas: Vec<String>,
+}
+
+/// Fica só a cópia `manter`: as outras saem da biblioteca (playlists, curtidas e histórico
+/// passam para a que fica) e, com `lixeira` (só no computador), os arquivos delas vão para a
+/// Lixeira do sistema, de onde dá para recuperar. Nunca apaga de vez. Cópia que não foi para a
+/// lixeira continua na biblioteca.
+#[tauri::command]
+async fn duplicate_resolve(app: AppHandle, manter: i64, outros: Vec<i64>, lixeira: bool) -> Result<DuplicadoResolvido, String> {
+    let h = app.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let db = h.state::<db::Db>();
+        let caminhos: Vec<(i64, String)> = {
+            let conn = db.0.lock().map_err(erro_db)?;
+            let existe: bool = conn
+                .query_row("SELECT COUNT(*) FROM media WHERE id = ?1", [manter], |r| r.get::<_, i64>(0))
+                .map_err(|e| e.to_string())?
+                > 0;
+            if !existe {
+                return Err("A cópia escolhida não está mais na biblioteca.".to_string());
+            }
+            outros
+                .iter()
+                .filter(|&&o| o != manter)
+                .filter_map(|&o| conn.query_row("SELECT path FROM media WHERE id = ?1", [o], |r| r.get(0)).ok().map(|p| (o, p)))
+                .collect()
+        };
+        let mut sair = Vec::new();
+        let mut falhas = Vec::new();
+        let mut na_lixeira = 0;
+        for (id, caminho) in caminhos {
+            if lixeira && cfg!(desktop) && std::path::Path::new(&caminho).exists() {
+                #[cfg(desktop)]
+                match trash::delete(&caminho) {
+                    Ok(()) => na_lixeira += 1,
+                    Err(e) => {
+                        falhas.push(format!("{caminho}: {e}"));
+                        continue;
+                    }
+                }
+            }
+            sair.push(id);
+        }
+        let removidas = {
+            let mut conn = db.0.lock().map_err(erro_db)?;
+            import::unir_duplicados(&mut conn, manter, &sair).map_err(|e| e.to_string())?
+        };
+        depois_de_remover(&h, &sair)?;
+        let _ = h.emit(EVENTO_BIBLIOTECA, &import::ImportResumo::default());
+        Ok(DuplicadoResolvido { removidas, na_lixeira, falhas })
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+/// Renomeia o arquivo de uma cópia (o nome sem extensão; nunca sobrescreve).
+#[tauri::command]
+async fn duplicate_rename(app: AppHandle, id: i64, nome: String) -> Result<String, String> {
+    let h = app.clone();
+    let r = tauri::async_runtime::spawn_blocking(move || enriquecer::renomear_para(&h.state::<db::Db>().0, id, Some(&nome)))
+        .await
+        .map_err(|e| e.to_string())??;
+    let _ = app.emit(EVENTO_FILA, ());
+    Ok(r)
 }
 
 #[tauri::command]
@@ -3067,6 +3144,8 @@ pub fn run() {
             duplicates_list,
             remove_from_library,
             duplicate_ignore,
+            duplicate_resolve,
+            duplicate_rename,
             watched_folders,
             unwatch_folder,
             list_media,
