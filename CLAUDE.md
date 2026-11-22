@@ -207,7 +207,7 @@ Etapas (numeradas depois das da Fase 11):
 | 69 | [x] | [x] | [x] |
 | 70 | [x] | [x] | [x] |
 
-## Fase 10 (podcasts) — planejada
+## Fase 10 (podcasts) — concluída (Linux, Android e Windows)
 
 Decisões (2026-11-16): arquivos locais primeiro, assinatura por RSS depois (última etapa); nada é apagado do disco, nem episódio baixado pelo Skáld; "ouvido" = faltando ≤ 2 min ou ≥ 95% (ou marcado à mão); todas as plataformas, marcando `[x]` por plataforma depois de testar.
 
@@ -225,12 +225,12 @@ Etapas:
 
 | Etapa | Linux | Android | Windows |
 |---|---|---|---|
-| 54 | [ ] | [ ] | [x] |
-| 55 | [ ] | [ ] | [x] |
-| 56 | [ ] | [ ] | [x] |
-| 57 | [ ] | [ ] | [x] |
-| 58 | [ ] | [ ] | [x] |
-| 59 | [ ] | [ ] | [x] |
+| 54 | [x] | [x] | [x] |
+| 55 | [x] | [x] | [x] |
+| 56 | [x] | [x] | [x] |
+| 57 | [x] | [x] | [x] |
+| 58 | [x] | [x] | [x] |
+| 59 | [x] | [x] | [x] |
 
 ## Fase 11 (widget, Android Auto e sincronização pelo Drive) — antes da Fase 10
 
@@ -262,12 +262,12 @@ Etapas:
 | 62 | — | [x] | — |
 | 63 | [x] | [x] | [x] |
 | 64 | [x] | [x] | [x] |
-| 65 | [ ] | [ ] | [ ] |
-| 71 | [ ] | [ ] | [ ] |
+| 65 | [x] | [x] | [ ] |
+| 71 | [x] | [x] | [ ] |
 
 ## Estado atual
 
-**MVP, Fase 2 (etapas 10 a 19), Fase 3 (20 a 23), Fase 4 (24 a 28), Fase 5 (29 a 32) e Fase 6 (33 a 35) concluídos; Fase 7 concluída no Linux (36 a 41), no Android (36 a 43) e no Windows (36 a 41); Fase 8 (Windows) concluída (44 a 53). Fase 9 concluída (66 a 70) no Linux, Android e Windows. Fase 11: widget (60, 61) e Android Auto (62) concluídos no Android; login (63) e músicas (64) testados no Linux e no Android, 65 em teste; app do Google em produção. Fase 10: etapas 54 a 59 (inclui assinar por RSS) testadas no Windows, falta testar no Linux e no Android. Versão atual: **0.3.1** (release v0.3.1, 2026-11-18: Linux e Android, com a sincronização de dados por pasta; Windows anexado em 2026-11-18 após o teste). Windows: seção "Windows (testado em 2026-11-18, v0.3.1)" abaixo.**
+**MVP, Fase 2 (etapas 10 a 19), Fase 3 (20 a 23), Fase 4 (24 a 28), Fase 5 (29 a 32) e Fase 6 (33 a 35) concluídos; Fase 7 concluída no Linux (36 a 41), no Android (36 a 43) e no Windows (36 a 41); Fase 8 (Windows) concluída (44 a 53). Fase 9 concluída (66 a 70) no Linux, Android e Windows. Fase 11: widget (60, 61) e Android Auto (62) concluídos no Android; 63, 64, 65 e 71 testados no Linux e no Android; app do Google em produção. Fase 10 (podcasts, 54 a 59) testada no Linux, Android e Windows; 65 e 71 testadas no Linux e no Android (Windows segue em andamento). Versão atual: **0.3.1** (release v0.3.1, 2026-11-18: Linux e Android, com a sincronização de dados por pasta; Windows anexado em 2026-11-18 após o teste). Windows: seção "Windows (testado em 2026-11-18, v0.3.1)" abaixo.**
 
 ### Fase 7 (36 a 43; testada no Linux e no Android)
 
@@ -353,14 +353,15 @@ Etapas:
 
 ### Próximo
 
-### Beta 2026-11-19 (pedido da pinguis; APK `skald-0.3.2-beta-android-arm64.apk` enviado, falta testar no app)
+### Beta 2026-11-19 (pedido da pinguis; betas 1 a 3 testados, 2026-11-22)
 
 - **Busca por nome de arquivo**: `enriquecer::limpar_titulo`/`variantes`/`buscar_flexivel` (tira número da faixa e sobras como "(Official Video)", tenta "Artista - Música" nos dois sentidos); `consultar_mb` espaça as consultas ao MusicBrainz (1,1 s, até 3 novas tentativas com 503). Completar sugere o título limpo; achado só pelo título (`Candidato.incerto`) vem desmarcado.
 - **Renomear arquivo**: `enriquecer::renomear_arquivo` → "Artista - Título.ext" (nunca sobrescreve, leva o `.lrc`), comando `media_rename`, opção no Completar.
 - **Categorias** (várias por música, só no banco): migração v17 (`tag`, `media_tag`), `categorias.rs` (sugestão = gênero do arquivo + tags da gravação + gêneros do artista no MusicBrainz + década do 1º lançamento; nomes em pt-BR), `src/CategoriasMusica.tsx` (lateral Categorias, tela tocável, aba no Completar, "Categorias…" no menu da música). Ainda não sincroniza (65/71).
 - **Reconhecer pelo som**: `acustico.rs` (Chromaprint com `rusty-chromaprint`, áudio via `fakesink` com `signal-handoffs`; AcoustID → `rid:` no MusicBrainz). Chave em `~/Android/chaves/acoustid.txt` (ou `SKALD_ACOUSTID_KEY`), embutida pelo `build.rs`; sem ela, `acoustic_available` = falso. Ensaio: `SKALD_ARQUIVO=… cargo test ensaio_acustico -- --ignored --nocapture`. Falta no CI do Windows.
 - **Android**: `Foco.kt` pausa com `ACTION_AUDIO_BECOMING_NOISY` (fone desconectado). Desktop ainda não.
-- **Beta 2** (`skald-0.3.2-beta2-android-arm64.apk`, 2026-11-19, após relatos da pinguis): buscas em lote (Completar, Letras, Categorias) seguram `TarefaLonga` pela tela (`src/tarefaLonga.ts`, comandos `long_task_start/text/end`; `TarefaLonga` agora conta várias ao mesmo tempo) e rede caída é tentada de novo por ~45 s (`enriquecer::transitorio`/`espera_rede`, também no LRCLIB e AcoustID); trocar de tela no Skáld ainda interrompe. `import::abrir_tolerante`: MP3 com ID3 defeituoso (sites de download) entra em modo `Relaxed` ou só com a duração. `limpar_titulo` tira endereços de site. Abas do Completar quebram linha em tela estreita. Falta testar no S24+.
+- **Beta 2** (`skald-0.3.2-beta2-android-arm64.apk`, 2026-11-19, após relatos da pinguis): buscas em lote (Completar, Letras, Categorias) seguram `TarefaLonga` pela tela (`src/tarefaLonga.ts`, comandos `long_task_start/text/end`; `TarefaLonga` agora conta várias ao mesmo tempo) e rede caída é tentada de novo por ~45 s (`enriquecer::transitorio`/`espera_rede`, também no LRCLIB e AcoustID); trocar de tela no Skáld ainda interrompe. `import::abrir_tolerante`: MP3 com ID3 defeituoso (sites de download) entra em modo `Relaxed` ou só com a duração. `limpar_titulo` tira endereços de site. Abas do Completar quebram linha em tela estreita. Testado.
+- **Beta 3** (`skald-0.3.2-beta3-android-arm64.apk`, 2026-11-21): no celular os painéis Pastas monitoradas e Duplicados ficam `position: fixed` (o `overflow-x: auto` de `.topo-acoes` os recortava). Testado.
 
 ### Windows (testado em 2026-11-18, v0.3.1)
 
@@ -376,11 +377,10 @@ Etapas:
 - Fase 9: 69 e 70 testadas no Android e no Windows. O cartão Novidades mostra a versão do app (`getVersion`) e abre as notas das versões.
 - Android: exportar/restaurar backup aceitam `content://` (arquivo temporário no cache + `tauri_plugin_fs`); APK com isso instalado no S24+, falta testar.
 - Fase 11, sincronização pelo Drive (estado em 2026-11-17):
-  - Linux e Android: login (63) e subir/baixar músicas (64) testados. Falta testar a 65 (dados) entre PC e celular. Configurações → Biblioteca tem "Músicas não encontradas (N)" → remover só os registros (`missing_count`/`remove_missing`).
+  - Linux e Android: login (63), músicas (64), dados (65) e dados por pasta (71) testados (2026-11-22). Configurações → Biblioteca tem "Músicas não encontradas (N)" → remover só os registros (`missing_count`/`remove_missing`).
   - Windows: login e download testados (ver "Windows" acima).
   - App do Google **em produção** desde 2026-11-17 (login não expira mais; quem entrou em "Testando" precisa sair e entrar de novo). Site em `site/` (`index.html`, `privacidade.html`, cores do tema vidro), publicado por `.github/workflows/pages.yml` em `https://beedb.github.io/skald/`; Branding sem logotipo, domínio autorizado `beedb.github.io`.
   - Opcional: substituir no Drive a versão antiga da música quando as tags são editadas no arquivo (hoje as duas ficam).
   - Cópia do banco do PC antes da migração v14: `~/.local/share/com.skald.app/skald-antes-etapa65.db`.
 - Futuro (Android): motor fora do Tauri, para o Android Auto e o widget tocarem com o app fechado (ver etapa 62).
-- Fase 10 (podcasts): 54 a 59 com código feito, falta testar no app (Biblioteca → Podcasts: "Importar pasta…" e "Assinar por RSS…").
 - Depois: audiolivros e itens fora de escopo.
