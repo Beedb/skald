@@ -76,6 +76,8 @@ jobs:
           # Credenciais do OAuth do Google (sincronização pelo Drive); sem elas o cartão diz "Indisponível".
           SKALD_GOOGLE_CLIENT_ID: ${{ secrets.SKALD_GOOGLE_CLIENT_ID }}
           SKALD_GOOGLE_CLIENT_SECRET: ${{ secrets.SKALD_GOOGLE_CLIENT_SECRET }}
+          # Chave do AcoustID (reconhecer pelo som); sem ela a opção fica escondida.
+          SKALD_ACOUSTID_KEY: ${{ secrets.SKALD_ACOUSTID_KEY }}
         run: npm run build:windows
 
       - name: Localizar o .exe
