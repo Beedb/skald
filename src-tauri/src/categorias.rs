@@ -246,8 +246,12 @@ pub fn adicionar(conn: &mut Connection, media_id: i64, nomes: &[String], origem:
         }
         let tag = garantir(&tx, &nome)?;
         n += tx.execute(
-            "INSERT OR IGNORE INTO media_tag (media_id, tag_id, origem) VALUES (?1, ?2, ?3)",
+            "INSERT OR IGNORE INTO media_tag (media_id, tag_id, origem, em) VALUES (?1, ?2, ?3, unixepoch())",
             params![media_id, tag, origem],
+        )?;
+        tx.execute(
+            "DELETE FROM media_tag_removida WHERE nome = ?2 AND hash = (SELECT file_hash FROM media WHERE id = ?1)",
+            params![media_id, nome],
         )?;
     }
     tx.commit()?;
@@ -257,6 +261,12 @@ pub fn adicionar(conn: &mut Connection, media_id: i64, nomes: &[String], origem:
 /// Tira a música de uma categoria; categoria que fica vazia some.
 pub fn remover(conn: &Connection, media_id: i64, nome: &str) -> rusqlite::Result<()> {
     conn.execute(
+        "INSERT OR REPLACE INTO media_tag_removida (hash, nome, removida_em)
+         SELECT m.file_hash, t.nome, unixepoch() FROM media_tag mt JOIN media m ON m.id = mt.media_id
+         JOIN tag t ON t.id = mt.tag_id WHERE mt.media_id = ?1 AND t.nome = ?2 AND m.file_hash IS NOT NULL",
+        params![media_id, nome],
+    )?;
+    conn.execute(
         "DELETE FROM media_tag WHERE media_id = ?1 AND tag_id = (SELECT id FROM tag WHERE nome = ?2)",
         params![media_id, nome],
     )?;
@@ -265,6 +275,7 @@ pub fn remover(conn: &Connection, media_id: i64, nome: &str) -> rusqlite::Result
 
 /// Apaga a categoria (as músicas ficam na biblioteca).
 pub fn excluir(conn: &Connection, id: i64) -> rusqlite::Result<()> {
+    marcar_removidas(conn, id)?;
     conn.execute("DELETE FROM media_tag WHERE tag_id = ?1", [id])?;
     conn.execute("DELETE FROM tag WHERE id = ?1", [id])?;
     Ok(())
@@ -283,15 +294,42 @@ pub fn renomear(conn: &mut Connection, id: i64, nome: &str) -> Result<(), String
         .map_err(|e| e.to_string())?;
     match outra {
         Some(o) => {
-            tx.execute("INSERT OR IGNORE INTO media_tag (media_id, tag_id, origem) SELECT media_id, ?2, origem FROM media_tag WHERE tag_id = ?1", params![id, o])
+            tx.execute("INSERT OR IGNORE INTO media_tag (media_id, tag_id, origem, em) SELECT media_id, ?2, origem, unixepoch() FROM media_tag WHERE tag_id = ?1", params![id, o])
                 .map_err(|e| e.to_string())?;
             excluir(&tx, id).map_err(|e| e.to_string())?;
+            desmarcar_removidas(&tx, o).map_err(|e| e.to_string())?;
         }
         None => {
+            // Nos outros aparelhos: sai do nome antigo, entra no novo.
+            marcar_removidas(&tx, id).map_err(|e| e.to_string())?;
             tx.execute("UPDATE tag SET nome = ?2 WHERE id = ?1", params![id, nome]).map_err(|e| e.to_string())?;
+            tx.execute("UPDATE media_tag SET em = unixepoch() WHERE tag_id = ?1", [id]).map_err(|e| e.to_string())?;
+            desmarcar_removidas(&tx, id).map_err(|e| e.to_string())?;
         }
     }
     tx.commit().map_err(|e| e.to_string())
+}
+
+/// Marca de remoção (para a sincronização) de cada música da categoria.
+fn marcar_removidas(conn: &Connection, tag_id: i64) -> rusqlite::Result<()> {
+    conn.execute(
+        "INSERT OR REPLACE INTO media_tag_removida (hash, nome, removida_em)
+         SELECT DISTINCT m.file_hash, t.nome, unixepoch() FROM media_tag mt JOIN media m ON m.id = mt.media_id
+         JOIN tag t ON t.id = mt.tag_id WHERE mt.tag_id = ?1 AND m.file_hash IS NOT NULL",
+        [tag_id],
+    )?;
+    Ok(())
+}
+
+/// Tira as marcas de remoção que a categoria (com o nome atual) desfez.
+fn desmarcar_removidas(conn: &Connection, tag_id: i64) -> rusqlite::Result<()> {
+    conn.execute(
+        "DELETE FROM media_tag_removida WHERE (hash, nome) IN
+         (SELECT m.file_hash, t.nome FROM media_tag mt JOIN media m ON m.id = mt.media_id
+          JOIN tag t ON t.id = mt.tag_id WHERE mt.tag_id = ?1)",
+        [tag_id],
+    )?;
+    Ok(())
 }
 
 fn limpar_vazias(conn: &Connection) -> rusqlite::Result<()> {

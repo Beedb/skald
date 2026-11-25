@@ -361,7 +361,7 @@ mod testes {
     fn curtida_e_categoria() {
         let mut c = banco();
         crate::playlists::alternar_curtida(&mut c, 2).unwrap();
-        c.execute_batch("INSERT INTO tag (id, nome) VALUES (1, 'Anos 70'); INSERT INTO media_tag VALUES (1, 1, 'manual');").unwrap();
+        c.execute_batch("INSERT INTO tag (id, nome) VALUES (1, 'Anos 70'); INSERT INTO media_tag (media_id, tag_id, origem) VALUES (1, 1, 'manual');").unwrap();
         let t = |regras| ids(&c, regras, Combinar::Todas, OrdemRegras::Titulo);
         assert_eq!(t(vec![r(Campo::Curtida, Op::Igual, "sim")]), [2]);
         assert_eq!(t(vec![r(Campo::Curtida, Op::Igual, "não")]), [1, 3]);

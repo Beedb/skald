@@ -2753,6 +2753,9 @@ fn avisar_dados(app: &AppHandle, m: &sincdados::Mudancas) {
     if m.escutas > 0 {
         let _ = app.emit(EVENTO_HISTORICO, ());
     }
+    if m.categorias > 0 {
+        let _ = app.emit(EVENTO_CATEGORIAS, ());
+    }
 }
 
 /// Dados por pasta (Syncthing etc.): nada configurado devolve `None`.
@@ -3096,6 +3099,27 @@ pub fn run() {
                 app.state::<player::Player>().definir_crossfade(cfg.crossfade_ms);
                 app.state::<player::Player>().definir_normalizacao(cfg.normalizacao);
                 app.state::<player::Player>().definir_equalizador(cfg.equalizador.efetivas(&cfg.equalizador_bandas));
+                // Fone desconectado (Bluetooth/USB, ou a saída escolhida sumiu): pausa, como no
+                // Android. Fone de fio no mesmo conector não some da lista e não é percebido.
+                #[cfg(target_os = "linux")]
+                {
+                    let h = app.handle().clone();
+                    saida::vigiar(move |chave, removivel| {
+                        let escolhida = h
+                            .state::<db::Db>()
+                            .0
+                            .lock()
+                            .ok()
+                            .and_then(|c| settings::saida(&c).ok().flatten());
+                        let em_uso = match escolhida {
+                            Some(e) => e == chave,
+                            None => removivel,
+                        };
+                        if em_uso {
+                            let _ = h.state::<player::Player>().pausar();
+                        }
+                    });
+                }
                 // Saída escolhida: procurada numa thread; se sumiu, fica a padrão do sistema.
                 if let Some(chave) = settings::saida(&conn)? {
                     let h = app.handle().clone();

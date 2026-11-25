@@ -8,7 +8,9 @@
 //! Regras: playlist inteira vence a alterada mais recentemente (Curtidas é uma playlist com o
 //! identificador fixo `curtidas`); exclusão vale se for mais nova que a última alteração;
 //! histórico é a união (mesmo início + mesma música = a mesma escuta); apelidos são a união
-//! (o do aparelho vence em conflito). Remover música da biblioteca não conta como alteração.
+//! (o do aparelho vence em conflito); categorias de cada música por (hash, nome): vence a marca
+//! mais recente, de entrada ou de remoção (empate fica com a entrada). Remover música da
+//! biblioteca não conta como alteração.
 
 use std::collections::HashMap;
 
@@ -30,6 +32,44 @@ pub struct Dados {
     pub historico: Vec<Escuta>,
     #[serde(default)]
     pub apelidos: Vec<Apelido>,
+    #[serde(default)]
+    pub categorias: Vec<Categoria>,
+}
+
+/// Música numa categoria (`ativa`) ou tirada dela, com o instante (segundos Unix).
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct Categoria {
+    pub hash: String,
+    pub nome: String,
+    pub em: i64,
+    pub ativa: bool,
+}
+
+impl Categoria {
+    fn chave(&self) -> (String, String) {
+        (self.hash.clone(), self.nome.to_lowercase())
+    }
+    /// Mais recente vence; no empate, a entrada.
+    fn vence(&self, outra: &Categoria) -> bool {
+        (self.em, self.ativa) > (outra.em, outra.ativa)
+    }
+}
+
+/// Junta marcas de categoria pela chave, ficando com a que vence.
+fn juntar_categorias<'a>(marcas: impl Iterator<Item = &'a Categoria>) -> Vec<Categoria> {
+    let mut por: HashMap<(String, String), Categoria> = HashMap::new();
+    for c in marcas {
+        match por.get_mut(&c.chave()) {
+            Some(atual) if c.vence(atual) => *atual = c.clone(),
+            Some(_) => {}
+            None => {
+                por.insert(c.chave(), c.clone());
+            }
+        }
+    }
+    let mut v: Vec<Categoria> = por.into_values().collect();
+    v.sort_by_key(Categoria::chave);
+    v
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
@@ -185,7 +225,26 @@ pub fn exportar(conn: &Connection) -> Result<Dados, String> {
         .map_err(sql)?
         .collect::<Result<_, _>>()
         .map_err(sql)?;
-    Ok(Dados { versao: VERSAO, playlists, removidas, historico, apelidos })
+    let mut categorias: Vec<Categoria> = conn
+        .prepare(
+            "SELECT m.file_hash, t.nome, mt.em FROM media_tag mt JOIN media m ON m.id = mt.media_id
+             JOIN tag t ON t.id = mt.tag_id WHERE m.file_hash IS NOT NULL",
+        )
+        .map_err(sql)?
+        .query_map([], |r| Ok(Categoria { hash: r.get(0)?, nome: r.get(1)?, em: r.get(2)?, ativa: true }))
+        .map_err(sql)?
+        .collect::<Result<_, _>>()
+        .map_err(sql)?;
+    categorias.extend(
+        conn.prepare("SELECT hash, nome, removida_em FROM media_tag_removida")
+            .map_err(sql)?
+            .query_map([], |r| Ok(Categoria { hash: r.get(0)?, nome: r.get(1)?, em: r.get(2)?, ativa: false }))
+            .map_err(sql)?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(sql)?,
+    );
+    let categorias = juntar_categorias(categorias.iter());
+    Ok(Dados { versao: VERSAO, playlists, removidas, historico, apelidos, categorias })
 }
 
 /// Junta os dados de vários aparelhos. O primeiro (este aparelho) vence os empates.
@@ -250,7 +309,8 @@ pub fn mesclar(todos: &[Dados]) -> Dados {
     let mut removidas: Vec<Removida> =
         removidas.into_iter().map(|(u, r)| Removida { uuid: u.to_string(), removida_em: r }).collect();
     removidas.sort_by(|a, b| a.uuid.cmp(&b.uuid));
-    Dados { versao: VERSAO, playlists, removidas, historico, apelidos }
+    let categorias = juntar_categorias(todos.iter().flat_map(|d| d.categorias.iter()));
+    Dados { versao: VERSAO, playlists, removidas, historico, apelidos, categorias }
 }
 
 #[derive(Serialize, Default, Debug, PartialEq)]
@@ -258,6 +318,8 @@ pub struct Mudancas {
     pub playlists: u32,
     pub escutas: u32,
     pub apelidos: u32,
+    #[serde(default)]
+    pub categorias: u32,
 }
 
 /// Aplica no banco o resultado de `mesclar`. Músicas que este aparelho não tem ficam de fora
@@ -408,6 +470,48 @@ pub fn aplicar(conn: &mut Connection, d: &Dados) -> Result<Mudancas, String> {
             .map_err(sql)? as u32;
     }
 
+    for c in &d.categorias {
+        if c.ativa {
+            tx.execute(
+                "DELETE FROM media_tag_removida WHERE hash = ?1 AND nome = ?2 AND removida_em <= ?3",
+                params![c.hash, c.nome, c.em],
+            )
+            .map_err(sql)?;
+            let tem: bool = tx
+                .query_row("SELECT EXISTS (SELECT 1 FROM media WHERE file_hash = ?1)", [&c.hash], |r| r.get(0))
+                .map_err(sql)?;
+            if !tem {
+                continue;
+            }
+            tx.execute("INSERT OR IGNORE INTO tag (nome) VALUES (?1)", [&c.nome]).map_err(sql)?;
+            m.categorias += tx
+                .execute(
+                    "INSERT OR IGNORE INTO media_tag (media_id, tag_id, origem, em)
+                     SELECT m.id, t.id, 'manual', ?3 FROM media m, tag t WHERE m.file_hash = ?1 AND t.nome = ?2",
+                    params![c.hash, c.nome, c.em],
+                )
+                .map_err(sql)? as u32;
+        } else {
+            tx.execute(
+                "INSERT INTO media_tag_removida (hash, nome, removida_em) VALUES (?1, ?2, ?3)
+                 ON CONFLICT(hash, nome) DO UPDATE SET removida_em = max(removida_em, excluded.removida_em)",
+                params![c.hash, c.nome, c.em],
+            )
+            .map_err(sql)?;
+            m.categorias += tx
+                .execute(
+                    "DELETE FROM media_tag WHERE em <= ?3
+                     AND media_id IN (SELECT id FROM media WHERE file_hash = ?1)
+                     AND tag_id IN (SELECT id FROM tag WHERE nome = ?2)",
+                    params![c.hash, c.nome, c.em],
+                )
+                .map_err(sql)? as u32;
+        }
+    }
+    if m.categorias > 0 {
+        tx.execute("DELETE FROM tag WHERE id NOT IN (SELECT tag_id FROM media_tag)", []).map_err(sql)?;
+    }
+
     tx.commit().map_err(sql)?;
     if m.apelidos > 0 {
         crate::artistas::apelidos_mudaram();
@@ -520,5 +624,35 @@ mod testes {
         let ouvido: i64 =
             b.query_row("SELECT listened_ms FROM play_history WHERE started_at = 1000", [], |r| r.get(0)).unwrap();
         assert_eq!(ouvido, 9000);
+    }
+
+    fn categorias(conn: &Connection, id: i64) -> Vec<String> {
+        crate::categorias::da_musica(conn, id).unwrap()
+    }
+
+    #[test]
+    fn categorias_entram_saem_e_renomeiam() {
+        let (mut a, mut b) = (banco(), banco());
+        crate::categorias::adicionar(&mut a, 1, &["Rock".into(), "Anos 80".into()], "manual").unwrap();
+        sincronizar(&mut a, &mut b);
+        assert_eq!(categorias(&b, 1), ["Anos 80", "Rock"]);
+        // Tirada no B (depois): sai no A e não volta.
+        crate::categorias::remover(&b, 1, "Rock").unwrap();
+        b.execute("UPDATE media_tag_removida SET removida_em = removida_em + 10", []).unwrap();
+        sincronizar(&mut a, &mut b);
+        assert_eq!(categorias(&a, 1), ["Anos 80"]);
+        assert_eq!(categorias(&b, 1), ["Anos 80"]);
+        let n: i64 = a.query_row("SELECT count(*) FROM tag WHERE nome = 'Rock'", [], |r| r.get(0)).unwrap();
+        assert_eq!(n, 0);
+        // Renomear no A: o B fica só com o nome novo.
+        let id: i64 = a.query_row("SELECT id FROM tag WHERE nome = 'Anos 80'", [], |r| r.get(0)).unwrap();
+        crate::categorias::renomear(&mut a, id, "Oitentistas").unwrap();
+        a.execute("UPDATE media_tag SET em = em + 20", []).unwrap();
+        a.execute("UPDATE media_tag_removida SET removida_em = removida_em + 20", []).unwrap();
+        sincronizar(&mut a, &mut b);
+        assert_eq!(categorias(&b, 1), ["Oitentistas"]);
+        // De novo: nada muda.
+        let (da, db) = (exportar(&a).unwrap(), exportar(&b).unwrap());
+        assert_eq!(aplicar(&mut a, &mesclar(&[da, db])).unwrap(), Mudancas::default());
     }
 }

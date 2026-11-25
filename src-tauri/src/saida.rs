@@ -70,6 +70,30 @@ pub fn criar(chave: &str) -> Option<[gst::Element; 2]> {
     Some([d.create_element(None).ok()?, d.create_element(None).ok()?])
 }
 
+/// Saída que pode sumir com a música tocando: fone Bluetooth ou USB.
+#[cfg(target_os = "linux")]
+fn removivel(d: &gst::Device) -> bool {
+    let Some(p) = d.properties() else { return false };
+    let api = p.get::<String>("device.api").unwrap_or_default();
+    let bus = p.get::<String>("device.bus").unwrap_or_default();
+    api == "bluez5" || bus == "bluetooth" || bus == "usb"
+}
+
+/// Avisa (numa thread) cada saída que sumiu: `f(chave, removível)`. Liga o monitor.
+#[cfg(target_os = "linux")]
+pub fn vigiar(f: impl Fn(&str, bool) + Send + 'static) {
+    let Some(m) = monitor() else { return };
+    let bus = m.bus();
+    std::thread::spawn(move || {
+        while let Some(msg) = bus.timed_pop_filtered(gst::ClockTime::NONE, &[gst::MessageType::DeviceRemoved]) {
+            if let gst::MessageView::DeviceRemoved(r) = msg.view() {
+                let d = r.device();
+                f(&chave_de(&d), removivel(&d));
+            }
+        }
+    });
+}
+
 #[cfg(test)]
 mod testes {
     /// Só confere que listar não trava nem quebra (a máquina de teste pode não ter som).
@@ -84,5 +108,33 @@ mod testes {
             assert!(super::criar(&s.chave).is_some(), "{s:?}");
         }
         assert!(super::criar("saida-que-nao-existe").is_none());
+    }
+
+    /// Cria e tira uma saída virtual no PipeWire e confere o aviso.
+    /// `cargo test ensaio_saida_sumiu -- --ignored --nocapture` (precisa do `pw-loopback`).
+    #[cfg(target_os = "linux")]
+    #[test]
+    #[ignore]
+    fn ensaio_saida_sumiu() {
+        use std::process::Command;
+        crate::player::gst_iniciar().unwrap();
+        let (tx, rx) = std::sync::mpsc::channel();
+        super::vigiar(move |chave, removivel| {
+            let _ = tx.send((chave.to_string(), removivel));
+        });
+        // Uma saída virtual que existe enquanto o processo vive.
+        let mut proc = Command::new("pw-loopback")
+            .arg("--capture-props=media.class=Audio/Sink node.name=skald_teste node.description=SkaldTeste")
+            .spawn()
+            .unwrap();
+        std::thread::sleep(std::time::Duration::from_secs(2));
+        assert!(super::listar().iter().any(|s| s.chave == "skald_teste"), "{:?}", super::listar());
+        while rx.try_recv().is_ok() {}
+        proc.kill().unwrap();
+        let _ = proc.wait();
+        let (chave, removivel) = rx.recv_timeout(std::time::Duration::from_secs(5)).unwrap();
+        println!("sumiu: {chave} (removível: {removivel})");
+        assert_eq!(chave, "skald_teste");
+        assert!(!removivel);
     }
 }

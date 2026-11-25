@@ -173,7 +173,7 @@ type ResultadoSync = {
   total_falhas: number;
   cancelado: boolean;
   pasta: string;
-  dados: { playlists: number; escutas: number; apelidos: number } | null;
+  dados: { playlists: number; escutas: number; apelidos: number; categorias?: number } | null;
 };
 
 function plural(n: number, um: string, varios: string) {
@@ -182,7 +182,7 @@ function plural(n: number, um: string, varios: string) {
 
 function textoProgresso(p: ProgressoSync | null) {
   if (!p || p.fase === "listando") return "Conferindo o que há no Drive…";
-  if (p.fase === "dados") return "Sincronizando playlists, curtidas e histórico…";
+  if (p.fase === "dados") return "Sincronizando playlists, curtidas, histórico e categorias…";
   const verbo = p.fase === "subindo" ? "Enviando" : "Baixando";
   return `${verbo} ${p.feito + 1} de ${p.total}: ${p.nome}`;
 }
@@ -192,6 +192,7 @@ function partesDados(d: ResultadoSync["dados"]) {
   if (d?.playlists) partes.push(plural(d.playlists, "playlist atualizada", "playlists atualizadas"));
   if (d?.escutas) partes.push(`${plural(d.escutas, "escuta", "escutas")} no histórico`);
   if (d?.apelidos) partes.push(plural(d.apelidos, "apelido novo", "apelidos novos"));
+  if (d?.categorias) partes.push(plural(d.categorias, "mudança nas categorias", "mudanças nas categorias"));
   return partes;
 }
 

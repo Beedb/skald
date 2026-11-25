@@ -16,7 +16,7 @@ No Syncthing, compartilhe a sua pasta de música (por exemplo `~/Music` no PC e 
 
 > **Atenção:** o Syncthing espelha exclusões (apagou num aparelho, apaga no outro). Ligue **Versionamento de arquivos → Lixeira simples** na pasta, ou marque o celular como **Somente receber**.
 
-## Playlists, curtidas, histórico e apelidos
+## Playlists, curtidas, histórico, apelidos e categorias
 
 1. Crie uma pasta dentro da que o Syncthing sincroniza, por exemplo `Music/Skáld/dados`.
 2. No Skáld: **Configurações → Sincronização → Dados por pasta (Syncthing) → Escolher pasta…**

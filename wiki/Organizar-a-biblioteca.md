@@ -33,7 +33,7 @@ Opções na barra:
 
 ## Categorias
 
-Uma música pode estar em **várias categorias** ao mesmo tempo, por exemplo "O Mundo É um Moinho" (Cartola) em **Samba**, **MPB** e **Anos 70**. Cada categoria é uma lista que você toca como uma playlist, e fica só no Skáld (os arquivos não mudam).
+Uma música pode estar em **várias categorias** ao mesmo tempo, por exemplo "O Mundo É um Moinho" (Cartola) em **Samba**, **MPB** e **Anos 70**. Cada categoria é uma lista que você toca como uma playlist, e fica só no Skáld (os arquivos não mudam). As categorias vão para os outros aparelhos com a [sincronização de dados](Sincronizacao-pelo-Google-Drive#como-as-playlists-se-juntam).
 
 - **Sugerir para a biblioteca toda**: barra lateral → **Categorias** → **Sugerir categorias…** (ou a aba **Categorias** de Completar informações). O Skáld procura cada música no MusicBrainz (estilo da gravação e do artista), junta com o gênero do arquivo e a **década** do lançamento. Marque o que quer e clique em **Aplicar**. **só as sem categoria** esconde as que já têm alguma.
 - **À mão**: clique com o botão direito (no celular, toque longo) na música → **Categorias…**. Adicione um nome novo ou existente, tire com ×, ou use **Sugerir pela internet**. Com várias músicas selecionadas: **Pôr numa categoria…**.

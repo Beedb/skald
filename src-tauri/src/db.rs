@@ -186,6 +186,15 @@ const MIGRATIONS: &[&str] = &[
         ouvido_em         INTEGER,
         concluido_em      INTEGER
     );",
+    // v21: categorias sincronizadas (65/71): quando a música entrou na categoria e marcas de
+    // remoção por (hash, nome), para a remoção valer nos outros aparelhos.
+    "ALTER TABLE media_tag ADD COLUMN em INTEGER NOT NULL DEFAULT 0;
+    CREATE TABLE media_tag_removida (
+        hash        TEXT    NOT NULL,
+        nome        TEXT    NOT NULL COLLATE NOCASE,
+        removida_em INTEGER NOT NULL,
+        PRIMARY KEY (hash, nome)
+    );",
 ];
 
 pub fn open(path: &Path) -> rusqlite::Result<Connection> {

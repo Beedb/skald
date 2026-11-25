@@ -24,6 +24,8 @@ O Skáld usa as tags de ReplayGain dos arquivos. Para músicas sem essas tags, e
 
 No computador, em **Configurações → Reprodução → Saída de áudio**, escolha por onde o som sai (caixas, fone, HDMI, Bluetooth…). Em **Padrão do sistema** o Skáld segue a saída que estiver escolhida no sistema. A troca vale na hora, com um corte curtinho no som. Se a saída escolhida estiver desligada ao abrir o Skáld, ele usa a padrão até ela voltar (escolha de novo na lista). No Android quem decide é o próprio sistema.
 
+No Linux, se o fone **Bluetooth ou USB** desconectar (ou a saída escolhida sumir) com música tocando, o Skáld **pausa** em vez de seguir no alto-falante. Fone de fio no conector do computador não é percebido.
+
 ## Equalizador
 
 Presets prontos: **Desligado**, **Grave**, **Agudo**, **Bateria**, **Voz** e **Instrumental**. A mudança vale na hora.
